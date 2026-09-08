@@ -169,8 +169,10 @@ class Handler(BaseHTTPRequestHandler):
             body = self.simulator.metrics_text(self.model_name).encode()
             self._send(200, body, "text/plain; version=0.0.4")
         elif self.path.rstrip("/").endswith("/models"):
-            body = json.dumps({"object": "list", "data": [
-                {"id": self.model_name, "object": "model", "owned_by": "mock"}]}).encode()
+            body = json.dumps({"object": "list", "data": [{
+                "id": self.model_name, "object": "model", "owned_by": "mock",
+                "max_model_len": self.simulator.max_model_len,
+            }]}).encode()
             self._send(200, body, "application/json")
         elif self.path.rstrip("/") in ("/health", "/ping"):
             self._send(200, b"ok", "text/plain")

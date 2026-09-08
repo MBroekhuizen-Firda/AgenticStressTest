@@ -89,7 +89,8 @@ wachtrij en preempties. Daarmee controleer je op je eigen laptop of alles werkt.
 git clone <deze repository>
 cd AgenticStressTest
 
-# Python 3.9 of nieuwer. Er zijn geen verplichte pakketten.
+# Python 3.9 of nieuwer (ontwikkeld en getest op 3.11).
+# Er zijn geen verplichte pakketten.
 python3 --version
 
 # Haal de voorbeeldprojecten binnen die als context dienen (~1 minuut)
@@ -113,6 +114,7 @@ Twee optionele pakketten maken het beter:
 
 ```bash
 pip install tokenizers    # exacte contextgroottes in plaats van een schatting
+                          # (haalt bij de eerste run tokenizer.json van Hugging Face)
 pip install matplotlib    # PNG-grafieken naast de SVG's
 ```
 
@@ -232,6 +234,9 @@ pip install "huggingface_hub[cli]"
 # huggingface-cli login
 
 hf download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
+
+# Bij een oudere huggingface_hub heet het commando nog:
+# huggingface-cli download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
 ```
 
 Controleer daarna dat de bestanden er echt staan:

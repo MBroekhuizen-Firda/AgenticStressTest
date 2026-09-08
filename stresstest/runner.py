@@ -369,15 +369,18 @@ class RunEngine:
                 broke.append(f"p90 instructie {burst_p90:.0f}s > {burst_limit:.0f}s")
             if errors > error_limit:
                 broke.append(f"foutpercentage {errors:.1%}")
-            thin = len(records) < 5
+            # Thin in either dimension: too few first tokens to trust a p90,
+            # or too few completed instructions to say anything about them.
+            thin = len(records) < 5 or len(bursts) < 3
             steps.append({"students": active, "ttft_p90_s": ttft_p90,
                           "burst_p90_s": burst_p90, "error_rate": errors,
                           "samples": len(records), "bursts": len(bursts),
                           "thin_sample": thin, "broke": broke})
             if thin and not broke:
                 log(f"klifzoeker: bij {active} studenten maar {len(records)} "
-                    f"metingen in het venster -- vergroot step_interval_s of "
-                    f"verlaag de denktijden", color="amber")
+                    f"verzoeken en {len(bursts)} instructies in het venster -- "
+                    f"vergroot step_interval_s of verlaag de denktijden",
+                    color="amber")
             colour = "red" if broke else "green"
             log(f"klifzoeker: {active:2d} studenten | p90 TTFT "
                 f"{_seconds(ttft_p90):>7} | p90 instructie {_seconds(burst_p90):>7} | "

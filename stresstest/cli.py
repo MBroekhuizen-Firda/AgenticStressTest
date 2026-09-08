@@ -233,7 +233,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                     ok = False
                     print(f"               TE KLEIN: runs boven {window:,} tokens "
                           f"worden geweigerd. Start vLLM met "
-                          f"--max-model-len {_round_up(needed):,} of haal de "
+                          f"--max-model-len {_round_up(needed)} of haal de "
                           f"grootste contextwaarden uit de matrix.")
         else:
             print(f"endpoint     : NIET BEREIKBAAR -- {info}")
