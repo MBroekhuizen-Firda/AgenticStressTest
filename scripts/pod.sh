@@ -38,6 +38,10 @@ MAX_NUM_SEQS="${MAX_NUM_SEQS:-32}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 
 GPU_UTIL="${GPU_UTIL:-0.90}"
+# Which attention backend vLLM uses. Empty means "let vLLM choose", which is
+# right until its choice does not work on this card -- see the fallback in
+# start_server. Recorded with the results, because it changes the numbers.
+ATTENTION_BACKEND="${ATTENTION_BACKEND:-${VLLM_ATTENTION_BACKEND:-}}"
 TENSOR_PARALLEL="${TENSOR_PARALLEL:-1}"
 CONFIG="${CONFIG:-config/default.json}"
 
@@ -147,6 +151,8 @@ harness_sets() {
   [ "${GPU_NAME:-onbekend}" != "onbekend" ] && SETS+=(--set "hardware.gpu_name=$GPU_NAME")
   local w; w="$(weights_gb)"
   [ -n "$w" ] && SETS+=(--set "hardware.model_weights_gb=$w")
+  local backend; backend="$(cat "$STATE_DIR/current_backend" 2>/dev/null || true)"
+  [ -n "$backend" ] && SETS+=(--set "hardware.attention_backend=$backend")
   SETS+=("${EXTRA_SETS[@]+"${EXTRA_SETS[@]}"}")
 }
 
@@ -352,17 +358,23 @@ start_server() {
   fi
 
   local tool_flags="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
-  local attempt
-  for attempt in 1 2; do
+  local backend="$ATTENTION_BACKEND"
+  local server_env attempt
+  for attempt in 1 2 3; do
     local cmd="vllm serve $MODEL --served-model-name $SERVED_NAME --host $HOST_BIND --port $PORT"
     cmd="$cmd --gpu-memory-utilization $GPU_UTIL --enable-prefix-caching $tunable"
     [ "$TENSOR_PARALLEL" -gt 1 ] && cmd="$cmd --tensor-parallel-size $TENSOR_PARALLEL"
     cmd="$cmd $tool_flags"
 
     say "start: $cmd"
+    server_env=(HF_HOME="$HF_HOME")
+    if [ -n "$backend" ]; then
+      server_env+=(VLLM_ATTENTION_BACKEND="$backend")
+      say "       VLLM_ATTENTION_BACKEND=$backend"
+    fi
     [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
-    nohup env HF_HOME="$HF_HOME" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
+    nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
     echo $! > "$SERVER_PID_FILE"
 
     local status=0
@@ -370,14 +382,28 @@ start_server() {
     if [ "$status" = 0 ]; then
       say "vLLM draait (poort $PORT). Log: $SERVER_LOG"
       echo "$tunable" > "$STATE_DIR/current_flags"
+      echo "$backend" > "$STATE_DIR/current_backend"
       return 0
+    fi
+
+    # vLLM picks its attention backend itself, and on an RTX PRO 6000 Blackwell
+    # it picks FlashInfer and then dies on "FlashInfer requires GPUs with sm75
+    # or higher" -- misleading, because the card is sm_120 and the real problem
+    # is that this FlashInfer build does not know it. vLLM names the
+    # alternative in the same log, so take it.
+    if [ "$status" = 2 ] && [ -z "$backend" ] \
+       && grep -qEi 'FlashInfer requires|no attention backend|attention backend .*not (supported|available)' \
+                    "$SERVER_LOG" 2>/dev/null; then
+      warn "de gekozen attention-backend werkt niet op deze kaart; opnieuw met TRITON_ATTN"
+      backend="TRITON_ATTN"
+      continue
     fi
 
     # The README's documented fallback, but only when the log actually blames
     # the tool-call parser. Retrying blindly costs another start-up and, worse,
     # points the operator at the wrong thing: an engine that dies on memory or
     # on missing kernels dies again in exactly the same way.
-    if [ "$status" = 2 ] && [ "$attempt" = 1 ] && [ -n "$tool_flags" ] \
+    if [ "$status" = 2 ] && [ -n "$tool_flags" ] \
        && grep -qEi 'tool.call.parser|enable-auto-tool-choice|unrecognized arguments|invalid choice' \
                     "$SERVER_LOG" 2>/dev/null; then
       warn "de tool-call-parser wordt niet geaccepteerd; opnieuw zonder die twee vlaggen"
@@ -732,7 +758,7 @@ Opties
 
 Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
-  MIN_FREE_GB MIN_CONTAINER_FREE_GB
+  MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
 
 Voorbeelden

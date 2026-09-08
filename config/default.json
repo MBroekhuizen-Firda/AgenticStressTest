@@ -25,6 +25,11 @@
     // Gewichten van het model in het geheugen; Qwen3-Coder-30B-A3B in FP8 is
     // ongeveer 31 GB, plus wat activatie- en CUDA-overhead.
     "model_weights_gb": 33.0,
+    // De attention-backend waarmee vLLM draaide. null betekent: vLLM koos zelf.
+    // Dit hoort bij de resultaten omdat het de getallen beinvloedt -- op een
+    // RTX PRO 6000 Blackwell kiest vLLM FlashInfer, en als die build de kaart
+    // niet kent wijkt scripts/pod.sh uit naar TRITON_ATTN en zet dat hier neer.
+    "attention_backend": null,
     // Alternatieven waarmee de resultaten worden vergeleken in RESULTATEN.md.
     "alternatives": [
       {"name": "RTX PRO 5000 (72 GB)", "vram_gb": 72.0, "price_eur": 7602},
