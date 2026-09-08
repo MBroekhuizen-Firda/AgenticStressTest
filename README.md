@@ -777,6 +777,11 @@ Twee dingen kunnen dit bedrag laten oplopen:
 
 ## 9. Bekende valkuilen
 
+Dit hoofdstuk gaat over de meting: keuzes die je een verkeerd antwoord
+opleveren. Voor wat er tijdens het opzetten stukgaat — vLLM die niet start,
+een gewiste container disk, een `tail` die weigert — staat
+[VALKUILEN.md](VALKUILEN.md) klaar, met per melding de oorzaak en wat je doet.
+
 **`--max-num-seqs` staat standaard hoog.** vLLM kiest 256 of hoger. Bij sommige
 modellen mislukt het opstarten daardoor ("no available memory for the cache
 blocks"), omdat vLLM ruimte wil reserveren voor meer sequenties dan er passen.
