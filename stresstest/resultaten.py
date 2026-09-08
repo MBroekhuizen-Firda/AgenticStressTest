@@ -11,7 +11,7 @@ import os
 from typing import Any, Sequence
 
 from .grading import AMBER, GREEN, RED
-from .report import analyse
+from .report import analyse, resolve_hardware
 from .runner import RunResult
 from .util import iso
 
@@ -49,7 +49,7 @@ def _verdict_line(colour: str) -> str:
 
 def render(results: Sequence[RunResult], config: dict, environment: dict) -> str:
     findings = analyse(results, config)
-    hardware = config.get("hardware", {})
+    hardware = resolve_hardware(config)
     class_size = findings.get("class_size", 20)
     lines: list[str] = []
     add = lines.append
@@ -122,6 +122,13 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
         else:
             add("De KV-cachebezetting is niet gemeten; zonder bereikbare "
                 "`/metrics`-endpoint kan de geheugenmarge niet worden bepaald.")
+        assumed = findings.get("hardware_defaults_used") or []
+        if assumed:
+            add("")
+            add(f"> Let op: {', '.join(assumed)} stond niet in de configuratie. "
+                f"Hiervoor is de aanname uit de aanvraag gebruikt. Vul "
+                f"`hardware` in `config.json` in om dit met gemeten waarden te "
+                f"vervangen.")
     add("")
 
     # ------------------------------------------------------------ vraag 2
@@ -246,7 +253,9 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
     # ------------------------------------------------------------ drempels
     add("## Hoe de kleuren zijn bepaald")
     add("")
-    thresholds = dict(config.get("grading", {}).get("thresholds") or {})
+    from .grading import DEFAULT_THRESHOLDS
+    thresholds = dict(DEFAULT_THRESHOLDS)
+    thresholds.update(config.get("grading", {}).get("thresholds") or {})
     add(f"- **Groen**: p90 TTFT onder {_n(thresholds.get('ttft_p90_green_s'), ' s', 0)}, "
         f"p90 doorlooptijd van een instructie onder "
         f"{_n(thresholds.get('burst_p90_green_s'), ' s', 0)}, decodesnelheid boven "

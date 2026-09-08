@@ -223,11 +223,17 @@ def build_rampup(config: dict) -> list[RunSpec]:
         shared_fraction=float(block.get("shared_fraction", 0.5)),
         phases=[Phase("ramp", duration, measure=True)],
         arrival_window_s=0.0,
-        ramp={"start_students": start, "max_students": max_students,
-              "step_interval_s": interval,
-              "ttft_p90_limit_s": block.get("ttft_p90_limit_s"),
-              "burst_p90_limit_s": block.get("burst_p90_limit_s"),
-              "error_rate_limit": block.get("error_rate_limit", 0.02)},
+        # Only put keys in here that carry a value: the controller falls back
+        # to the grading thresholds for anything absent, and a None would
+        # override that fallback with nothing.
+        ramp={key: value for key, value in {
+            "start_students": start,
+            "max_students": max_students,
+            "step_interval_s": interval,
+            "ttft_p90_limit_s": block.get("ttft_p90_limit_s"),
+            "burst_p90_limit_s": block.get("burst_p90_limit_s"),
+            "error_rate_limit": block.get("error_rate_limit", 0.02),
+        }.items() if value is not None},
         tags={"axis": "rampup"},
         notes="Waarschijnlijk het meest bruikbare enkele getal dat de test oplevert.",
     )]

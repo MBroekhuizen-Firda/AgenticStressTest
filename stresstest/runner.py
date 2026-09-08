@@ -163,7 +163,7 @@ class RunEngine:
         for task in done:
             exc = task.exception() if not task.cancelled() else None
             if exc is not None:
-                log(f"student task failed: {type(exc).__name__}: {exc}", color="red")
+                log(f"taak mislukt: {type(exc).__name__}: {exc}", color="red")
         await sampler.stop()
         finished_wall = wall()
 
@@ -333,9 +333,11 @@ class RunEngine:
         interval = float(ramp.get("step_interval_s", 120))
         max_students = int(ramp.get("max_students", len(profiles)))
         thresholds = dict(self.config.get("grading", {}).get("thresholds") or {})
-        ttft_limit = float(ramp.get("ttft_p90_limit_s", thresholds.get("ttft_p90_amber_s", 45.0)))
-        burst_limit = float(ramp.get("burst_p90_limit_s", thresholds.get("burst_p90_amber_s", 180.0)))
-        error_limit = float(ramp.get("error_rate_limit", 0.02))
+        ttft_limit = float(ramp.get("ttft_p90_limit_s")
+                           or thresholds.get("ttft_p90_amber_s") or 45.0)
+        burst_limit = float(ramp.get("burst_p90_limit_s")
+                            or thresholds.get("burst_p90_amber_s") or 180.0)
+        error_limit = float(ramp.get("error_rate_limit") or 0.02)
 
         state.activate_through(start_students)
         log(f"klifzoeker: start met {start_students} studenten, +1 per {interval:.0f}s",
@@ -347,7 +349,11 @@ class RunEngine:
         while not state.stop.is_set() and active <= max_students:
             if not await _sleep_until(interval, state.stop):
                 break
-            since = state.clock.elapsed - interval * 0.6
+            # Look back over at least a minute: with realistic think times a
+            # shorter window can contain too few completed instructions to
+            # judge anything, and an empty window must never read as "fine".
+            window = max(interval, 60.0)
+            since = state.clock.elapsed - window
             records = [r for r in state.collector.requests
                        if r.start_t >= since and r.ok and r.ttft_s == r.ttft_s]
             bursts = [b for b in state.collector.bursts if b.start_t >= since]
@@ -363,12 +369,18 @@ class RunEngine:
                 broke.append(f"p90 instructie {burst_p90:.0f}s > {burst_limit:.0f}s")
             if errors > error_limit:
                 broke.append(f"foutpercentage {errors:.1%}")
+            thin = len(records) < 5
             steps.append({"students": active, "ttft_p90_s": ttft_p90,
                           "burst_p90_s": burst_p90, "error_rate": errors,
-                          "samples": len(records), "broke": broke})
+                          "samples": len(records), "bursts": len(bursts),
+                          "thin_sample": thin, "broke": broke})
+            if thin and not broke:
+                log(f"klifzoeker: bij {active} studenten maar {len(records)} "
+                    f"metingen in het venster -- vergroot step_interval_s of "
+                    f"verlaag de denktijden", color="amber")
             colour = "red" if broke else "green"
             log(f"klifzoeker: {active:2d} studenten | p90 TTFT "
-                f"{ttft_p90:6.1f}s | p90 instructie {burst_p90:6.1f}s | "
+                f"{_seconds(ttft_p90):>7} | p90 instructie {_seconds(burst_p90):>7} | "
                 f"{'GEBROKEN: ' + ', '.join(broke) if broke else 'ok'}", color=colour)
             if broke:
                 state.ramp_result = {"max_students_ok": last_ok, "broke_at": active,
@@ -446,6 +458,10 @@ class _RunState:
                 for task in (waiter, stopper):
                     if not task.done():
                         task.cancel()
+
+
+def _seconds(value: float) -> str:
+    return "n/b" if value != value else f"{value:.1f}s"
 
 
 def _phase_label(phase: Phase) -> str:

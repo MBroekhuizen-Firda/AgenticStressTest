@@ -275,17 +275,50 @@ class ResultsWriter:
 # Analysis that answers the four questions
 # --------------------------------------------------------------------------
 
+DEFAULT_HARDWARE: dict[str, Any] = {
+    "gpu_name": "onbekende GPU",
+    "vram_gb": 96.0,
+    "gpu_memory_utilization": 0.90,
+    "model_weights_gb": 33.0,
+    "alternatives": [
+        {"name": "RTX PRO 5000 (72 GB)", "vram_gb": 72.0, "price_eur": 7602},
+        {"name": "2x RTX 5090 (64 GB)", "vram_gb": 64.0, "price_eur": 10000},
+        {"name": "RTX PRO 6000 (96 GB)", "vram_gb": 96.0, "price_eur": 37400},
+    ],
+}
+
+
+def resolve_hardware(config: dict) -> dict[str, Any]:
+    """Hardware description with defaults filled in.
+
+    The analysis and the written report must agree on these numbers, so both
+    go through here rather than reading the raw config. A missing value is
+    substituted with the assumption from the budget request, and the report
+    says which values it used.
+    """
+    hardware = dict(DEFAULT_HARDWARE)
+    hardware.update({k: v for k, v in (config.get("hardware") or {}).items()
+                     if v is not None})
+    if not hardware.get("alternatives"):
+        hardware["alternatives"] = DEFAULT_HARDWARE["alternatives"]
+    return hardware
+
+
 def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
-    hardware = config.get("hardware", {})
-    vram = float(hardware.get("vram_gb", 96.0))
-    utilisation = float(hardware.get("gpu_memory_utilization", 0.90))
-    weights = float(hardware.get("model_weights_gb", 33.0))
+    hardware = resolve_hardware(config)
+    vram = float(hardware["vram_gb"])
+    utilisation = float(hardware["gpu_memory_utilization"])
+    weights = float(hardware["model_weights_gb"])
     pool_gb = max(vram * utilisation - weights, 0.1)
 
     sweep = [r for r in results if r.spec.kind == "sweep"]
     findings: dict[str, Any] = {
         "kv_pool_gb": pool_gb,
         "gpu": hardware.get("gpu_name"),
+        "hardware": hardware,
+        "hardware_defaults_used": sorted(
+            key for key in ("vram_gb", "gpu_memory_utilization", "model_weights_gb")
+            if (config.get("hardware") or {}).get(key) is None),
         "runs": len(results),
     }
 
@@ -325,7 +358,7 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
     # Question 3 -- would less memory do?
     alternatives = []
     peak_fraction = findings.get("kv_peak_fraction")
-    for alternative in hardware.get("alternatives", []):
+    for alternative in hardware["alternatives"]:
         alt_pool = float(alternative["vram_gb"]) * utilisation - weights
         entry = {"name": alternative.get("name"), "vram_gb": alternative.get("vram_gb"),
                  "price_eur": alternative.get("price_eur"),

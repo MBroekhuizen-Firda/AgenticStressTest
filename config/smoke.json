@@ -9,6 +9,14 @@
     "timeout_s": 120
   },
   "seed": 20250908,
+  // De mockserver hierboven doet alsof hij 40 GB heeft met 20 GB aan
+  // gewichten; vul hier de waarden in van de kaart waarop je echt meet.
+  "hardware": {
+    "gpu_name": "mockserver",
+    "vram_gb": 40.0,
+    "gpu_memory_utilization": 0.90,
+    "model_weights_gb": 20.0
+  },
   "corpus": {
     "project": ["django-realworld", "react-realworld"],
     "shared_skeleton_fraction": 0.4
@@ -51,7 +59,11 @@
       "enabled": true,
       "start_students": 3,
       "max_students": 12,
-      "step_interval_s": 25,
+      "step_interval_s": 40,
+      // Intensief, zodat er binnen zo'n korte stap genoeg instructies worden
+      // afgerond om iets over te kunnen zeggen. In config/default.json staat
+      // dit bewust op "normaal".
+      "activity": "intensief",
       "context_tokens": 16000
     }
   },

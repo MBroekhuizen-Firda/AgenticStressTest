@@ -245,6 +245,59 @@ class TestMatrix(unittest.TestCase):
             self.assertTrue(any(p.measure for p in spec.phases), spec.run_id)
 
 
+class TestRampUp(unittest.TestCase):
+    """The cliff finder produces the single most useful number in the whole
+    test, and a crash in its controller is silent: the run simply finishes
+    without a verdict. So it gets its own end-to-end test."""
+
+    def test_controller_admits_students_and_reports_a_maximum(self):
+        import asyncio
+        from stresstest.client import Endpoint, OpenAIClient
+        from stresstest.matrix import build_rampup
+        from stresstest.mockserver import build_server
+        from stresstest.runner import RunEngine
+        from stresstest.vllm_metrics import MetricsSampler
+
+        config = {
+            "seed": 3, "request": {"ignore_eos": True},
+            "run_defaults": {"drain_s": 8, "progress_interval_s": 60},
+            "matrix": {"rampup": {"start_students": 2, "max_students": 5,
+                                  "step_interval_s": 3, "context_tokens": 4000,
+                                  "activity": "intensief"}},
+        }
+        spec = build_rampup(config)[0]
+        self.assertNotIn(None, list(spec.ramp.values()),
+                         "a None limit would crash the controller on float()")
+
+        server = build_server("127.0.0.1", 8766, gpu_memory_gb=8, model_gb=4,
+                              kv_bytes_per_token=200_000, prefill_tokens_per_s=20000,
+                              decode_tokens_per_s=400, max_num_seqs=8,
+                              max_model_len=131072)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        time.sleep(0.3)
+        try:
+            endpoint = Endpoint(base_url="http://127.0.0.1:8766/v1",
+                                model="mock-model", timeout_s=60)
+            engine = RunEngine(client=OpenAIClient(endpoint), corpus=make_corpus(),
+                               counter=build_counter("t", prefer_exact=False),
+                               config=config)
+            sampler = MetricsSampler(None)
+            result = asyncio.run(engine.run(spec, sampler, progress=False))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        self.assertIsNotNone(result.ramp, "the controller must produce a verdict")
+        self.assertGreaterEqual(result.ramp["max_students_ok"], 2)
+        self.assertTrue(result.ramp["steps"], "every step must be recorded")
+        seen = [step["students"] for step in result.ramp["steps"]]
+        self.assertEqual(seen, sorted(seen), "students are admitted one at a time")
+        active = {record.student_index for record in result.collector.requests}
+        self.assertLessEqual(max(active) + 1, 5,
+                             "no student beyond the admitted count may run")
+
+
 class TestEndToEnd(unittest.TestCase):
     """One tiny run against the built-in mock, exercising client, runner,
     metrics, grading and the report writer together."""
