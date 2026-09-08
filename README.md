@@ -106,6 +106,14 @@ python3 -m stresstest doctor -c config/smoke.json
 python3 -m stresstest matrix -c config/smoke.json
 ```
 
+Wil je in plaats daarvan meteen oefenen met het commando dat je straks op de
+gehuurde kaart gebruikt, dan doet dit hetzelfde via de wrapper — inclusief de
+nep-server, de controles en de conclusie:
+
+```bash
+scripts/pod.sh all --mock --skip-lesson -c config/smoke.json
+```
+
 Je vindt de resultaten in `results/<tijdstempel>_matrix/`, met `RESULTATEN.md`
 als samenvatting. De getallen zeggen niets over echte hardware — de nep-server
 is een simulatie — maar als dit werkt, werkt het straks ook op de gehuurde GPU.
@@ -358,9 +366,90 @@ ssh -N -L 8000:localhost:8000 root@<ip>
 # en in config/default.json blijft base_url http://127.0.0.1:8000/v1
 ```
 
+### 4.6 Alles in één commando
+
+Hoofdstuk 4 en 5 met de hand doorlopen kan, en als je wilt begrijpen wat er
+gebeurt is dat de beste manier. Wil je het gewoon laten draaien, dan doet
+`scripts/pod.sh` alles: installeren, het model ophalen, vLLM starten, fase 1,
+de engine-varianten mét de bijbehorende herstarts, fase 2, en de conclusie.
+
+```bash
+git clone <deze repository> /workspace/AgenticStressTest
+cd /workspace/AgenticStressTest
+
+tmux new -s test                      # zodat een wegvallende SSH-verbinding niets breekt
+scripts/pod.sh all --deadman auto
+```
+
+Dat is de hele test, ongeveer zeven uur. Volgen kan later met
+`scripts/pod.sh status` en `tail -f /workspace/.stresstest/vllm.log`.
+
+**Wat het je uit handen neemt, en waarom dat de moeite is:**
+
+| | |
+|---|---|
+| **De engine-varianten** | Die vereisen elk een herstart van vLLM met andere vlaggen. Het script herstart de server zelf en draait daarna precies die ene run. Met de hand is dit het stuk waar `--no-pause` verleidelijk is, en dat maakt die vijf runs betekenisloos. |
+| **Server en harnas gelijk houden** | `hardware.vram_gb`, `gpu_memory_utilization`, `model_weights_gb` en de modelnaam worden afgeleid uit `nvidia-smi` en uit het model op schijf, en meegegeven aan elke aanroep. Staat de omrekening naar gigabytes scheef, dan is het antwoord op vraag 3 scheef. |
+| **Hervatten** | Runs die al op schijf staan worden overgeslagen. Valt je verbinding weg of loopt de pod vast, dan draai je hetzelfde commando opnieuw en gaat het verder waar het was. |
+| **De controle vooraf** | Schijfruimte, driverversie, `tokenizers`, en of `/metrics` de drie reeksen levert waar de hoofdvraag op hangt: preempties, prefix-cache en KV-bezetting. Ontbreekt er een, dan stopt het script in plaats van zes uur het verkeerde te meten. |
+| **De tool-call-parser** | Start vLLM niet op met `--tool-call-parser qwen3_coder`, dan probeert het script het nog één keer zonder, zoals hoofdstuk 4.4 beschrijft. |
+| **De vergeten instance** | `--deadman auto` zet een wekker op de geschatte duur plus anderhalf uur; daarna wordt de pod *gestopt* — niet getermineerd, dus `/workspace` en je resultaten blijven staan. Afzetten met `scripts/pod.sh disarm`. |
+
+**De losse commando's**, als je het toch stap voor stap wilt:
+
+```bash
+scripts/pod.sh setup                  # installeren, model ophalen, corpus ophalen
+scripts/pod.sh serve                  # vLLM starten op de basisinstelling
+scripts/pod.sh doctor                 # de controle uit hoofdstuk 5.2
+scripts/pod.sh plan --price-per-hour 3.36
+scripts/pod.sh group rampup           # één groep: rampup, sweep, scenarios, shared, activity, engine
+scripts/pod.sh lesson                 # alleen fase 2
+scripts/pod.sh report results/<map>   # grafieken en conclusie opnieuw, zonder GPU
+scripts/pod.sh stop                   # vLLM stoppen
+```
+
+**Andere hardware** gaat via omgevingsvariabelen; de rest blijft gelijk, zoals
+[hoofdstuk 7](#7-herhalen-op-andere-hardware) vraagt:
+
+```bash
+VRAM_GB=72 scripts/pod.sh all                          # RTX PRO 5000
+TENSOR_PARALLEL=2 VRAM_GB=64 scripts/pod.sh all        # twee RTX 5090's
+
+MODEL=Qwen/Qwen2.5-Coder-7B-Instruct MAX_MODEL_LEN=32768 \
+  VRAM_GB=24 scripts/pod.sh all --skip-engine          # goedkoop uitproberen
+```
+
+**Eerst droog oefenen, op je eigen laptop, zonder GPU en zonder kosten:**
+
+```bash
+scripts/pod.sh all --mock --skip-lesson -c config/smoke.json
+```
+
+Dat draait dezelfde wrapper tegen de ingebouwde nep-vLLM uit
+[hoofdstuk 2](#2-eerst-gratis-uitproberen). De getallen zeggen niets over echte
+hardware, maar je ziet precies wat er straks op de gehuurde kaart gebeurt.
+
+**Twee dingen doet het bewust niet.**
+
+Het kiest niet zelf de beste configuratie voor fase 2. Fase 1 levert een oordeel
+op waar een mens naar moet kijken; standaard draait de lesvalidatie op de
+basisinstelling. Komt er uit fase 1 iets anders, draai fase 2 dan over:
+
+```bash
+scripts/pod.sh lesson --flags "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536"
+```
+
+En het termineert je instance niet. `--deadman` en `--shutdown` *stoppen* de pod:
+het GPU-tarief loopt dan niet meer, je resultaten blijven staan. Het echte
+opruimen doe je zelf, nadat je de resultaten hebt opgehaald — zie
+[hoofdstuk 3](#hoe-je-hem-weer-uitzet--lees-dit-nu-niet-straks).
+
 ---
 
 ## 5. De test draaien
+
+Dit hoofdstuk beschrijft de stappen los. Draai je `scripts/pod.sh all`, dan zijn
+ze allemaal al gedaan — zie [hoofdstuk 4.6](#46-alles-in-een-commando).
 
 ### 5.1 Configuratie klaarzetten
 
