@@ -500,11 +500,14 @@ start_server() {
 # main question hangs on are actually exposed. Without preemptions, prefix
 # cache hits and KV occupancy you are only measuring latency, which is half
 # the question.
-# A Prometheus counter with labels emits no sample until its label set is used
-# once, so on a server that has served nothing some series are simply absent --
-# vllm:num_preemptions_total is one of them. Scraping straight after start-up
-# then reads as "the endpoint is broken" when nothing is wrong. One tiny
-# request fixes that, and doubles as proof that the model actually generates.
+# The API server answers /v1/models while the engine is still registering its
+# metrics, so a scrape one second later can miss vllm:num_preemptions_total and
+# read as "the endpoint is broken" when nothing is wrong. Seen on a first start
+# that took two minutes; the same server had the series moments later, at 0.
+#
+# Hence the retries. The warm-up request in front of them is worth its second
+# on its own: until now the check only touched /v1/models, so nothing had
+# proved that the model actually generates before the run started.
 warm_up_server() {
   curl -s -m 120 -o /dev/null \
     -H 'Content-Type: application/json' \
