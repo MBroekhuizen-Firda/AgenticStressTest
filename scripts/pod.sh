@@ -498,7 +498,7 @@ cmd_plan()   { harness_sets; "$PY" -m stresstest plan "${SETS[@]}" "$@"; }
 
 cmd_report() {
   local dir="${1:-}"
-  [ -n "$dir" ] || dir="$(ls -dt results/*_matrix 2>/dev/null | head -1)"
+  [ -n "$dir" ] || dir="$(latest_matrix_dir)"
   [ -n "$dir" ] || die "geen resultatenmap gevonden; geef er een mee: pod.sh report results/<map>"
   "$PY" -m stresstest report "$dir"
 }
@@ -568,13 +568,21 @@ archive_results() {
 # The whole thing
 # --------------------------------------------------------------------------
 
+# Most recent phase-1 results directory, or empty if there is none yet.
+# `ls` fails when results/ does not exist, and under `set -o pipefail` that
+# failure escapes the command substitution and aborts the run -- which is
+# exactly what happens on the very first, clean start.
+latest_matrix_dir() {
+  ls -dt results/*_matrix 2>/dev/null | head -1 || true
+}
+
 cmd_all() {
   local started=$SECONDS
   cmd_setup
 
   local dir="${RESULTS_DIR:-}"
   if [ -z "$dir" ]; then
-    dir="$(ls -dt results/*_matrix 2>/dev/null | head -1)"
+    dir="$(latest_matrix_dir)"
     if [ -n "$dir" ]; then
       say "hervat in bestaande map $dir (zet RESULTS_DIR= om ergens anders te beginnen)"
     else
@@ -748,7 +756,7 @@ main() {
     group)      [ $# -ge 1 ] || die "welke groep? rampup, sweep, scenarios, shared, activity, engine"
                 preflight
                 server_running || start_server
-                local dir="${RESULTS_DIR:-$(ls -dt results/*_matrix 2>/dev/null | head -1)}"
+                local dir="${RESULTS_DIR:-$(latest_matrix_dir)}"
                 [ -n "$dir" ] || dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
                 mkdir -p "$dir"
                 if [ "$1" = engine ]; then run_engine_group "$dir"; else run_group "$1" "$dir"; fi
