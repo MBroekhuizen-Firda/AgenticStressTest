@@ -1,0 +1,16 @@
+# Het harnas draait zonder deze pakketten, maar ze zijn niet gelijkwaardig.
+#
+#   tokenizers   STERK AANBEVOLEN. Exacte tokentelling met de tokenizer van
+#                het model, in plaats van een schatting op tekens per token.
+#                De contextgrootte is een as van de hele matrix: een
+#                systematische fout daarin verschuift de conclusie over
+#                hoeveel geheugen een klas nodig heeft. Zie het hoofdstuk
+#                "Installeer tokenizers" in README.md.
+#
+#   matplotlib   Optioneel. PNG-versies van de grafieken naast de SVG's die
+#                er altijd zijn, handig voor in een presentatie.
+#
+# Installeren:  pip install -r requirements-optional.txt
+
+tokenizers>=0.15
+matplotlib>=3.5
