@@ -126,6 +126,11 @@ hoort in het rapport genoemd te worden.
 - **Twee runs tegelijk meten niets.** Ze delen GPU, poort en resultaatmap, en
   achteraf zie je aan de getallen niet dat het gebeurd is. `scripts/pod.sh`
   weigert het nu; controleer anders met `pgrep -af "pod.sh"`.
+- **Een verse server mist reeksen die er wel horen te zijn.** Een
+  Prometheus-teller met labels stuurt niets uit tot zijn labelcombinatie een
+  keer gebruikt is, dus `vllm:num_preemptions_total` ontbreekt zolang er nog
+  geen verzoek is geweest. Stuur eerst één klein verzoek en kijk dan pas
+  (`scripts/pod.sh` doet dat zelf).
 - **Zonder `/metrics` meet je alleen latentie.** De hoofdvraag hangt op
   preempties, prefix-cache-hitrate en KV-bezetting. Ontbreken die reeksen, dan
   is de run zinloos — daarom stopt het script erop.
