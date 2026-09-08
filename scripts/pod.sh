@@ -493,6 +493,28 @@ run_engine_group() {
   done < <(engine_variants)
 }
 
+# Newest run log, or empty. Reading the log is the thing an operator does most
+# often, and `tail -20 .../pod-*.log` stops working the moment a second run
+# leaves a second log behind: with more than one file operand the obsolete
+# -NUM form is rejected ("option used in invalid context"). Hence a command
+# that always names exactly one file.
+latest_log() {
+  ls -t "$STATE_DIR"/pod-*.log 2>/dev/null | head -1 || true
+}
+
+cmd_log() {
+  local file
+  file="$(latest_log)"
+  [ -n "$file" ] || die "nog geen logbestand in $STATE_DIR -- draai eerst 'scripts/pod.sh all --detach'."
+  if [ "${1:-}" = "-f" ]; then
+    say "volgen: $file  (ctrl-C stopt alleen het meekijken, niet de test)"
+    tail -n 40 -f "$file"
+  else
+    say "$file"
+    tail -n "${1:-40}" "$file"
+  fi
+}
+
 cmd_doctor() { harness_sets; "$PY" -m stresstest doctor "${SETS[@]}"; }
 cmd_plan()   { harness_sets; "$PY" -m stresstest plan "${SETS[@]}" "$@"; }
 
@@ -659,6 +681,7 @@ Commando's
   serve [vlaggen]    vLLM starten (standaard de basisinstelling)
   stop               vLLM stoppen
   status             wat draait er, en staat de doodsklok aan
+  log [-f|<n>]       de laatste regels van het nieuwste logbestand; -f volgt mee
   doctor             controle van endpoint, metrics, corpus, contextvenster
   plan               de runs en de geschatte huurkosten
   group <naam>       een losse groep: rampup, sweep, scenarios, shared,
@@ -715,7 +738,7 @@ main() {
       -c|--config) CONFIG="$2"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       --) shift; while [ $# -gt 0 ]; do positional+=("$1"); shift; done ;;
-      -*) [ "$command" = plan ] && { positional+=("$1"); shift; continue; }
+      -*) case "$command" in plan|log) positional+=("$1"); shift; continue ;; esac
           usage; die "onbekende optie: $1" ;;
       *) positional+=("$1"); shift ;;
     esac
@@ -751,6 +774,7 @@ main() {
     serve)      cmd_serve "${1:-}" ;;
     stop)       cmd_stop ;;
     status)     cmd_status ;;
+    log)        cmd_log "${1:-}" ;;
     doctor)     preflight; cmd_doctor ;;
     plan)       detect_gpu; cmd_plan "$@" ;;
     group)      [ $# -ge 1 ] || die "welke groep? rampup, sweep, scenarios, shared, activity, engine"

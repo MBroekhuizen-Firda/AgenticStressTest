@@ -393,8 +393,17 @@ tmux new -s test                      # zodat een wegvallende SSH-verbinding nie
 scripts/pod.sh all --deadman auto
 ```
 
-Dat is de hele test, ongeveer zeven uur. Volgen kan later met
-`scripts/pod.sh status` en `tail -f /workspace/.stresstest/vllm.log`.
+Dat is de hele test, ongeveer zeven uur. Meekijken kan later met:
+
+```bash
+scripts/pod.sh log        # de laatste regels van het nieuwste logbestand
+scripts/pod.sh log -f     # meelopen; ctrl-C stopt het kijken, niet de test
+scripts/pod.sh status     # draait vLLM, en staat de doodsklok aan
+```
+
+Gebruik `scripts/pod.sh log` en niet `tail -20 .../pod-*.log`: zodra een tweede
+run een tweede logbestand achterlaat, weigert `tail` die verkorte vorm
+(*option used in invalid context*).
 
 **Wat het je uit handen neemt, en waarom dat de moeite is:**
 
