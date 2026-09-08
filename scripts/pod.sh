@@ -311,6 +311,23 @@ wait_ready() {
   return 1
 }
 
+# vLLM prints a Python traceback on failure, and its last lines are the least
+# informative part: the real reason sits further up. Surface that first, then
+# the tail, so the operator does not have to go spelunking in a 500-line log.
+SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|ValueError|RuntimeError|Error'
+
+show_server_error() {
+  local log="$1" hits
+  [ -f "$log" ] || return 0
+  hits="$(grep -nEi "$SERVER_ERROR_PATTERNS" "$log" 2>/dev/null | grep -vE '^\s*[0-9]+:\s*File "' | tail -12 || true)"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "--- vermoedelijke oorzaak, uit $log ---" >&2
+    printf '%s\n' "$hits" >&2
+  fi
+  printf '%s\n' "--- laatste 25 regels van $log ---" >&2
+  tail -n 25 "$log" >&2 || true
+}
+
 # start_server [tunable flags]. Without an argument the baseline is used.
 start_server() {
   local tunable="${1:-}"
@@ -343,6 +360,7 @@ start_server() {
     cmd="$cmd $tool_flags"
 
     say "start: $cmd"
+    [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
     nohup env HF_HOME="$HF_HOME" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
     echo $! > "$SERVER_PID_FILE"
@@ -355,17 +373,24 @@ start_server() {
       return 0
     fi
 
-    if [ "$status" = 2 ] && [ "$attempt" = 1 ] && [ -n "$tool_flags" ]; then
-      # The README's documented fallback: if the tool-call parser is not
-      # available for this model or this vLLM build, drop both flags. The
-      # harness then uses a text variant with the same message structure.
-      warn "server gestopt tijdens het opstarten; opnieuw zonder de tool-call-vlaggen"
-      tail -20 "$SERVER_LOG" >&2 || true
+    # The README's documented fallback, but only when the log actually blames
+    # the tool-call parser. Retrying blindly costs another start-up and, worse,
+    # points the operator at the wrong thing: an engine that dies on memory or
+    # on missing kernels dies again in exactly the same way.
+    if [ "$status" = 2 ] && [ "$attempt" = 1 ] && [ -n "$tool_flags" ] \
+       && grep -qEi 'tool.call.parser|enable-auto-tool-choice|unrecognized arguments|invalid choice' \
+                    "$SERVER_LOG" 2>/dev/null; then
+      warn "de tool-call-parser wordt niet geaccepteerd; opnieuw zonder die twee vlaggen"
+      warn "(het harnas schakelt dan zelf over op een tekstvariant met dezelfde berichtstructuur)"
       tool_flags=""
       continue
     fi
-    tail -40 "$SERVER_LOG" >&2 || true
-    die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s. Zie $SERVER_LOG"
+
+    show_server_error "$SERVER_LOG"
+    if [ "$status" = 2 ]; then
+      die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
+    fi
+    die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s, maar draait nog wel. Zie $SERVER_LOG; verhoog zo nodig SERVER_START_TIMEOUT_S."
   done
 }
 
