@@ -38,6 +38,10 @@ MAX_NUM_SEQS="${MAX_NUM_SEQS:-32}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 
 GPU_UTIL="${GPU_UTIL:-0.90}"
+# Which attention backend vLLM uses. Empty means "let vLLM choose", which is
+# right until its choice does not work on this card -- see the fallback in
+# start_server. Recorded with the results, because it changes the numbers.
+ATTENTION_BACKEND="${ATTENTION_BACKEND:-${VLLM_ATTENTION_BACKEND:-}}"
 TENSOR_PARALLEL="${TENSOR_PARALLEL:-1}"
 CONFIG="${CONFIG:-config/default.json}"
 
@@ -147,6 +151,10 @@ harness_sets() {
   [ "${GPU_NAME:-onbekend}" != "onbekend" ] && SETS+=(--set "hardware.gpu_name=$GPU_NAME")
   local w; w="$(weights_gb)"
   [ -n "$w" ] && SETS+=(--set "hardware.model_weights_gb=$w")
+  local backend; backend="$(cat "$STATE_DIR/current_backend" 2>/dev/null || true)"
+  [ -n "$backend" ] && SETS+=(--set "hardware.attention_backend=$backend")
+  local kv; kv="$(cat "$STATE_DIR/current_kv_dtype" 2>/dev/null || true)"
+  [ -n "$kv" ] && SETS+=(--set "hardware.kv_cache_dtype=$kv")
   SETS+=("${EXTRA_SETS[@]+"${EXTRA_SETS[@]}"}")
 }
 
@@ -311,9 +319,32 @@ wait_ready() {
   return 1
 }
 
+# vLLM prints a Python traceback on failure, and its last lines are the least
+# informative part: the real reason sits further up. Surface that first, then
+# the tail, so the operator does not have to go spelunking in a 500-line log.
+SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|ValueError|RuntimeError|Error'
+
+show_server_error() {
+  local log="$1" hits
+  [ -f "$log" ] || return 0
+  hits="$(grep -nEi "$SERVER_ERROR_PATTERNS" "$log" 2>/dev/null | grep -vE '^\s*[0-9]+:\s*File "' | tail -12 || true)"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "--- vermoedelijke oorzaak, uit $log ---" >&2
+    printf '%s\n' "$hits" >&2
+  fi
+  printf '%s\n' "--- laatste 25 regels van $log ---" >&2
+  tail -n 25 "$log" >&2 || true
+}
+
 # start_server [tunable flags]. Without an argument the baseline is used.
+# start_server <tunable flags> [strict]
+# In strict mode nothing is silently substituted and a failure returns 1
+# instead of ending the run: the caller decides what to do.
 start_server() {
   local tunable="${1:-}"
+  local strict=0
+  [ "${2:-}" = strict ] && strict=1
+  local no_flashinfer_sampler=0
   [ -n "$tunable" ] || tunable="--kv-cache-dtype $KV_CACHE_DTYPE --max-num-seqs $MAX_NUM_SEQS --max-model-len $MAX_MODEL_LEN"
 
   stop_server
@@ -335,16 +366,27 @@ start_server() {
   fi
 
   local tool_flags="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
-  local attempt
-  for attempt in 1 2; do
+  local backend="$ATTENTION_BACKEND"
+  local server_env attempt
+  for attempt in 1 2 3; do
     local cmd="vllm serve $MODEL --served-model-name $SERVED_NAME --host $HOST_BIND --port $PORT"
     cmd="$cmd --gpu-memory-utilization $GPU_UTIL --enable-prefix-caching $tunable"
     [ "$TENSOR_PARALLEL" -gt 1 ] && cmd="$cmd --tensor-parallel-size $TENSOR_PARALLEL"
     cmd="$cmd $tool_flags"
 
     say "start: $cmd"
+    server_env=(HF_HOME="$HF_HOME")
+    if [ -n "$backend" ]; then
+      server_env+=(VLLM_ATTENTION_BACKEND="$backend")
+      say "       VLLM_ATTENTION_BACKEND=$backend"
+    fi
+    if [ "$no_flashinfer_sampler" = 1 ]; then
+      server_env+=(VLLM_USE_FLASHINFER_SAMPLER=0)
+      say "       VLLM_USE_FLASHINFER_SAMPLER=0"
+    fi
+    [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
-    nohup env HF_HOME="$HF_HOME" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
+    nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
     echo $! > "$SERVER_PID_FILE"
 
     local status=0
@@ -352,20 +394,56 @@ start_server() {
     if [ "$status" = 0 ]; then
       say "vLLM draait (poort $PORT). Log: $SERVER_LOG"
       echo "$tunable" > "$STATE_DIR/current_flags"
+      echo "$backend" > "$STATE_DIR/current_backend"
+      printf '%s' "$tunable" | sed -n 's/.*--kv-cache-dtype \([a-z0-9]*\).*/\1/p' \
+        > "$STATE_DIR/current_kv_dtype"
       return 0
     fi
 
-    if [ "$status" = 2 ] && [ "$attempt" = 1 ] && [ -n "$tool_flags" ]; then
-      # The README's documented fallback: if the tool-call parser is not
-      # available for this model or this vLLM build, drop both flags. The
-      # harness then uses a text variant with the same message structure.
-      warn "server gestopt tijdens het opstarten; opnieuw zonder de tool-call-vlaggen"
-      tail -20 "$SERVER_LOG" >&2 || true
+    # FlashInfer is used for top-k/top-p sampling regardless of the attention
+    # backend, and its JIT compiler refuses to build here: the log says
+    # "Failed to get device capability: SM 12.x requires CUDA >= 12.9", after
+    # which check_cuda_arch() reports the misleading "FlashInfer requires GPUs
+    # with sm75 or higher" -- the card is sm_120. The toolkit on the image is
+    # simply older than what this flashinfer needs for Blackwell.
+    #
+    # vLLM can sample without it, so try that. This changes nothing about what
+    # is measured -- the harness runs at temperature 0 -- so it is safe to do
+    # for the engine variants too.
+    if [ "$status" = 2 ] && [ "$no_flashinfer_sampler" != 1 ] \
+       && grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' \
+                    "$SERVER_LOG" 2>/dev/null; then
+      warn "FlashInfer kan op deze kaart niet compileren (het log noemt CUDA >= 12.9);"
+      warn "opnieuw zonder de FlashInfer-sampler. Dat raakt de meting niet: het harnas"
+      warn "draait op temperatuur 0."
+      no_flashinfer_sampler=1
+      continue
+    fi
+
+    # The README's documented fallback, but only when the log actually blames
+    # the tool-call parser. Retrying blindly costs another start-up and, worse,
+    # points the operator at the wrong thing: an engine that dies on memory or
+    # on missing kernels dies again in exactly the same way.
+    if [ "$status" = 2 ] && [ -n "$tool_flags" ] \
+       && grep -qEi 'tool.call.parser|enable-auto-tool-choice|unrecognized arguments|invalid choice' \
+                    "$SERVER_LOG" 2>/dev/null; then
+      warn "de tool-call-parser wordt niet geaccepteerd; opnieuw zonder die twee vlaggen"
+      warn "(het harnas schakelt dan zelf over op een tekstvariant met dezelfde berichtstructuur)"
       tool_flags=""
       continue
     fi
-    tail -40 "$SERVER_LOG" >&2 || true
-    die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s. Zie $SERVER_LOG"
+
+    show_server_error "$SERVER_LOG"
+    if [ "$strict" = 1 ]; then
+      return 1
+    fi
+    if [ "$status" = 2 ]; then
+      if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
+        die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. FlashInfer is optioneel; haal het weg en vLLM gebruikt zijn eigen implementaties:  pip uninstall -y flashinfer-python flashinfer  -- en start daarna opnieuw."
+      fi
+      die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
+    fi
+    die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s, maar draait nog wel. Zie $SERVER_LOG; verhoog zo nodig SERVER_START_TIMEOUT_S."
   done
 }
 
@@ -486,11 +564,37 @@ run_engine_group() {
       continue
     fi
     say "variant $name: $flags"
-    start_server "$flags"
+    if ! start_server "$flags" strict; then
+      warn "variant $name start niet op deze opstelling; overgeslagen (zie $SERVER_LOG)"
+      warn "de overige varianten gaan gewoon door"
+      continue
+    fi
     check_metrics
     harness_sets
     "$PY" -m stresstest matrix --run "engine_$name" --only engine --out "$dir" --no-pause "${SETS[@]}"
   done < <(engine_variants)
+}
+
+# Newest run log, or empty. Reading the log is the thing an operator does most
+# often, and `tail -20 .../pod-*.log` stops working the moment a second run
+# leaves a second log behind: with more than one file operand the obsolete
+# -NUM form is rejected ("option used in invalid context"). Hence a command
+# that always names exactly one file.
+latest_log() {
+  ls -t "$STATE_DIR"/pod-*.log 2>/dev/null | head -1 || true
+}
+
+cmd_log() {
+  local file
+  file="$(latest_log)"
+  [ -n "$file" ] || die "nog geen logbestand in $STATE_DIR -- draai eerst 'scripts/pod.sh all --detach'."
+  if [ "${1:-}" = "-f" ]; then
+    say "volgen: $file  (ctrl-C stopt alleen het meekijken, niet de test)"
+    tail -n 40 -f "$file"
+  else
+    say "$file"
+    tail -n "${1:-40}" "$file"
+  fi
 }
 
 cmd_doctor() { harness_sets; "$PY" -m stresstest doctor "${SETS[@]}"; }
@@ -659,6 +763,7 @@ Commando's
   serve [vlaggen]    vLLM starten (standaard de basisinstelling)
   stop               vLLM stoppen
   status             wat draait er, en staat de doodsklok aan
+  log [-f|<n>]       de laatste regels van het nieuwste logbestand; -f volgt mee
   doctor             controle van endpoint, metrics, corpus, contextvenster
   plan               de runs en de geschatte huurkosten
   group <naam>       een losse groep: rampup, sweep, scenarios, shared,
@@ -684,7 +789,7 @@ Opties
 
 Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
-  MIN_FREE_GB MIN_CONTAINER_FREE_GB
+  MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
 
 Voorbeelden
@@ -715,7 +820,7 @@ main() {
       -c|--config) CONFIG="$2"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       --) shift; while [ $# -gt 0 ]; do positional+=("$1"); shift; done ;;
-      -*) [ "$command" = plan ] && { positional+=("$1"); shift; continue; }
+      -*) case "$command" in plan|log) positional+=("$1"); shift; continue ;; esac
           usage; die "onbekende optie: $1" ;;
       *) positional+=("$1"); shift ;;
     esac
@@ -751,6 +856,7 @@ main() {
     serve)      cmd_serve "${1:-}" ;;
     stop)       cmd_stop ;;
     status)     cmd_status ;;
+    log)        cmd_log "${1:-}" ;;
     doctor)     preflight; cmd_doctor ;;
     plan)       detect_gpu; cmd_plan "$@" ;;
     group)      [ $# -ge 1 ] || die "welke groep? rampup, sweep, scenarios, shared, activity, engine"
