@@ -26,7 +26,12 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BLOCK_TOKENS = 256
-CHARS_PER_TOKEN = 3.5
+# Same ratio the harness calibrated against real code (see tokens.py). Not
+# because the mock needs to be accurate -- it is a simulator, not a model --
+# but so that a dry run does not show a 30 % gap between what the harness
+# counted and what the "server" reports, and send someone hunting a bug that
+# only exists in the mock.
+CHARS_PER_TOKEN = 4.6
 
 
 class Simulator:
