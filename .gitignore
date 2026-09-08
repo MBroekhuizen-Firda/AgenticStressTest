@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Gekloonde voorbeeldprojecten die als context dienen; haal ze op met
+# `python3 -m stresstest corpus`.
+corpus_cache/
+
+# Meetresultaten van lokale proefdraaien. Resultaten die je wilt bewaren,
+# commit je bewust met `git add -f results/<map>`.
+results/

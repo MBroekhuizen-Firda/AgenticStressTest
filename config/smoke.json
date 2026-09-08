@@ -1,0 +1,60 @@
+// Kleine, snelle configuratie om het harnas uit te proberen: tegen de
+// meegeleverde mockserver, of tegen een klein model op een goedkope GPU.
+// Draait de hele matrix in ongeveer twaalf minuten in plaats van vijf uur.
+{
+  "endpoint": {
+    "base_url": "http://127.0.0.1:8000/v1",
+    "model": "mock-model",
+    "metrics_url": "http://127.0.0.1:8000/metrics",
+    "timeout_s": 120
+  },
+  "seed": 20250908,
+  "corpus": {
+    "project": ["django-realworld", "react-realworld"],
+    "shared_skeleton_fraction": 0.4
+  },
+  "run_defaults": {
+    "warmup_s": 15,
+    "measure_s": 45,
+    "drain_s": 20,
+    "gap_between_runs_s": 3,
+    "arrival_window_s": 10,
+    "progress_interval_s": 10,
+    "metrics_interval_s": 1
+  },
+  "matrix": {
+    "sweep": {
+      "enabled": true,
+      "students": [5, 10, 20],
+      "context_tokens": [8000, 32000],
+      "shared_fraction": 0.5
+    },
+    "activity_variation": {"enabled": true, "students": [10], "levels": ["intensief"]},
+    "shared_variation": {"enabled": true, "students": 10, "context_tokens": [32000],
+                         "shared_fractions": [0.0, 0.9]},
+    "engine_variation": {"enabled": false},
+    "scenarios": {
+      "enabled": true,
+      "class_size": 10,
+      "oversized_class": 15,
+      "cold_start_students": [10],
+      "cold_start_measure_s": 45,
+      "cold_start_arrival_s": 20,
+      "long_session_students": 4,
+      "long_session_context_tokens": 60000,
+      "buildup_s": 45,
+      "silence_s": 60,
+      "resume_measure_s": 45,
+      "worst_case_context_tokens": 48000
+    },
+    "rampup": {
+      "enabled": true,
+      "start_students": 3,
+      "max_students": 12,
+      "step_interval_s": 25,
+      "context_tokens": 16000
+    }
+  },
+  "lesson": {"students": 10, "time_scale": 0.1},
+  "output": {"directory": "results"}
+}
