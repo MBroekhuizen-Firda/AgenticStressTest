@@ -344,7 +344,7 @@ start_server() {
   local tunable="${1:-}"
   local strict=0
   [ "${2:-}" = strict ] && strict=1
-  local kv_fallback_used=0
+  local no_flashinfer_sampler=0
   [ -n "$tunable" ] || tunable="--kv-cache-dtype $KV_CACHE_DTYPE --max-num-seqs $MAX_NUM_SEQS --max-model-len $MAX_MODEL_LEN"
 
   stop_server
@@ -380,6 +380,10 @@ start_server() {
       server_env+=(VLLM_ATTENTION_BACKEND="$backend")
       say "       VLLM_ATTENTION_BACKEND=$backend"
     fi
+    if [ "$no_flashinfer_sampler" = 1 ]; then
+      server_env+=(VLLM_USE_FLASHINFER_SAMPLER=0)
+      say "       VLLM_USE_FLASHINFER_SAMPLER=0"
+    fi
     [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
     nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
@@ -396,29 +400,23 @@ start_server() {
       return 0
     fi
 
-    # An FP8 KV cache narrows the attention backends vLLM may choose from. On
-    # an RTX PRO 6000 Blackwell with vLLM 0.28 that leaves FlashInfer, which
-    # cannot read the device capability ("SM 12.x requires CUDA >= 12.9") and
-    # then reports the misleading "FlashInfer requires GPUs with sm75 or
-    # higher" -- the card is sm_120. Without the FP8 cache, FLASH_ATTN is on
-    # the menu and the engine starts.
+    # FlashInfer is used for top-k/top-p sampling regardless of the attention
+    # backend, and its JIT compiler refuses to build here: the log says
+    # "Failed to get device capability: SM 12.x requires CUDA >= 12.9", after
+    # which check_cuda_arch() reports the misleading "FlashInfer requires GPUs
+    # with sm75 or higher" -- the card is sm_120. The toolkit on the image is
+    # simply older than what this flashinfer needs for Blackwell.
     #
-    # Falling back to an fp16 cache is a real change to what is measured -- it
-    # roughly halves how many sessions fit -- so it happens only for the
-    # baseline server, is announced, and is recorded with the results. For the
-    # engine variants it must never happen: a run labelled engine_kv_fp8 that
-    # secretly measured fp16 is worse than no run at all.
-    if [ "$status" = 2 ] && [ "$strict" != 1 ] \
-       && [ "$kv_fallback_used" != 1 ] \
-       && printf '%s' "$tunable" | grep -q -- "--kv-cache-dtype fp8" \
-       && grep -qEi 'FlashInfer requires|requires CUDA|no attention backend' \
+    # vLLM can sample without it, so try that. This changes nothing about what
+    # is measured -- the harness runs at temperature 0 -- so it is safe to do
+    # for the engine variants too.
+    if [ "$status" = 2 ] && [ "$no_flashinfer_sampler" != 1 ] \
+       && grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' \
                     "$SERVER_LOG" 2>/dev/null; then
-      warn "vLLM kan de FP8-KV-cache op deze kaart niet bedienen: de enige backend die"
-      warn "daarvoor overblijft (FlashInfer) herkent Blackwell niet. Opnieuw met"
-      warn "--kv-cache-dtype auto. LET OP: dat is ongeveer een halvering van het aantal"
-      warn "sessies dat in de cache past, en het wordt zo bij de resultaten vastgelegd."
-      tunable="$(printf '%s' "$tunable" | sed 's/--kv-cache-dtype fp8/--kv-cache-dtype auto/')"
-      kv_fallback_used=1
+      warn "FlashInfer kan op deze kaart niet compileren (het log noemt CUDA >= 12.9);"
+      warn "opnieuw zonder de FlashInfer-sampler. Dat raakt de meting niet: het harnas"
+      warn "draait op temperatuur 0."
+      no_flashinfer_sampler=1
       continue
     fi
 
@@ -440,6 +438,9 @@ start_server() {
       return 1
     fi
     if [ "$status" = 2 ]; then
+      if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
+        die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. FlashInfer is optioneel; haal het weg en vLLM gebruikt zijn eigen implementaties:  pip uninstall -y flashinfer-python flashinfer  -- en start daarna opnieuw."
+      fi
       die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
     fi
     die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s, maar draait nog wel. Zie $SERVER_LOG; verhoog zo nodig SERVER_START_TIMEOUT_S."
