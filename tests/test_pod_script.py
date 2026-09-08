@@ -15,8 +15,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
+import textwrap
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,6 +116,56 @@ class TestPodScript(unittest.TestCase):
         usage = text.split("usage() {", 1)[1].split("USAGE\n}", 1)[0]
         for command in commands - {"", "all"}:
             self.assertIn(command, usage, f"{command} is not documented in --help")
+
+
+class TestCardIdentification(unittest.TestCase):
+    """The RTX PRO 6000 comes in variants that carry the same 96 GB but not the
+    same power budget. Measuring on a Max-Q and reporting it as the card in the
+    funding request would be a quiet, expensive mistake, so the wrapper reads
+    the power limit and records it."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        stub = os.path.join(self.tmp, "nvidia-smi")
+        with open(stub, "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent("""\
+                #!/usr/bin/env bash
+                q=""
+                for a in "$@"; do case "$a" in --query-gpu=*) q="${a#--query-gpu=}";; esac; done
+                case "$q" in
+                  name,driver_version,memory.total) echo "$FAKE_GPU_NAME, 580.65.06, 97887 MiB" ;;
+                  driver_version) echo "580.65.06" ;;
+                  name,memory.total) echo "$FAKE_GPU_NAME, 97887" ;;
+                  name) echo "$FAKE_GPU_NAME" ;;
+                  power.default_limit) echo "$FAKE_WATTS" ;;
+                  *) exit 1 ;;
+                esac
+                """))
+        os.chmod(stub, os.stat(stub).st_mode | stat.S_IEXEC)
+
+    def plan_stderr(self, name: str, watts: str) -> str:
+        env = dict(os.environ,
+                   PATH=self.tmp + os.pathsep + os.environ["PATH"],
+                   FAKE_GPU_NAME=name, FAKE_WATTS=watts)
+        result = subprocess.run(["bash", SCRIPT, "plan"], cwd=ROOT, env=env,
+                                capture_output=True, text=True, timeout=120)
+        return result.stderr
+
+    def test_max_q_is_called_out(self):
+        stderr = self.plan_stderr("NVIDIA RTX PRO 6000 Blackwell Max-Q", "300.00")
+        self.assertIn("Max-Q", stderr)
+
+    def test_full_power_card_passes_without_a_warning(self):
+        stderr = self.plan_stderr("NVIDIA RTX PRO 6000 Blackwell Server Edition", "600.00")
+        self.assertNotIn("Max-Q", stderr)
+
+    def test_a_driver_without_a_power_limit_is_not_fatal(self):
+        stderr = self.plan_stderr("NVIDIA RTX PRO 6000", "[N/A]")
+        self.assertNotIn("Max-Q", stderr)
+        self.assertNotIn("FOUT", stderr)
 
 
 if __name__ == "__main__":

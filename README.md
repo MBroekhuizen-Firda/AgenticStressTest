@@ -199,8 +199,20 @@ verschillende hardware te draaien.
 ### Wat je kiest
 
 - **GPU:** 1× RTX PRO 6000 Blackwell (96 GB). Niet de "Max-Q"-variant als je kunt
-  kiezen; die is trager afgeregeld.
-- **Schijf:** minimaal **150 GB**. Het model is 31 GB, maar de Hugging
+  kiezen; die is trager afgeregeld. De kaartnaam in de winkel zegt dat niet
+  altijd — bij RunPod is `RTX PRO 6000` de Server Edition en `RTX PRO 6000 WK`
+  de Workstation Edition, allebei op vol vermogen. Wat je werkelijk hebt zie je
+  pas op de machine: `nvidia-smi --query-gpu=name,power.default_limit
+  --format=csv`. 600 W is de gewone uitvoering, 300 W de Max-Q. `scripts/pod.sh`
+  leest dat vanzelf uit, waarschuwt als het naar Max-Q ruikt, en zet het
+  wattage in `RESULTATEN.md` — want "op welke kaart is dit gemeten" is de eerste
+  vraag die iemand over deze cijfers stelt.
+- **Schijf:** minimaal **150 GB**, en let bij RunPod op het onderscheid: de
+  *container disk* wordt gewist zodra de pod stopt, het *network volume* op
+  `/workspace` niet. Kloon de repository naar `/workspace` en houd het model
+  daar, anders ben je bij een stop je resultaten kwijt. Ruim genomen: 80 GB
+  container (vLLM en zijn CUDA-wheels) en 100 GB volume (31 GB model plus
+  resultaten). Dat kost samen ongeveer twee cent per uur. Het model is 31 GB, maar de Hugging
   Face-cache, pip-pakketten en CUDA-bibliotheken vullen de rest sneller dan je
   denkt. Een volle schijf halverwege de download is zonde van het uurtarief.
 - **Image:** een recente PyTorch- of vLLM-image met **CUDA 12.8 of nieuwer**.
