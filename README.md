@@ -426,8 +426,17 @@ scripts/pod.sh plan --price-per-hour 3.36
 scripts/pod.sh group rampup           # één groep: rampup, sweep, scenarios, shared, activity, engine
 scripts/pod.sh lesson                 # alleen fase 2
 scripts/pod.sh report results/<map>   # grafieken en conclusie opnieuw, zonder GPU
-scripts/pod.sh stop                   # vLLM stoppen
+scripts/pod.sh stop                   # de lopende run en vLLM stoppen
 ```
+
+Er kan er maar één tegelijk draaien. Start je per ongeluk een tweede keer —
+na een verbroken SSH-sessie weet je vaak niet meer of de vorige nog loopt —
+dan weigert het script dat en noemt het de pid van de lopende run: twee runs
+delen anders dezelfde GPU, dezelfde poort en dezelfde resultaatmap, en aan de
+getallen achteraf is niet te zien dat het gebeurd is. `scripts/pod.sh status`
+zegt of er iets loopt, `scripts/pod.sh stop` neemt over. Het slot hangt aan
+het proces, dus een afgebroken run of een gestopte pod laat niets achter dat
+je eerst moet opruimen.
 
 **Andere hardware** gaat via omgevingsvariabelen; de rest blijft gelijk, zoals
 [hoofdstuk 7](#7-herhalen-op-andere-hardware) vraagt:

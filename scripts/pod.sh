@@ -58,6 +58,14 @@ STATE_DIR="${STATE_DIR:-$WORKSPACE/.stresstest}"
 SERVER_LOG="$STATE_DIR/vllm.log"
 SERVER_PID_FILE="$STATE_DIR/vllm.pid"
 DEADMAN_PID_FILE="$STATE_DIR/deadman.pid"
+RUN_LOCK_FILE="$STATE_DIR/run.lock"
+
+# Sticky across server starts: once we know this box needs vLLM's own sampler,
+# every later engine variant starts with it straight away instead of burning a
+# doomed start-up first. An operator who already exported the variable gets the
+# same treatment without the failed attempt.
+NO_FLASHINFER_SAMPLER=0
+[ "${VLLM_USE_FLASHINFER_SAMPLER:-}" = 0 ] && NO_FLASHINFER_SAMPLER=1
 
 PY="${PY:-python3}"
 # Mock mode drives the harness's built-in fake vLLM instead of a real one, so
@@ -294,6 +302,46 @@ server_running() {
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+# Two runs side by side share one GPU, one port and one results directory, and
+# neither measurement means anything afterwards. The lock is held on an open
+# file descriptor, so it dies with the process: a run that is killed, or a pod
+# that is stopped mid-run, leaves nothing stale behind.
+#
+# Background children must not inherit it -- the deadman outlives the run by
+# design -- so every spawn closes fd 9 with 9>&-.
+running_run_pid() {
+  local pid
+  [ -f "$RUN_LOCK_FILE" ] || return 1
+  pid="$(cat "$RUN_LOCK_FILE" 2>/dev/null || true)"
+  [ -n "$pid" ] && [ "$pid" != "$$" ] && kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s' "$pid"
+}
+
+die_second_run() {
+  die "er draait al een run (pid $1). Twee runs tegelijk delen dezelfde GPU, dezelfde
+      poort en dezelfde resultaatmap; wat daaruit komt meet niets.
+      meekijken:  scripts/pod.sh log -f
+      overnemen:  scripts/pod.sh stop    (stopt de run en vLLM), daarna opnieuw"
+}
+
+claim_run() {
+  mkdir -p "$STATE_DIR"
+  exec 9>>"$RUN_LOCK_FILE" || die "kan $RUN_LOCK_FILE niet openen"
+  local other=""
+  if command -v flock >/dev/null 2>&1; then
+    flock -n 9 || other="$(cat "$RUN_LOCK_FILE" 2>/dev/null || true)"
+  else
+    # No flock on this image: fall back to the pid in the file. Weaker (two
+    # starts in the same second can both win) but better than nothing.
+    other="$(running_run_pid || true)"
+  fi
+  [ -z "$other" ] || die_second_run "$other"
+  printf '%s' "$$" > "$RUN_LOCK_FILE"
+  # Truncate rather than remove: another start may already have the same inode
+  # open, and deleting the path would let it hand out a second lock.
+  trap 'printf "" > "$RUN_LOCK_FILE" 2>/dev/null || true' EXIT
+}
+
 stop_server() {
   if server_running; then
     local pid; pid="$(cat "$SERVER_PID_FILE")"
@@ -344,7 +392,6 @@ start_server() {
   local tunable="${1:-}"
   local strict=0
   [ "${2:-}" = strict ] && strict=1
-  local no_flashinfer_sampler=0
   [ -n "$tunable" ] || tunable="--kv-cache-dtype $KV_CACHE_DTYPE --max-num-seqs $MAX_NUM_SEQS --max-model-len $MAX_MODEL_LEN"
 
   stop_server
@@ -357,7 +404,7 @@ start_server() {
     local cmd="$PY -m stresstest mock -- --host 127.0.0.1 --port $PORT --gpu-memory-gb $VRAM_GB $mock_flags"
     say "start: $cmd"
     : > "$SERVER_LOG"
-    nohup bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
+    nohup bash -c "$cmd" >>"$SERVER_LOG" 2>&1 9>&- &
     echo $! > "$SERVER_PID_FILE"
     wait_ready || { tail -20 "$SERVER_LOG" >&2 || true; die "nep-server kwam niet omhoog"; }
     say "nep-server draait (poort $PORT)"
@@ -380,13 +427,13 @@ start_server() {
       server_env+=(VLLM_ATTENTION_BACKEND="$backend")
       say "       VLLM_ATTENTION_BACKEND=$backend"
     fi
-    if [ "$no_flashinfer_sampler" = 1 ]; then
+    if [ "$NO_FLASHINFER_SAMPLER" = 1 ]; then
       server_env+=(VLLM_USE_FLASHINFER_SAMPLER=0)
       say "       VLLM_USE_FLASHINFER_SAMPLER=0"
     fi
     [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
-    nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 &
+    nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 9>&- &
     echo $! > "$SERVER_PID_FILE"
 
     local status=0
@@ -410,13 +457,12 @@ start_server() {
     # vLLM can sample without it, so try that. This changes nothing about what
     # is measured -- the harness runs at temperature 0 -- so it is safe to do
     # for the engine variants too.
-    if [ "$status" = 2 ] && [ "$no_flashinfer_sampler" != 1 ] \
-       && grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' \
+    if [ "$status" = 2 ] && [ "$NO_FLASHINFER_SAMPLER" != 1 ] \
+       && grep -qEi "FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA|No module named .flashinfer" \
                     "$SERVER_LOG" 2>/dev/null; then
-      warn "FlashInfer kan op deze kaart niet compileren (het log noemt CUDA >= 12.9);"
-      warn "opnieuw zonder de FlashInfer-sampler. Dat raakt de meting niet: het harnas"
-      warn "draait op temperatuur 0."
-      no_flashinfer_sampler=1
+      warn "vLLM struikelt over FlashInfer; opnieuw zonder de FlashInfer-sampler."
+      warn "Dat raakt de meting niet: het harnas draait op temperatuur 0."
+      NO_FLASHINFER_SAMPLER=1
       continue
     fi
 
@@ -438,8 +484,11 @@ start_server() {
       return 1
     fi
     if [ "$status" = 2 ]; then
+      if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
+        die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 zodat de JIT-compiler er niet aan te pas komt."
+      fi
       if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
-        die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. FlashInfer is optioneel; haal het weg en vLLM gebruikt zijn eigen implementaties:  pip uninstall -y flashinfer-python flashinfer  -- en start daarna opnieuw."
+        die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Een image met een nieuwere toolkit is dan de uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
       fi
       die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
     fi
@@ -469,9 +518,27 @@ check_metrics() {
 }
 
 cmd_serve() { preflight; start_server "${1:-}"; check_metrics; }
-cmd_stop()  { stop_server; say "gestopt"; }
+cmd_stop() {
+  local pid=""
+  pid="$(running_run_pid || true)"
+  if [ -n "$pid" ]; then
+    say "lopende run stoppen (pid $pid)"
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  stop_server
+  say "gestopt"
+}
 
 cmd_status() {
+  local run_pid=""
+  run_pid="$(running_run_pid || true)"
+  if [ -n "$run_pid" ]; then
+    say "er draait een run (pid $run_pid) -- meekijken: scripts/pod.sh log -f"
+  else
+    say "er draait geen run"
+  fi
   if server_running; then
     say "vLLM draait (pid $(cat "$SERVER_PID_FILE")), vlaggen: $(cat "$STATE_DIR/current_flags" 2>/dev/null || echo onbekend)"
     curl -s "http://127.0.0.1:$PORT/v1/models" | head -c 400 >&2 || true; echo >&2
@@ -646,7 +713,7 @@ arm_deadman() {
   local seconds; seconds="$(awk -v h="$hours" 'BEGIN{printf "%d", h*3600}')"
   date -d "+${seconds} seconds" '+%Y-%m-%d %H:%M:%S' > "$STATE_DIR/deadman_at" 2>/dev/null || echo "over ${hours}u" > "$STATE_DIR/deadman_at"
   # MOCK travels with it: a rehearsal on a laptop must never power off a laptop.
-  nohup bash -c "sleep $seconds; MOCK=$MOCK WORKSPACE='$WORKSPACE' '$REPO_DIR/scripts/pod.sh' power-down" >>"$STATE_DIR/deadman.log" 2>&1 &
+  nohup bash -c "sleep $seconds; MOCK=$MOCK WORKSPACE='$WORKSPACE' '$REPO_DIR/scripts/pod.sh' power-down" >>"$STATE_DIR/deadman.log" 2>&1 9>&- &
   echo $! > "$DEADMAN_PID_FILE"
   warn "doodsklok gezet: over ${hours} uur ($(cat "$STATE_DIR/deadman_at")) wordt de pod gestopt."
   warn "Afzetten met: scripts/pod.sh disarm"
@@ -830,6 +897,8 @@ main() {
   cd "$REPO_DIR"
 
   if [ "$detach" = 1 ]; then
+    local busy; busy="$(running_run_pid || true)"
+    [ -z "$busy" ] || die_second_run "$busy"
     mkdir -p "$STATE_DIR"
     local log="$STATE_DIR/pod-$(date +%Y%m%d-%H%M%S).log"
     local forwarded=()
@@ -838,7 +907,7 @@ main() {
       [ "$argument" = "--detach" ] || forwarded+=("$argument")
     done
     say "losgekoppeld; volgen met:  tail -f $log"
-    STRESSTEST_DETACHED=1 nohup "$0" "${forwarded[@]}" >"$log" 2>&1 &
+    STRESSTEST_DETACHED=1 nohup "$0" "${forwarded[@]}" >"$log" 2>&1 9>&- &
     echo $! > "$STATE_DIR/pod.pid"
     say "pid $(cat "$STATE_DIR/pod.pid"); afbreken met: kill $(cat "$STATE_DIR/pod.pid")"
     exit 0
@@ -849,6 +918,10 @@ main() {
     warn "Beter:  tmux new -s test   of   scripts/pod.sh all --detach"
     sleep 5
   fi
+
+  case "$command" in
+    all|serve|group|lesson) claim_run ;;
+  esac
 
   case "$command" in
     all)        cmd_all ;;

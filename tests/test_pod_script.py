@@ -196,5 +196,112 @@ class TestFirstCleanStart(unittest.TestCase):
         self.assertIn("|| true", lines[0])
 
 
+class TestOnlyOneRunAtATime(unittest.TestCase):
+    """Two runs side by side share one GPU, one port and one results directory.
+    Nothing in the numbers afterwards says that happened, so the wrapper has to
+    refuse the second one instead of producing a quietly worthless measurement."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def harness(self, tail: str) -> str:
+        """The lock functions, lifted from the script, over a throwaway state
+        directory. Running the real script would mean a real preflight."""
+        text = script_text()
+        bodies = []
+        for name in ("running_run_pid", "die_second_run", "claim_run"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
+        return ("set -Eeuo pipefail\n"
+                f'STATE_DIR="{self.tmp}"\n'
+                'RUN_LOCK_FILE="$STATE_DIR/run.lock"\n'
+                'say()  { echo "$*"; }\n'
+                'die()  { echo "FOUT: $*" >&2; exit 1; }\n'
+                + "\n".join(bodies) + "\n" + tail)
+
+    def test_a_second_run_is_refused_while_the_first_holds_the_lock(self):
+        holder = subprocess.Popen(
+            ["bash", "-c", self.harness('claim_run\necho held\nsleep 30\n')],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(holder.kill)
+        self.assertEqual(holder.stdout.readline().strip(), "held",
+                         "the first run never took the lock")
+
+        second = subprocess.run(
+            ["bash", "-c", self.harness('claim_run\necho took-it-anyway\n')],
+            capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(second.returncode, 0,
+                            "a second run started next to a live one: " + second.stdout)
+        self.assertIn("er draait al een run", second.stderr)
+        self.assertIn(str(holder.pid), second.stderr, "the message must name the pid")
+
+    def test_the_lock_dies_with_the_run_that_held_it(self):
+        """A killed run, or a pod stopped mid-run, must not leave the next
+        morning's start blocked by a lock nobody holds."""
+        holder = subprocess.Popen(
+            ["bash", "-c", self.harness('claim_run\necho held\nsleep 30\n')],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(holder.kill)
+        self.assertEqual(holder.stdout.readline().strip(), "held")
+        holder.kill()
+        holder.wait(timeout=30)
+
+        after = subprocess.run(
+            ["bash", "-c", self.harness('claim_run\necho claimed\n')],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(after.returncode, 0, after.stderr)
+        self.assertIn("claimed", after.stdout)
+
+    def test_background_children_do_not_inherit_the_lock(self):
+        """The deadman outlives the run on purpose. If it inherited the lock
+        file descriptor it would hold the lock until it fires, and the next
+        start would be refused for no reason."""
+        spawns = [line for line in script_text().splitlines()
+                  if "nohup" in line and not line.lstrip().startswith("#")
+                  and "--detach " not in line]
+        self.assertTrue(spawns, "no background spawns found -- has the script moved on?")
+        for line in spawns:
+            self.assertIn("9>&-", line,
+                          f"this child inherits the run lock: {line.strip()}")
+
+    def test_the_commands_that_drive_a_run_claim_the_lock(self):
+        text = script_text()
+        claiming = re.search(r"^\s*(\S+)\) claim_run ;;", text, re.M)
+        self.assertIsNotNone(claiming, "no command claims the lock any more")
+        for command in ("all", "serve", "group", "lesson"):
+            self.assertIn(command, claiming.group(1),
+                          f"{command} starts a server without taking the lock")
+
+
+class TestFlashInferFallback(unittest.TestCase):
+    """vLLM 0.28 reaches for FlashInfer for top-k/top-p sampling whatever the
+    attention backend is. On this card its JIT compiler cannot build, and with
+    the package removed vLLM's own import of it fails instead -- both end the
+    run. Sampling without it changes nothing here: the harness runs at
+    temperature 0."""
+
+    def test_a_missing_flashinfer_module_triggers_the_retry(self):
+        text = script_text()
+        retry = re.search(r"NO_FLASHINFER_SAMPLER\" != 1.*?grep -qEi (\"[^\"]+\")",
+                          text, re.S)
+        self.assertIsNotNone(retry, "the FlashInfer retry is gone")
+        pattern = retry.group(1)
+        self.assertIn("No module named", pattern,
+                      "an absent flashinfer is the other way this fails")
+
+    def test_the_flag_survives_the_next_server_start(self):
+        """Every engine variant restarts the server. Learning this once per
+        start would cost a failed start-up each time."""
+        text = script_text()
+        self.assertNotIn("local no_flashinfer_sampler", text,
+                         "the flag must outlive a single start_server call")
+        self.assertIn("NO_FLASHINFER_SAMPLER=0\n", text,
+                      "the flag needs a default outside start_server")
+
+
 if __name__ == "__main__":
     unittest.main()
