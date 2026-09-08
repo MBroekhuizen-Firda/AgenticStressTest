@@ -153,6 +153,8 @@ harness_sets() {
   [ -n "$w" ] && SETS+=(--set "hardware.model_weights_gb=$w")
   local backend; backend="$(cat "$STATE_DIR/current_backend" 2>/dev/null || true)"
   [ -n "$backend" ] && SETS+=(--set "hardware.attention_backend=$backend")
+  local kv; kv="$(cat "$STATE_DIR/current_kv_dtype" 2>/dev/null || true)"
+  [ -n "$kv" ] && SETS+=(--set "hardware.kv_cache_dtype=$kv")
   SETS+=("${EXTRA_SETS[@]+"${EXTRA_SETS[@]}"}")
 }
 
@@ -335,8 +337,14 @@ show_server_error() {
 }
 
 # start_server [tunable flags]. Without an argument the baseline is used.
+# start_server <tunable flags> [strict]
+# In strict mode nothing is silently substituted and a failure returns 1
+# instead of ending the run: the caller decides what to do.
 start_server() {
   local tunable="${1:-}"
+  local strict=0
+  [ "${2:-}" = strict ] && strict=1
+  local kv_fallback_used=0
   [ -n "$tunable" ] || tunable="--kv-cache-dtype $KV_CACHE_DTYPE --max-num-seqs $MAX_NUM_SEQS --max-model-len $MAX_MODEL_LEN"
 
   stop_server
@@ -383,19 +391,34 @@ start_server() {
       say "vLLM draait (poort $PORT). Log: $SERVER_LOG"
       echo "$tunable" > "$STATE_DIR/current_flags"
       echo "$backend" > "$STATE_DIR/current_backend"
+      printf '%s' "$tunable" | sed -n 's/.*--kv-cache-dtype \([a-z0-9]*\).*/\1/p' \
+        > "$STATE_DIR/current_kv_dtype"
       return 0
     fi
 
-    # vLLM picks its attention backend itself, and on an RTX PRO 6000 Blackwell
-    # it picks FlashInfer and then dies on "FlashInfer requires GPUs with sm75
-    # or higher" -- misleading, because the card is sm_120 and the real problem
-    # is that this FlashInfer build does not know it. vLLM names the
-    # alternative in the same log, so take it.
-    if [ "$status" = 2 ] && [ -z "$backend" ] \
-       && grep -qEi 'FlashInfer requires|no attention backend|attention backend .*not (supported|available)' \
+    # An FP8 KV cache narrows the attention backends vLLM may choose from. On
+    # an RTX PRO 6000 Blackwell with vLLM 0.28 that leaves FlashInfer, which
+    # cannot read the device capability ("SM 12.x requires CUDA >= 12.9") and
+    # then reports the misleading "FlashInfer requires GPUs with sm75 or
+    # higher" -- the card is sm_120. Without the FP8 cache, FLASH_ATTN is on
+    # the menu and the engine starts.
+    #
+    # Falling back to an fp16 cache is a real change to what is measured -- it
+    # roughly halves how many sessions fit -- so it happens only for the
+    # baseline server, is announced, and is recorded with the results. For the
+    # engine variants it must never happen: a run labelled engine_kv_fp8 that
+    # secretly measured fp16 is worse than no run at all.
+    if [ "$status" = 2 ] && [ "$strict" != 1 ] \
+       && [ "$kv_fallback_used" != 1 ] \
+       && printf '%s' "$tunable" | grep -q -- "--kv-cache-dtype fp8" \
+       && grep -qEi 'FlashInfer requires|requires CUDA|no attention backend' \
                     "$SERVER_LOG" 2>/dev/null; then
-      warn "de gekozen attention-backend werkt niet op deze kaart; opnieuw met TRITON_ATTN"
-      backend="TRITON_ATTN"
+      warn "vLLM kan de FP8-KV-cache op deze kaart niet bedienen: de enige backend die"
+      warn "daarvoor overblijft (FlashInfer) herkent Blackwell niet. Opnieuw met"
+      warn "--kv-cache-dtype auto. LET OP: dat is ongeveer een halvering van het aantal"
+      warn "sessies dat in de cache past, en het wordt zo bij de resultaten vastgelegd."
+      tunable="$(printf '%s' "$tunable" | sed 's/--kv-cache-dtype fp8/--kv-cache-dtype auto/')"
+      kv_fallback_used=1
       continue
     fi
 
@@ -413,6 +436,9 @@ start_server() {
     fi
 
     show_server_error "$SERVER_LOG"
+    if [ "$strict" = 1 ]; then
+      return 1
+    fi
     if [ "$status" = 2 ]; then
       die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
     fi
@@ -537,7 +563,11 @@ run_engine_group() {
       continue
     fi
     say "variant $name: $flags"
-    start_server "$flags"
+    if ! start_server "$flags" strict; then
+      warn "variant $name start niet op deze opstelling; overgeslagen (zie $SERVER_LOG)"
+      warn "de overige varianten gaan gewoon door"
+      continue
+    fi
     check_metrics
     harness_sets
     "$PY" -m stresstest matrix --run "engine_$name" --only engine --out "$dir" --no-pause "${SETS[@]}"

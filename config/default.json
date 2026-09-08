@@ -30,6 +30,11 @@
     // RTX PRO 6000 Blackwell kiest vLLM FlashInfer, en als die build de kaart
     // niet kent wijkt scripts/pod.sh uit naar TRITON_ATTN en zet dat hier neer.
     "attention_backend": null,
+    // De KV-cache-dtype waarmee vLLM werkelijk draaide. Dit kan afwijken van
+    // wat je meegaf: kan vLLM de FP8-cache op deze kaart niet bedienen, dan
+    // wijkt scripts/pod.sh uit naar auto. Dat scheelt ruwweg een halvering van
+    // het aantal sessies dat past, dus het hoort bij de uitkomst vermeld.
+    "kv_cache_dtype": null,
     // Alternatieven waarmee de resultaten worden vergeleken in RESULTATEN.md.
     "alternatives": [
       {"name": "RTX PRO 5000 (72 GB)", "vram_gb": 72.0, "price_eur": 7602},
