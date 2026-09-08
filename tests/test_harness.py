@@ -128,6 +128,39 @@ class TestConversation(unittest.TestCase):
         self.assertGreater(session.compactions, 0, "long sessions must compact")
         self.assertLess(actual, 8000 * 2.0, "compaction must bound the context")
 
+    def test_compaction_keeps_the_conversation_valid(self):
+        """A tool message without the assistant turn that called it is an
+        invalid conversation and some servers reject it outright."""
+        session = self._session(0, 0.5, 8000)
+        peak = 0
+        for _ in range(20):
+            session.start_burst()
+            for _ in range(6):
+                session.next_step()
+                session.record_step("done")
+            peak = max(peak, self.counter.count_messages(session.messages))
+        self.assertGreater(session.compactions, 0)
+        self.assertLess(peak, 8000 * 1.5)
+        orphans = [
+            index for index, message in enumerate(session.messages)
+            if message.get("role") == "tool"
+            and not (index and session.messages[index - 1].get("role") == "assistant"
+                     and session.messages[index - 1].get("tool_calls"))
+        ]
+        self.assertEqual(orphans, [])
+
+    def test_compaction_preserves_the_shared_prefix(self):
+        a, b = self._session(0, 0.9, 8000), self._session(1, 0.9, 8000)
+        before = self._shared_tokens(a, b)
+        for session in (a, b):
+            for _ in range(15):
+                session.start_burst()
+                for _ in range(5):
+                    session.next_step()
+                    session.record_step("done")
+        self.assertGreater(a.compactions, 0)
+        self.assertGreaterEqual(self._shared_tokens(a, b), before * 0.95)
+
     def test_text_style_produces_the_same_shape(self):
         session = Session(0, self.corpus, self.counter, 16000, 0.5,
                           random.Random(0), message_style="text")

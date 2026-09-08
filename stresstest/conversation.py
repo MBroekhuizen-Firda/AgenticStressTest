@@ -228,6 +228,7 @@ class Session:
     restarts: int = 0
     initial_tokens: int = 0
     shared_prefix_tokens: int = 0
+    shared_prefix_messages: int = 2
     context_shortfall: int = 0
 
     # ---------------------------------------------------------------- build
@@ -248,6 +249,9 @@ class Session:
 
         used = self._fill_from(self.corpus.shared_files, base, shared_budget)
         self.shared_prefix_tokens = used
+        # Everything up to here is byte-identical across the class. Compaction
+        # must never touch it, or the shared prefix stops being a prefix.
+        self.shared_prefix_messages = len(self.messages)
         own_files = self.corpus.student_files(self.student_index, 400)
         used = self._fill_from(own_files, used, initial_budget)
 
@@ -339,23 +343,29 @@ class Session:
 
     def _compact(self) -> None:
         """What a real agent does when the window fills up: drop the oldest
-        tool results and keep the head and the recent history.
+        part of the working history and keep the head and the recent turns.
 
-        This invalidates the cache beyond the preserved head, which is
-        exactly the cost we want to measure -- so it happens on burst
-        boundaries, never in the middle of one.
+        Two rules make this honest rather than convenient. The shared prefix
+        is preserved, because that is what a real agent's system prompt and
+        project context do. And the cut never lands on a tool result, which
+        would leave a tool message without the assistant turn that called it
+        and make the conversation invalid.
+
+        Everything after the preserved head loses its cache entry -- exactly
+        the cost we want to measure -- so this happens on burst boundaries
+        only, never in the middle of one.
         """
-        head = 2  # system prompt + assignment brief always stay
+        head = max(self.shared_prefix_messages, 2)
         keep_tail = 8
-        if len(self.messages) <= head + keep_tail + 2:
+        if len(self.messages) <= head + keep_tail + 4:
             return
-        body = self.messages[head:-keep_tail]
-        # Keep the shared skeleton block; drop from the student-specific part.
-        shared_messages = 2 * len(self.corpus.shared_files)
-        drop_from = min(shared_messages, len(body))
-        droppable = body[drop_from:]
-        keep = droppable[len(droppable) // 2:]
-        self.messages = self.messages[:head] + body[:drop_from] + keep + self.messages[-keep_tail:]
+        body = self.messages[head:len(self.messages) - keep_tail]
+        cut = len(body) // 2
+        while cut < len(body) and body[cut].get("role") == "tool":
+            cut += 1
+        if cut >= len(body):
+            return
+        self.messages = self.messages[:head] + body[cut:] + self.messages[-keep_tail:]
         self.prompt_tokens_estimate = self.counter.count_messages(self.messages)
         self.compactions += 1
 
