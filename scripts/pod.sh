@@ -100,6 +100,20 @@ detect_gpu() {
       per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')"
       # With tensor parallelism the pool is the sum of the cards.
       VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$TENSOR_PARALLEL" 'BEGIN{printf "%.1f", p*n}')}"
+
+      # Which RTX PRO 6000 you got matters: the Max-Q variant carries the same
+      # 96 GB but runs at half the power budget, so it is a different
+      # measurement. The marketing name does not always say so; the default
+      # power limit does. Record it, because "op welke kaart is dit gemeten"
+      # is the first question anyone asks of these results.
+      GPU_WATTS="$(nvidia-smi --query-gpu=power.default_limit --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc '0-9.' || true)"
+      if [ -n "$GPU_WATTS" ]; then
+        GPU_NAME="$GPU_NAME (${GPU_WATTS%.*}W)"
+        if awk -v w="$GPU_WATTS" 'BEGIN{exit !(w < 400)}'; then
+          warn "deze kaart staat op ${GPU_WATTS%.*}W. Dat wijst op een Max-Q-variant, die trager is afgeregeld dan de gewone uitvoering."
+          warn "Meten kan prima, maar noteer het: de uitkomst geldt dan voor die variant, niet voor de kaart in de aanvraag."
+        fi
+      fi
     fi
   fi
   VRAM_GB="${VRAM_GB:-96.0}"
