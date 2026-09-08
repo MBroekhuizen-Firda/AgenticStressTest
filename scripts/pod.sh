@@ -500,9 +500,29 @@ start_server() {
 # main question hangs on are actually exposed. Without preemptions, prefix
 # cache hits and KV occupancy you are only measuring latency, which is half
 # the question.
+# The API server answers /v1/models while the engine is still registering its
+# metrics, so a scrape one second later can miss vllm:num_preemptions_total and
+# read as "the endpoint is broken" when nothing is wrong. Seen on a first start
+# that took two minutes; the same server had the series moments later, at 0.
+#
+# Hence the retries. The warm-up request in front of them is worth its second
+# on its own: until now the check only touched /v1/models, so nothing had
+# proved that the model actually generates before the run started.
+warm_up_server() {
+  curl -s -m 120 -o /dev/null \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$SERVED_NAME\",\"max_tokens\":8,\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":\"hallo\"}]}" \
+    "http://127.0.0.1:$PORT/v1/chat/completions" || true
+}
+
 check_metrics() {
-  local body count missing=""
-  body="$(curl -s "http://127.0.0.1:$PORT/metrics" || true)"
+  local body count missing="" attempt
+  warm_up_server
+  for attempt in 1 2 3; do
+    body="$(curl -s "http://127.0.0.1:$PORT/metrics" || true)"
+    printf '%s' "$body" | grep -q '^vllm:num_preemptions' && break
+    [ "$attempt" = 3 ] || sleep 5
+  done
   count="$(printf '%s' "$body" | grep -c '^vllm:' || true)"
 
   printf '%s' "$body" | grep -q '^vllm:\(num_preemptions\)' || missing="$missing preempties"
@@ -510,7 +530,7 @@ check_metrics() {
   printf '%s' "$body" | grep -q '^vllm:\(kv_cache_usage_perc\|gpu_cache_usage_perc\)' || missing="$missing KV-bezetting"
 
   if [ -n "$missing" ]; then
-    [ "$FORCE" = 1 ] || die "/metrics mist:$missing (van $count vllm-reeksen). Daarmee is de hoofdvraag niet te beantwoorden -- zonder preempties, cache hit rate en KV-bezetting meet je alleen latentie. Zet de Prometheus-endpoint aan, of gebruik --force."
+    [ "$FORCE" = 1 ] || die "/metrics mist:$missing (van $count vllm-reeksen), ook na een opwarmverzoek. Daarmee is de hoofdvraag niet te beantwoorden -- zonder preempties, cache hit rate en KV-bezetting meet je alleen latentie. Zet de Prometheus-endpoint aan, of gebruik --force."
     warn "/metrics mist:$missing -- doorgaan vanwege --force; de conclusie wordt onvolledig"
   else
     say "/metrics: $count reeksen, met preempties, prefix-cache en KV-bezetting"
