@@ -194,6 +194,72 @@ def _counter(config: dict):
     )
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Measure characters per token against this corpus and this model.
+
+    Only useful when an exact tokenizer is available -- the point is to make
+    the fallback estimate agree with it, so that a colleague who cannot
+    install `tokenizers` still gets context sizes that are right.
+    """
+    import random
+
+    from .conversation import TOOLS, Session
+    from .tokens import TokenCounter, best_ratio, calibrate_ratio
+
+    config = load_config(args.config, args.set)
+    exact = _counter(config)
+    if not exact.exact:
+        print("Geen exacte tokenizer beschikbaar; er valt niets te ijken.")
+        print("Installeer `tokenizers` (pip install tokenizers) en probeer opnieuw.")
+        return 1
+    corpus = load_corpus(config.get("corpus", {}), quiet=True)
+    print(f"tokenizer : {exact.describe()}")
+    print(f"corpus    : {corpus.describe()['files']} bestanden, "
+          f"{corpus.describe()['total_characters']:,} tekens")
+
+    raw = calibrate_ratio(exact, [f.content for f in corpus.files])
+    print(f"\nRuwe broncode      : {raw:.2f} tekens per token")
+
+    targets = args.contexts or sorted({
+        spec.context_tokens for spec in build_specs(config, ["sweep"])}) or [32000]
+
+    def errors_for(ratio: float) -> list[float]:
+        estimate = TokenCounter("estimate", "calibratie", ratio)
+        out = []
+        for target in targets:
+            for fraction in (0.0, 0.9):
+                session = Session(0, corpus, estimate, target, fraction, random.Random(0))
+                session.reset()
+                measured = (exact.count_messages(session.messages)
+                            + exact.count_tools(TOOLS))
+                if measured:
+                    out.append((session.initial_tokens - measured) / measured)
+        return out
+
+    ratio, worst = best_ratio(errors_for)
+    current = float(config.get("tokenizer", {}).get("chars_per_token", 4.6))
+    current_worst = max(abs(e) for e in errors_for(current))
+
+    print(f"Volledige berichten: {ratio:.2f} tekens per token "
+          f"(grootste afwijking {worst:.1%})")
+    print(f"Huidige instelling : {current:.2f} "
+          f"(grootste afwijking {current_worst:.1%})")
+    print()
+    if abs(ratio - current) < 0.05:
+        print("De huidige instelling klopt; er hoeft niets te veranderen.")
+    else:
+        print("Zet dit in je configuratie:")
+        print(f'    "tokenizer": {{ "chars_per_token": {ratio:.2f} }}')
+        print()
+        print("Of eenmalig op de opdrachtregel:")
+        print(f"    python3 -m stresstest matrix --set tokenizer.chars_per_token={ratio:.2f}")
+    print()
+    print("Let op: dit ijkt alleen de schatting die gebruikt wordt als er geen")
+    print("tokenizer beschikbaar is. Zolang `tokenizers` geinstalleerd is, telt")
+    print("het harnas exact en doet deze waarde er niet toe.")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     config = load_config(args.config, args.set)
     endpoint = make_endpoint(config)
@@ -204,7 +270,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     counter = _counter(config)
     print(f"tokenizer    : {counter.describe()}")
     if not counter.exact:
-        print("               (installeer `tokenizers` voor exacte contextgroottes)")
+        print("               LET OP: de contextgroottes zijn een SCHATTING.")
+        print("               De contextgrootte is een as van de hele matrix, dus een")
+        print("               systematische fout hierin verschuift de conclusie over")
+        print("               hoeveel geheugen een klas nodig heeft.")
+        print("               Los dit op met:  pip install tokenizers")
+        print("               Kan dat niet, ijk dan eerst: stresstest calibrate")
 
     try:
         corpus = load_corpus(config.get("corpus", {}), quiet=True)
@@ -281,6 +352,10 @@ async def _execute(specs: list[RunSpec], config: dict, directory: str,
 
     log(f"resultaten -> {directory}", color="bold")
     log(f"tokenizer: {counter.describe()} | corpus: {corpus.describe()['files']} bestanden")
+    if not counter.exact:
+        log("LET OP: contextgroottes zijn geschat, niet exact geteld. "
+            "Installeer `tokenizers` of draai eerst `stresstest calibrate`.",
+            color="amber")
     total = len(specs)
     started = time.monotonic()
 
@@ -437,6 +512,14 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--price-per-hour", type=float, default=None,
                       help="reken de huurkosten uit tegen dit uurtarief in dollar")
     plan.set_defaults(func=cmd_plan)
+
+    calibrate = subparsers.add_parser(
+        "calibrate", help="ijk de tokenschatting tegen dit corpus en dit model")
+    common(calibrate)
+    calibrate.add_argument("--contexts", nargs="+", type=int,
+                           help="contextgroottes om tegen te ijken "
+                                "(standaard: die uit de sweep)")
+    calibrate.set_defaults(func=cmd_calibrate)
 
     doctor = subparsers.add_parser("doctor", help="controleer endpoint, metrics, corpus")
     common(doctor)

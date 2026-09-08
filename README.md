@@ -110,16 +110,59 @@ Je vindt de resultaten in `results/<tijdstempel>_matrix/`, met `RESULTATEN.md`
 als samenvatting. De getallen zeggen niets over echte hardware — de nep-server
 is een simulatie — maar als dit werkt, werkt het straks ook op de gehuurde GPU.
 
-Twee optionele pakketten maken het beter:
+### Installeer `tokenizers`
+
+Dit is de enige aanbeveling in dit document die je echt niet moet overslaan.
 
 ```bash
-pip install tokenizers    # exacte contextgroottes in plaats van een schatting
-                          # (haalt bij de eerste run tokenizer.json van Hugging Face)
-pip install matplotlib    # PNG-grafieken naast de SVG's
+pip install tokenizers    # haalt bij de eerste run tokenizer.json van Hugging Face
+pip install matplotlib    # optioneel: PNG-grafieken naast de SVG's
 ```
 
-Zonder die pakketten draait alles door: contextgroottes worden geschat op tekens
-per token (en dat wordt erbij vermeld), en de grafieken komen als SVG.
+Zonder `tokenizers` moet het harnas de contextgrootte schatten op tekens per
+token, en de contextgrootte is een van de twee assen van de hele matrix. Een
+systematische fout daarin verschuift de conclusie over hoeveel geheugen een klas
+nodig heeft — precies de vraag die je stelt.
+
+Hoe groot die fout kan zijn: de veelgehoorde vuistregel van 3,5 tekens per token
+komt uit Engels proza. Op broncode klopt hij niet. Gemeten met de tokenizer van
+Qwen3-Coder op het corpus van deze test:
+
+| | tekens per token |
+|---|---|
+| PHP | 4,80 |
+| Python | 4,80 |
+| JavaScript | 4,69 |
+| Markdown | 4,29 |
+| Volledige agentberichten, inclusief JSON en opmaak | 4,65 |
+
+Met 3,5 bouwde het harnas een "32k"-context die er in werkelijkheid 17,7k bevatte:
+een run van 32.000 tokens die er 17.672 verstuurde, 33 % ernaast. De standaard
+staat nu op 4,65, gemeten. Maar die waarde hangt af van het corpus — de
+docstring-rijke Python van dit harnas zelf komt op 4,25 uit — dus als je zonder
+`tokenizers` moet werken, ijk hem dan eerst tegen je eigen corpus:
+
+```bash
+python3 -m stresstest calibrate
+```
+
+Dat commando heeft eenmalig wél een tokenizer nodig; daarna kun je de gemeten
+waarde in `config/default.json` zetten en draait de rest zonder.
+
+Draai je tegen de mockserver of tegen een klein model, zet dan
+`tokenizer.path` op het model dat je straks écht gaat draaien. Dan tel je ook
+tijdens het uitproberen met dezelfde liniaal:
+
+```json
+"tokenizer": { "path": "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8" }
+```
+ Met
+`tokenizers` geïnstalleerd telt het harnas exact en doet de waarde er niet toe.
+Zowel `doctor` als elke run zegt welke van de twee is gebruikt, en
+`RESULTATEN.md` vermeldt het als er geschat is.
+
+Zonder deze pakketten draait alles door — dat is een bewuste ontwerpkeuze — maar
+je meet dan met een liniaal die je zelf niet hebt nagemeten.
 
 ---
 
@@ -345,7 +388,9 @@ python3 -m stresstest doctor
 Dit controleert het endpoint, doet één testverzoek, vergelijkt het
 contextvenster van de server met de zwaarste run in je matrix, en zegt of
 `/metrics` bruikbaar is. Los alles op wat hier misgaat voordat je de matrix start; een
-uur meten met een kapotte metrics-endpoint is een verloren uur.
+uur meten met een kapotte metrics-endpoint is een verloren uur. Zegt `doctor`
+dat de contextgroottes een schatting zijn, installeer dan `tokenizers` — zie
+[hoofdstuk 2](#installeer-tokenizers).
 
 ### 5.3 Het plan bekijken
 
@@ -653,6 +698,18 @@ verborgen toestand, geen pooling-fouten. De verbindingsopbouw wordt apart
 gemeten (`connect_s` in `requests.csv`) en zit niet in de TTFT. Meet je over een
 SSH-tunnel, dan komt die tijd er wel bovenop.
 
+**Schatten in plaats van tellen.** Draait de test zonder `tokenizers`, dan zijn
+alle contextgroottes een schatting. De standaardverhouding is gemeten en klopt
+binnen enkele procenten op dit corpus, maar op een ander corpus loopt hij uiteen
+van ongeveer 4,0 tot 4,8 tekens per token. Draai in dat geval eerst
+`stresstest calibrate`.
+
+**Contextgroottes komen op ongeveer 70 % van het doel uit bij de start.** Dat is
+opzet, geen fout: de resterende 30 % is de ruimte waarin de agentstappen tijdens
+de run groeien, tot de sessie het doel raakt en wordt gecomprimeerd. Een
+"32k-run" is dus een sessie die naar 32k toe groeit, niet een die er meteen op
+begint.
+
 **Schijfruimte.** 31 GB model, plus de cache, plus pip. Onder de 150 GB loop je
 er halverwege tegenaan.
 
@@ -724,9 +781,13 @@ Geen productieopstelling.
 ### Afhankelijkheden
 
 De kern draait op de Python-standaardbibliotheek. Dat is een bewuste keuze: dit
-moet over twee jaar op een verse gehuurde machine nog werken. Optioneel zijn
-`tokenizers` (exacte contextgroottes) en `matplotlib` (PNG naast SVG); zonder
-beide draait alles door en zegt het harnas welke variant het gebruikt heeft.
+moet over twee jaar op een verse gehuurde machine nog werken.
+
+Daarbovenop staan twee pakketten, allebei optioneel maar niet gelijkwaardig.
+`tokenizers` geeft exacte contextgroottes en is sterk aanbevolen, want de
+contextgrootte is een as van de matrix; zonder dat pakket schat het harnas en
+zegt het dat er bij. `matplotlib` levert PNG-versies van de grafieken naast de
+SVG's die er altijd zijn. Zonder beide draait alles door.
 
 ---
 
@@ -734,6 +795,7 @@ beide draait alles door en zegt het harnas welke variant het gebruikt heeft.
 
 ```bash
 python3 -m stresstest doctor                 # controleer endpoint, metrics, corpus
+python3 -m stresstest calibrate              # ijk de tokenschatting op dit corpus
 python3 -m stresstest plan --price-per-hour 3.36
 python3 -m stresstest corpus                 # haal de voorbeeldprojecten binnen
 python3 -m stresstest matrix                 # fase 1, ~5u40

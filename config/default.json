@@ -67,10 +67,17 @@
 
   "tokenizer": {
     // Exact tellen vereist de tokenizer van het model (pakket `tokenizers`).
-    // Zonder dat pakket schat het harnas op tekens per token en zegt het erbij.
+    // Installeer dat: de contextgrootte is een as van de hele matrix, dus een
+    // systematische fout erin verschuift de conclusie over het geheugen.
     "prefer_exact": true,
+    // Pad naar een lokale tokenizer.json of modelmap; leeg = van Hugging Face
+    // halen op basis van endpoint.model.
     "path": null,
-    "chars_per_token": 3.5
+    // Alleen gebruikt als er geen tokenizer beschikbaar is. Gemeten met
+    // `stresstest calibrate` op dit corpus met de Qwen3-Coder-tokenizer:
+    // grootste afwijking 3%. De veelgehoorde 3.5 komt uit Engels proza en
+    // zit er bij broncode ruim 30% naast.
+    "chars_per_token": 4.65
   },
 
   // ------------------------------------------------------------- gedragsmodel

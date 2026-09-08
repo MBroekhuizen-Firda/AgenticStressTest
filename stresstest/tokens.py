@@ -9,12 +9,18 @@ and a silent 30 % error there would invalidate the results.
   2. ``transformers`` (if it happens to be installed anyway) -- exact
   3. characters / ratio                                     -- estimate
 
-The fallback ratio is calibrated for source code plus English/Dutch prose
-mixed together, which is what an agent transcript looks like. Measured on
-Qwen3-Coder's tokenizer over a few thousand lines of Python, PHP and
-JavaScript it sits between 3.3 and 3.8 characters per token; 3.5 is the
-default. ``stresstest calibrate`` re-measures it against your own corpus
-when a real tokenizer is available.
+The fallback ratio matters more than it looks: the context size is an axis
+of the whole matrix, so a systematic error there moves the conclusion about
+how much memory a class needs. Measured on this harness's own corpus with
+the Qwen3-Coder tokenizer, source code runs at about 4.7 characters per
+token (PHP 4.80, Python 4.80, JavaScript 4.69, Markdown 4.29) and a
+complete agent message list at about 4.6 once the JSON escaping and the
+per-message framing are included. That 4.6 is the default.
+
+The old rule of thumb of 3.5 characters per token comes from English prose
+and is wrong for code by roughly a third: with 3.5 the harness built a "32k"
+context that really held 17.7k tokens. Run ``stresstest calibrate`` to
+re-measure the ratio against your own corpus and model.
 """
 
 from __future__ import annotations
@@ -23,7 +29,7 @@ import math
 import os
 from typing import Any, Sequence
 
-DEFAULT_CHARS_PER_TOKEN = 3.5
+DEFAULT_CHARS_PER_TOKEN = 4.6
 
 # Every chat message costs a few tokens of role/delimiter framing on top of
 # its content. The exact number depends on the chat template; 4 is a good
@@ -143,3 +149,23 @@ def calibrate_ratio(counter: TokenCounter, samples: Sequence[str]) -> float | No
     if tokens == 0:
         return None
     return characters / tokens
+
+
+def best_ratio(measure, low: float = 3.0, high: float = 6.0,
+               step: float = 0.05) -> tuple[float, float]:
+    """Find the characters-per-token value that makes the estimate match.
+
+    ``measure(ratio)`` returns the list of relative errors that ratio
+    produces. We minimise the largest absolute error rather than the mean,
+    because a ratio that is right on average but 15 % out at 100k context
+    would still mis-size the runs that decide the memory question.
+    """
+    best_value, best_error = low, float("inf")
+    ratio = low
+    while ratio <= high + 1e-9:
+        errors = measure(round(ratio, 4))
+        worst = max(abs(error) for error in errors) if errors else float("inf")
+        if worst < best_error:
+            best_value, best_error = round(ratio, 4), worst
+        ratio += step
+    return best_value, best_error

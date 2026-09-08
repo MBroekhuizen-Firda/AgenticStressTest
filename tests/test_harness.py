@@ -27,6 +27,21 @@ from stresstest.vllm_metrics import parse_prometheus, pick
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def real_corpus() -> CodeCorpus:
+    """The harness's own source: real code, always present, no clone needed.
+
+    Token density is corpus dependent -- docstring-heavy Python sits around
+    4.0 characters per token, PHP and JavaScript nearer 4.8 -- so a test that
+    pins the ratio must use real source rather than the repetitive synthetic
+    files used elsewhere.
+    """
+    from stresstest.corpus import _iter_source_files
+    files = list(_iter_source_files(os.path.join(ROOT, "stresstest"), [".py"]))
+    if not files:
+        raise unittest.SkipTest("eigen broncode niet gevonden")
+    return CodeCorpus("self", files, max(1, len(files) // 2))
+
+
 def make_corpus(files: int = 60, shared: int = 20) -> CodeCorpus:
     sources = [
         SourceFile(f"app/module_{i:03d}.py",
@@ -110,12 +125,15 @@ class TestConversation(unittest.TestCase):
             self.assertGreater(measured[0.5], measured[0.0], f"target {target}")
             self.assertAlmostEqual(measured[0.9], 0.9, delta=0.12, msg=f"target {target}")
 
-    def test_context_reaches_the_target(self):
+    def test_context_reaches_the_target_without_overshooting(self):
+        """The initial context fills to roughly 70 % of the target -- the rest
+        is headroom for the live agent steps -- and never past the target
+        itself, because the context size is a column of the matrix."""
         for target in (8000, 32000, 64000, 100000):
             session = self._session(0, 0.5, target)
             self.assertEqual(session.context_shortfall, 0, f"target {target}")
-            self.assertGreater(session.initial_tokens, target * 0.5)
-            self.assertLess(session.initial_tokens, target * 0.85)
+            self.assertGreater(session.initial_tokens, target * 0.5, f"target {target}")
+            self.assertLessEqual(session.initial_tokens, target, f"target {target}")
 
     def test_steps_grow_the_context_and_compaction_bounds_it(self):
         session = self._session(0, 0.5, 8000)
@@ -168,6 +186,73 @@ class TestConversation(unittest.TestCase):
         self.assertTrue(all(m["role"] in ("system", "user", "assistant")
                             for m in session.messages))
         self.assertGreater(session.initial_tokens, 5000)
+
+
+class TestTokenEstimate(unittest.TestCase):
+    """The context size is an axis of the whole matrix. If the fallback
+    estimate is systematically wrong, every conclusion about memory is wrong
+    with it -- which is exactly what a 3.5 characters-per-token rule of thumb
+    borrowed from English prose did before this was measured."""
+
+    MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+
+    def _exact(self):
+        counter = build_counter(self.MODEL, prefer_exact=True)
+        if not counter.exact:
+            self.skipTest("geen exacte tokenizer beschikbaar "
+                          "(pip install tokenizers, plus netwerktoegang)")
+        return counter
+
+    def test_default_ratio_matches_the_real_tokenizer(self):
+        from stresstest.conversation import TOOLS
+        from stresstest.tokens import DEFAULT_CHARS_PER_TOKEN, TokenCounter
+
+        exact = self._exact()
+        corpus = real_corpus()
+        estimate = TokenCounter("estimate", "test", DEFAULT_CHARS_PER_TOKEN)
+        worst = 0.0
+        for target in (8000, 32000, 100000):
+            session = Session(0, corpus, estimate, target, 0.5, random.Random(0))
+            session.reset()
+            measured = exact.count_messages(session.messages) + exact.count_tools(TOOLS)
+            worst = max(worst, abs(session.initial_tokens - measured) / measured)
+        # 20 % is deliberately loose: the ratio depends on the corpus, which
+        # is why `stresstest calibrate` exists. What must not happen again is
+        # the 32 % the prose rule of thumb produced.
+        self.assertLess(worst, 0.20,
+                        f"schatting wijkt {worst:.0%} af van de echte tokenizer")
+
+    def test_exact_counter_still_reaches_the_target(self):
+        exact = self._exact()
+        corpus = real_corpus()
+        for target in (8000, 32000, 64000):
+            session = Session(0, corpus, exact, target, 0.5, random.Random(0))
+            session.reset()
+            self.assertEqual(session.context_shortfall, 0, f"doel {target}")
+            self.assertGreater(session.initial_tokens, target * 0.5, f"doel {target}")
+            self.assertLessEqual(session.initial_tokens, target, f"doel {target}")
+
+    def test_solver_finds_a_ratio_that_beats_the_prose_rule_of_thumb(self):
+        from stresstest.conversation import TOOLS
+        from stresstest.tokens import TokenCounter, best_ratio
+
+        exact = self._exact()
+        corpus = real_corpus()
+
+        def errors_for(ratio: float) -> list[float]:
+            estimate = TokenCounter("estimate", "test", ratio)
+            out = []
+            for target in (8000, 32000):
+                session = Session(0, corpus, estimate, target, 0.5, random.Random(0))
+                session.reset()
+                measured = (exact.count_messages(session.messages)
+                            + exact.count_tools(TOOLS))
+                out.append((session.initial_tokens - measured) / measured)
+            return out
+
+        ratio, worst = best_ratio(errors_for)
+        self.assertGreater(ratio, 3.9, "code is niet zo dicht als proza")
+        self.assertLess(worst, max(abs(e) for e in errors_for(3.5)))
 
 
 class TestPrometheus(unittest.TestCase):

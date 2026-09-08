@@ -17,6 +17,13 @@
     "gpu_memory_utilization": 0.90,
     "model_weights_gb": 20.0
   },
+  // De mockserver heet "mock-model" en heeft geen eigen tokenizer, dus wijs
+  // hier het model aan dat je straks echt gaat draaien. Zo tel je ook tijdens
+  // het uitproberen exact, en meet je met dezelfde liniaal.
+  "tokenizer": {
+    "path": "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8",
+    "chars_per_token": 4.65
+  },
   "corpus": {
     "project": ["django-realworld", "react-realworld"],
     "shared_skeleton_fraction": 0.4

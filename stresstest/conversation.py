@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from .corpus import CodeCorpus, SourceFile
-from .tokens import TokenCounter
+from .tokens import MESSAGE_OVERHEAD_TOKENS, TokenCounter
 
 SYSTEM_PROMPT = """You are a coding assistant working inside a student's development environment.
 You help a first- or second-year software development student build and debug a small web application.
@@ -262,34 +262,53 @@ class Session:
     def _fill_from(self, sources: Sequence[SourceFile], used: int, budget: int) -> int:
         """Append read_file turns until ``budget`` tokens are reached.
 
-        If the pool runs out before the budget does -- a 100k context with a
-        90 % shared skeleton needs more code than a small project contains --
-        we keep going with line-range reads of the same files. A real agent
-        re-reads regions all the time, and the bytes stay deterministic,
-        which is what the shared prefix depends on.
+        Two rules keep the result honest. A file that would push the context
+        past the run's target is skipped rather than appended -- the context
+        size is an axis of the matrix, so a "32k run" that quietly became a
+        41k run because the last file happened to be large would compare
+        against the wrong column. And if the pool runs out before the budget
+        does -- a 100k context with a 90 % shared skeleton needs more code
+        than a small project contains -- we keep going with line-range reads
+        of the same files. A real agent re-reads regions all the time, and
+        the bytes stay deterministic, which is what the shared prefix
+        depends on.
         """
         if not sources or used >= budget:
             return used
+        ceiling = self.target_tokens
         index = 0
+        skipped_in_a_row = 0
         guard = 0
         while used < budget and guard < 5000:
             guard += 1
+            if skipped_in_a_row >= len(sources):
+                break            # nothing left that still fits
             source = sources[index % len(sources)]
             pass_number = index // len(sources)
             index += 1
             if pass_number == 0:
-                used += self._append_file_read(source)
+                text = source.content
+                start_line = end_line = None
+            else:
+                lines = source.content.splitlines()
+                if len(lines) < 6:
+                    skipped_in_a_row += 1
+                    continue
+                window = max(20, len(lines) // 3)
+                start = (pass_number * window) % max(1, len(lines) - 3)
+                end = min(len(lines), start + window)
+                if end - start < 3:
+                    skipped_in_a_row += 1
+                    continue
+                text = "\n".join(lines[start:end])
+                start_line, end_line = start + 1, end
+            cost = self.counter.count(text) + 2 * MESSAGE_OVERHEAD_TOKENS + 24
+            if used + cost > ceiling:
+                skipped_in_a_row += 1
                 continue
-            lines = source.content.splitlines()
-            if len(lines) < 6:
-                continue
-            window = max(20, len(lines) // 3)
-            start = (pass_number * window) % max(1, len(lines) - 3)
-            end = min(len(lines), start + window)
-            if end - start < 3:
-                continue
-            used += self._append_file_read(source, start + 1, end,
-                                           "\n".join(lines[start:end]))
+            skipped_in_a_row = 0
+            used += self._append_file_read(source, start_line, end_line,
+                                           None if start_line is None else text)
         return used
 
     def _append_file_read(self, source: SourceFile, start_line: int | None = None,

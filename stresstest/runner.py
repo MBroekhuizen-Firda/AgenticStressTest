@@ -198,8 +198,6 @@ class RunEngine:
             rng=rng,
             message_style="tool_calls" if self.client.supports_tool_messages else "text",
         )
-        session.reset()
-
         # The class does not arrive in one instant, except in the cold-start
         # scenario where a narrow arrival window is the whole point.
         if spec.ramp:
@@ -210,6 +208,12 @@ class RunEngine:
             delay = rng.uniform(0, max(spec.arrival_window_s, 0.01))
             if not await _sleep_until(delay, state.stop):
                 return
+
+        # Built after the stagger, not before: with an exact tokenizer a 100k
+        # session costs ~150 ms to assemble, and thirty of those back to back
+        # would block the event loop for four seconds right at the start of
+        # the run -- exactly where we are trying to measure a cold start.
+        session.reset()
 
         while not state.stop.is_set():
             phase = clock.current()

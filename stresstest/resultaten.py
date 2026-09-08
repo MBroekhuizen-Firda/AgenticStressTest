@@ -297,7 +297,9 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
         "de persona-verdeling staat daarom in `config.json` en is aan te passen.")
     if not environment.get("tokenizer_exact", True):
         add("- De contextgroottes zijn **geschat** op tekens per token, niet exact "
-            "geteld. Installeer het pakket `tokenizers` voor exacte waarden.")
+            "geteld. Die schatting is geijkt op dit corpus en klopt binnen enkele "
+            "procenten, maar voor een harde uitspraak over geheugen: installeer "
+            "het pakket `tokenizers` en meet opnieuw.")
     add("")
     add("---")
     add("")
