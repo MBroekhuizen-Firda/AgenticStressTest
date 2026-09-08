@@ -168,5 +168,33 @@ class TestCardIdentification(unittest.TestCase):
         self.assertNotIn("FOUT", stderr)
 
 
+class TestFirstCleanStart(unittest.TestCase):
+    """The very first run has no results/ directory yet. `ls` fails there, and
+    under `set -o pipefail` that failure escapes the command substitution and
+    aborts the whole run -- after the model has already been downloaded. Every
+    earlier test passed RESULTS_DIR explicitly and so never took this branch."""
+
+    def test_helper_returns_empty_instead_of_failing(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        body = re.search(r"^latest_matrix_dir\(\) \{.*?^\}", script_text(), re.M | re.S)
+        self.assertIsNotNone(body, "latest_matrix_dir is gone")
+        empty = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, empty, True)
+        program = (f"set -Eeuo pipefail\ncd {empty}\n{body.group(0)}\n"
+                   'directory="$(latest_matrix_dir)"\n'
+                   'echo "reached-the-end[$directory]"\n')
+        result = subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("reached-the-end[]", result.stdout)
+
+    def test_every_results_listing_goes_through_the_helper(self):
+        lines = [line for line in script_text().splitlines() if "ls -dt results" in line]
+        self.assertEqual(len(lines), 1,
+                         "a results listing outside latest_matrix_dir will abort "
+                         f"on a clean tree: {lines}")
+        self.assertIn("|| true", lines[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -47,7 +47,8 @@ CONFIG="${CONFIG:-config/default.json}"
 export HF_HOME="${HF_HOME:-$WORKSPACE/hf}"
 export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 
-MIN_FREE_GB="${MIN_FREE_GB:-60}"
+MIN_FREE_GB="${MIN_FREE_GB:-60}"                    # on the volume, for the model
+MIN_CONTAINER_FREE_GB="${MIN_CONTAINER_FREE_GB:-25}"  # on the container disk, for vLLM
 SERVER_START_TIMEOUT_S="${SERVER_START_TIMEOUT_S:-900}"
 STATE_DIR="${STATE_DIR:-$WORKSPACE/.stresstest}"
 SERVER_LOG="$STATE_DIR/vllm.log"
@@ -75,7 +76,9 @@ _c() { if [ -t 2 ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' 
 say()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 head_() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '1' "$*")" >&2; }
 warn() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '33' "LET OP: $*")" >&2; }
-die()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; exit 1; }
+# Clearing the ERR trap first: a deliberate stop should print its own reason,
+# not that plus a generic "afgebroken op regel N" from the trap.
+die()  { trap - ERR; printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; exit 1; }
 
 on_error() { die "afgebroken op regel $1. Server-log: $SERVER_LOG"; }
 trap 'on_error $LINENO' ERR
@@ -198,8 +201,24 @@ ensure_vllm() {
     return
   fi
   head_ "vLLM installeren (dit duurt een paar minuten)"
+
+  # This lands on the container disk, not on the volume the preflight checked.
+  # vLLM brings its own pinned torch plus a stack of CUDA wheels, so it
+  # replaces the torch that came with the image -- perfectly normal, but it
+  # needs room. On RunPod the container disk is separate from /workspace and
+  # is easy to leave at a default that is too small; running out halfway
+  # through leaves a broken environment and an unclear error.
+  local root_free
+  root_free="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')"
+  if [ -n "$root_free" ] && [ "$root_free" -lt "$MIN_CONTAINER_FREE_GB" ]; then
+    [ "$FORCE" = 1 ] || die "nog $root_free GB vrij op de container disk (/), minimaal $MIN_CONTAINER_FREE_GB GB nodig om vLLM en zijn CUDA-wheels te installeren. Op RunPod vergroot je dat bij Storage -> Container disk. Gebruik --force om toch door te gaan."
+    warn "weinig ruimte op de container disk ($root_free GB), doorgaan op eigen risico"
+  fi
+
   "$PY" -m pip install --upgrade pip >&2
-  "$PY" -m pip install "vllm>=0.10.0" >&2
+  # --no-cache-dir: the wheel cache lands on the same container disk and would
+  # roughly double the peak usage for gigabytes we never read again.
+  "$PY" -m pip install --no-cache-dir "vllm>=0.10.0" >&2
   command -v vllm >/dev/null 2>&1 || die "vLLM is geinstalleerd maar staat niet op PATH."
   say "vLLM: $(vllm --version 2>&1 | tail -1)"
 }
@@ -479,7 +498,7 @@ cmd_plan()   { harness_sets; "$PY" -m stresstest plan "${SETS[@]}" "$@"; }
 
 cmd_report() {
   local dir="${1:-}"
-  [ -n "$dir" ] || dir="$(ls -dt results/*_matrix 2>/dev/null | head -1)"
+  [ -n "$dir" ] || dir="$(latest_matrix_dir)"
   [ -n "$dir" ] || die "geen resultatenmap gevonden; geef er een mee: pod.sh report results/<map>"
   "$PY" -m stresstest report "$dir"
 }
@@ -549,13 +568,21 @@ archive_results() {
 # The whole thing
 # --------------------------------------------------------------------------
 
+# Most recent phase-1 results directory, or empty if there is none yet.
+# `ls` fails when results/ does not exist, and under `set -o pipefail` that
+# failure escapes the command substitution and aborts the run -- which is
+# exactly what happens on the very first, clean start.
+latest_matrix_dir() {
+  ls -dt results/*_matrix 2>/dev/null | head -1 || true
+}
+
 cmd_all() {
   local started=$SECONDS
   cmd_setup
 
   local dir="${RESULTS_DIR:-}"
   if [ -z "$dir" ]; then
-    dir="$(ls -dt results/*_matrix 2>/dev/null | head -1)"
+    dir="$(latest_matrix_dir)"
     if [ -n "$dir" ]; then
       say "hervat in bestaande map $dir (zet RESULTS_DIR= om ergens anders te beginnen)"
     else
@@ -657,6 +684,7 @@ Opties
 
 Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
+  MIN_FREE_GB MIN_CONTAINER_FREE_GB
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
 
 Voorbeelden
@@ -728,7 +756,7 @@ main() {
     group)      [ $# -ge 1 ] || die "welke groep? rampup, sweep, scenarios, shared, activity, engine"
                 preflight
                 server_running || start_server
-                local dir="${RESULTS_DIR:-$(ls -dt results/*_matrix 2>/dev/null | head -1)}"
+                local dir="${RESULTS_DIR:-$(latest_matrix_dir)}"
                 [ -n "$dir" ] || dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
                 mkdir -p "$dir"
                 if [ "$1" = engine ]; then run_engine_group "$dir"; else run_group "$1" "$dir"; fi
