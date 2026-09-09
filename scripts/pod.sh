@@ -404,11 +404,16 @@ server_running() {
 
 # Two runs side by side share one GPU, one port and one results directory, and
 # neither measurement means anything afterwards. The lock is held on an open
-# file descriptor, so it dies with the process: a run that is killed, or a pod
-# that is stopped mid-run, leaves nothing stale behind.
+# file descriptor, so it lasts exactly as long as some process still has fd 9
+# open: a killed run, or a pod stopped mid-run, takes its children with it and
+# leaves nothing stale behind.
 #
-# Background children must not inherit it -- the deadman outlives the run by
-# design -- so every spawn closes fd 9 with 9>&-.
+# The children a run waits for -- the harness that does the measuring -- do
+# inherit fd 9, and that is the point: kill this shell alone and the harness
+# carries on driving the GPU, where a second start is exactly as harmful as
+# before and stays refused. The exception is the children that outlive a run by
+# design, the deadman above all, which would hold the lock until they fire; so
+# every background spawn closes fd 9 with 9>&-.
 running_run_pid() {
   local pid
   [ -f "$RUN_LOCK_FILE" ] || return 1

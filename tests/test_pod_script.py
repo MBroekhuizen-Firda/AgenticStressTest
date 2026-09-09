@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,6 +39,29 @@ CONFIG = os.path.join(ROOT, "config", "default.json")
 def script_text() -> str:
     with open(SCRIPT, encoding="utf-8") as handle:
         return handle.read()
+
+
+HAVE_PROC = os.path.isdir("/proc/self")
+
+
+def process_is_alive(pid: int) -> bool:
+    """True while the process can still hold a file descriptor open, which is
+    what holding the run lock comes down to. A zombie cannot: it has been
+    through exit(), so its descriptors are closed and its flock released."""
+    if HAVE_PROC:
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as handle:
+                # The command name is in brackets and may contain spaces; the
+                # state letter is the first field after the closing one.
+                return handle.read().rpartition(b")")[2].split()[0] != b"Z"
+        except OSError:
+            return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
 
 
 class TestPodScript(unittest.TestCase):
@@ -200,7 +224,13 @@ class TestFirstCleanStart(unittest.TestCase):
 class TestOnlyOneRunAtATime(unittest.TestCase):
     """Two runs side by side share one GPU, one port and one results directory.
     Nothing in the numbers afterwards says that happened, so the wrapper has to
-    refuse the second one instead of producing a quietly worthless measurement."""
+    refuse the second one instead of producing a quietly worthless measurement.
+
+    What holds the lock is the open file descriptor, not the shell: every child
+    that inherits fd 9 holds it too. That is the whole design -- a run driving
+    the GPU keeps blocking a second one even if its wrapper is gone -- so the
+    tests below have to say which of the two they mean, a dead run or a dead
+    wrapper, and kill accordingly."""
 
     def setUp(self):
         if not shutil.which("bash"):
@@ -224,13 +254,50 @@ class TestOnlyOneRunAtATime(unittest.TestCase):
                 'die()  { echo "FOUT: $*" >&2; exit 1; }\n'
                 + "\n".join(bodies) + "\n" + tail)
 
-    def test_a_second_run_is_refused_while_the_first_holds_the_lock(self):
+    def start_holder(self):
+        """A run holding the lock, with a child of its own holding it too, in a
+        session of its own. Returns the shell and the child's pid.
+
+        The child stands in for what the real wrapper runs in the foreground --
+        `python3 -m stresstest run` -- which inherits fd 9. It is spawned and
+        announced explicitly rather than left to whether bash decides to fork
+        for the last command of -c: that difference is what made these tests
+        flaky, because whether anything survived the kill was a coin toss."""
         holder = subprocess.Popen(
-            ["bash", "-c", self.harness('claim_run\necho held\nsleep 30\n')],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(holder.kill)
-        self.assertEqual(holder.stdout.readline().strip(), "held",
+            ["bash", "-c", self.harness('claim_run\nsleep 30 &\necho "held $!"\nwait\n')],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True)
+        self.addCleanup(self.kill_run, holder)
+        announced = holder.stdout.readline().split()
+        self.assertEqual(announced[:1], ["held"],
                          "the first run never took the lock")
+        return holder, int(announced[1])
+
+    def kill_run(self, holder: subprocess.Popen) -> None:
+        """Stop the run the way stopping a pod does: the whole session, not
+        just the shell that happens to be its root."""
+        try:
+            os.killpg(holder.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        holder.wait(timeout=30)
+        for pipe in (holder.stdout, holder.stderr):
+            pipe.close()
+
+    def wait_until_gone(self, pid: int, timeout: float = 30.0) -> None:
+        """SIGKILL stops a process at once, but the kernel closes its file
+        descriptors -- and with them releases the flock -- a moment later.
+        Asserting on the lock without waiting for that would only trade one
+        race for a smaller one."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not process_is_alive(pid):
+                return
+            time.sleep(0.01)
+        self.fail(f"pid {pid} outlived the kill")
+
+    def test_a_second_run_is_refused_while_the_first_holds_the_lock(self):
+        holder, _ = self.start_holder()
 
         second = subprocess.run(
             ["bash", "-c", self.harness('claim_run\necho took-it-anyway\n')],
@@ -238,24 +305,45 @@ class TestOnlyOneRunAtATime(unittest.TestCase):
         self.assertNotEqual(second.returncode, 0,
                             "a second run started next to a live one: " + second.stdout)
         self.assertIn("er draait al een run", second.stderr)
+        # The shell wrote its own $$ into the lock file, and it is still alive,
+        # so this pid is the one to point the operator at.
         self.assertIn(str(holder.pid), second.stderr, "the message must name the pid")
 
     def test_the_lock_dies_with_the_run_that_held_it(self):
-        """A killed run, or a pod stopped mid-run, must not leave the next
-        morning's start blocked by a lock nobody holds."""
-        holder = subprocess.Popen(
-            ["bash", "-c", self.harness('claim_run\necho held\nsleep 30\n')],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(holder.kill)
-        self.assertEqual(holder.stdout.readline().strip(), "held")
-        holder.kill()
-        holder.wait(timeout=30)
+        """A run that is gone -- a stopped pod, a killed session -- must not
+        leave the next morning's start blocked by a lock nobody holds. Gone
+        means the whole session: the wrapper and everything it forked, which is
+        what stopping a pod does and what killpg does here."""
+        holder, child = self.start_holder()
+        self.kill_run(holder)
+        self.wait_until_gone(child)
 
         after = subprocess.run(
             ["bash", "-c", self.harness('claim_run\necho claimed\n')],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(after.returncode, 0, after.stderr)
         self.assertIn("claimed", after.stdout)
+
+    def test_a_run_that_outlives_its_wrapper_still_holds_the_lock(self):
+        """The other half of the same rule, and the reason the test above kills
+        a whole session. Kill the wrapper alone and the run itself carries on:
+        `python3 -m stresstest run` is a foreground child, it inherits fd 9 on
+        purpose, and it is still driving the GPU. A second run would be exactly
+        as harmful as before, so it stays refused -- an inherited lock here is
+        the design, not the leak that the background spawns close fd 9 for."""
+        holder, child = self.start_holder()
+        holder.kill()
+        holder.wait(timeout=30)
+        self.assertTrue(process_is_alive(child),
+                        "the child died with its shell; this test proves nothing")
+
+        second = subprocess.run(
+            ["bash", "-c", self.harness('claim_run\necho took-it-anyway\n')],
+            capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(
+            second.returncode, 0,
+            "a second run started next to a live one: " + second.stdout)
+        self.assertIn("er draait al een run", second.stderr)
 
     def test_background_children_do_not_inherit_the_lock(self):
         """The deadman outlives the run on purpose. If it inherited the lock
