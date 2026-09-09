@@ -10,15 +10,24 @@ waarop die tekst een andere conclusie trok dan de meetgegevens dragen, staan
 onder [De correcties die hierop gemaakt zijn](#de-correcties-die-hierop-gemaakt-zijn);
 ze zijn inmiddels in de analysecode verwerkt.
 
+> **Gedeeltelijk achterhaald.** Het lesuur is op 9 september opnieuw gedraaid op
+> dezelfde kaart, met een zwaarder en realistischer gedragsmodel (werkprofielen
+> naast persona's). Die run is **oranje** in plaats van groen: de
+> p90-doorlooptijd van een instructie gaat van 69 s naar 144 s. Punt 1 hieronder
+> geldt dus alleen voor het lichtere gedragsmodel; punt 2 wordt er juist door
+> bevestigd. De matrix is niet opnieuw gemeten, dus de rest van dit bestand
+> staat nog. Zie
+> [CONCLUSIES-TWEEDE-LESVALIDATIE.md](CONCLUSIES-TWEEDE-LESVALIDATIE.md).
+
 ---
 
 ## De korte versie
 
-1. **Een klas van twintig past, en niet nipt.** De lesvalidatie van negentig
-   minuten is groen: 5.202 verzoeken, geen enkele mislukt, geen preemptie,
-   p90-doorlooptijd van een instructie 69 s, en 8,5 GB van de 54,9 GB
-   cachepool in gebruik. Ook alle vier de contextgroottes met twintig
-   studenten zijn groen.
+1. **Een klas van twintig past, en niet nipt.** *(Achterhaald — zie het kader
+   hierboven.)* De lesvalidatie van negentig minuten is groen: 5.202 verzoeken,
+   geen enkele mislukt, geen preemptie, p90-doorlooptijd van een instructie
+   69 s, en 8,5 GB van de 54,9 GB cachepool in gebruik. Ook alle vier de
+   contextgroottes met twintig studenten zijn groen.
 2. **Geheugen is niet de beperkende factor. Rekenkracht is dat.** Bij veertig
    studenten stond de cachepool op 15,6 % vol en was alles nog groen. De twee
    rode runs zijn rood op *doorlooptijd*, niet op geheugen. In geen van de 38

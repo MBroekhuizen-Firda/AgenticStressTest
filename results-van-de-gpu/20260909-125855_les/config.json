@@ -1,0 +1,393 @@
+{
+  "endpoint": {
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_key": null,
+    "model": "qwen3-coder",
+    "metrics_url": "http://127.0.0.1:8000/metrics",
+    "timeout_s": 300,
+    "connect_timeout_s": 30,
+    "verify_tls": true
+  },
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8",
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ]
+  },
+  "seed": 20250908,
+  "request": {
+    "temperature": 0.0,
+    "ignore_eos": true,
+    "extra_body": {}
+  },
+  "corpus": {
+    "groups": {
+      "web": {
+        "project": [
+          "django-realworld",
+          "react-realworld",
+          "laravel-realworld"
+        ]
+      },
+      "unity": {
+        "project": [
+          "unity-fpssample"
+        ]
+      }
+    },
+    "cache_dir": "corpus_cache",
+    "shared_skeleton_fraction": 0.4,
+    "shared_skeleton_files": null,
+    "local_path": null,
+    "extensions": ".py,.js,.php,.md,.html"
+  },
+  "tokenizer": {
+    "prefer_exact": true,
+    "path": "/workspace/.cache/huggingface//hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/dcaee4d4dfc5ee71ad501f01f530e5652438fde0",
+    "chars_per_token": 4.65
+  },
+  "behaviour": {
+    "personas": [
+      {
+        "name": "doorpakker",
+        "share": 0.15,
+        "think_time_s": [
+          20,
+          60
+        ],
+        "steps_per_burst": [
+          8,
+          15
+        ],
+        "context_scale": [
+          0.8,
+          1.0
+        ],
+        "restart_probability": 0.02,
+        "idle_probability": 0.0
+      },
+      {
+        "name": "gemiddelde",
+        "share": 0.45,
+        "think_time_s": [
+          60,
+          180
+        ],
+        "steps_per_burst": [
+          3,
+          8
+        ],
+        "context_scale": [
+          0.45,
+          0.7
+        ],
+        "restart_probability": 0.05,
+        "idle_probability": 0.02
+      },
+      {
+        "name": "worstelaar",
+        "share": 0.25,
+        "think_time_s": [
+          120,
+          480
+        ],
+        "steps_per_burst": [
+          2,
+          4
+        ],
+        "context_scale": [
+          0.2,
+          0.4
+        ],
+        "restart_probability": 0.25,
+        "idle_probability": 0.05
+      },
+      {
+        "name": "afhaker",
+        "share": 0.15,
+        "think_time_s": [
+          300,
+          1200
+        ],
+        "steps_per_burst": [
+          1,
+          3
+        ],
+        "context_scale": [
+          0.12,
+          0.3
+        ],
+        "restart_probability": 0.15,
+        "idle_probability": 0.3
+      }
+    ],
+    "work_profiles": [
+      {
+        "name": "klein",
+        "share": 0.5,
+        "group": "web",
+        "files_per_read": [
+          1,
+          1
+        ],
+        "search_matches": [
+          4,
+          10
+        ],
+        "search_context_lines": 0,
+        "test_output_blocks": [
+          1,
+          1
+        ],
+        "output_tokens_tool": [
+          60,
+          260
+        ],
+        "output_tokens_final": [
+          220,
+          700
+        ]
+      },
+      {
+        "name": "middel",
+        "share": 0.3,
+        "group": "web",
+        "files_per_read": [
+          1,
+          3
+        ],
+        "search_matches": [
+          8,
+          20
+        ],
+        "search_context_lines": 2,
+        "test_output_blocks": [
+          1,
+          3
+        ],
+        "output_tokens_tool": [
+          120,
+          500
+        ],
+        "output_tokens_final": [
+          400,
+          1200
+        ]
+      },
+      {
+        "name": "doorspitten",
+        "share": 0.2,
+        "group": "unity",
+        "files_per_read": [
+          2,
+          5
+        ],
+        "search_matches": [
+          15,
+          40
+        ],
+        "search_context_lines": 3,
+        "test_output_blocks": [
+          2,
+          5
+        ],
+        "output_tokens_tool": [
+          250,
+          900
+        ],
+        "output_tokens_final": [
+          800,
+          2500
+        ],
+        "tool_mix": {
+          "read_file": 0.5,
+          "edit_file": 0.15,
+          "run_tests": 0.15,
+          "search_code": 0.2
+        }
+      }
+    ],
+    "activity_levels": {
+      "rustig": {
+        "doorpakker": 0.05,
+        "gemiddelde": 0.3,
+        "worstelaar": 0.35,
+        "afhaker": 0.3
+      },
+      "normaal": {
+        "doorpakker": 0.15,
+        "gemiddelde": 0.45,
+        "worstelaar": 0.25,
+        "afhaker": 0.15
+      },
+      "intensief": {
+        "doorpakker": 0.4,
+        "gemiddelde": 0.45,
+        "worstelaar": 0.12,
+        "afhaker": 0.03
+      }
+    }
+  },
+  "grading": {
+    "thresholds": {
+      "ttft_p90_green_s": 20.0,
+      "ttft_p90_amber_s": 45.0,
+      "burst_p90_green_s": 90.0,
+      "burst_p90_amber_s": 180.0,
+      "decode_tps_p50_green": 12.0,
+      "decode_tps_p50_amber": 6.0,
+      "error_rate_green": 0.0,
+      "error_rate_amber": 0.02,
+      "preemptions_green": 0,
+      "preemptions_amber": 5,
+      "kv_usage_warn": 0.9,
+      "prefix_cache_expectation": 0.6
+    }
+  },
+  "run_defaults": {
+    "warmup_s": 90,
+    "measure_s": 300,
+    "drain_s": 60,
+    "gap_between_runs_s": 30,
+    "arrival_window_s": 60,
+    "progress_interval_s": 15,
+    "metrics_interval_s": 2
+  },
+  "matrix": {
+    "sweep": {
+      "enabled": true,
+      "students": [
+        5,
+        10,
+        20,
+        30
+      ],
+      "context_tokens": [
+        8000,
+        32000,
+        64000,
+        100000
+      ],
+      "activity": "normaal",
+      "shared_fraction": 0.5
+    },
+    "activity_variation": {
+      "enabled": true,
+      "students": [
+        10,
+        20
+      ],
+      "levels": [
+        "rustig",
+        "intensief"
+      ],
+      "context_tokens": 32000
+    },
+    "shared_variation": {
+      "enabled": true,
+      "students": 20,
+      "context_tokens": [
+        32000,
+        64000
+      ],
+      "shared_fractions": [
+        0.0,
+        0.5,
+        0.9
+      ]
+    },
+    "engine_variation": {
+      "enabled": true,
+      "students": 20,
+      "context_tokens": 64000,
+      "shared_fraction": 0.5,
+      "variants": [
+        {
+          "name": "kv_fp8",
+          "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+          "note": "FP8 KV-cache: ruwweg de helft van het cachegeheugen per token."
+        },
+        {
+          "name": "kv_auto",
+          "flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+          "note": "Referentie zonder FP8-cache."
+        },
+        {
+          "name": "seqs_16",
+          "flags": "--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072",
+          "note": "Minder parallelle sequenties: minder preempties, langere wachtrij."
+        },
+        {
+          "name": "seqs_64",
+          "flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+          "note": "Meer parallelle sequenties: kortere wachtrij, meer geheugendruk."
+        },
+        {
+          "name": "len_65k",
+          "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536",
+          "note": "Korter contextvenster: meer blokken vrij voor parallelle sessies."
+        }
+      ]
+    },
+    "scenarios": {
+      "enabled": true,
+      "class_size": 20,
+      "oversized_class": 30,
+      "context_tokens": 32000,
+      "cold_start_students": [
+        20,
+        30
+      ],
+      "cold_start_context_tokens": 12000,
+      "cold_start_arrival_s": 120,
+      "cold_start_measure_s": 240,
+      "long_session_students": 6,
+      "long_session_context_tokens": 110000,
+      "silence_s": 600,
+      "resume_measure_s": 240,
+      "worst_case_context_tokens": 100000
+    },
+    "rampup": {
+      "enabled": true,
+      "start_students": 5,
+      "max_students": 40,
+      "step_interval_s": 120,
+      "step_students": 2,
+      "context_tokens": 32000,
+      "shared_fraction": 0.5,
+      "activity": "normaal",
+      "error_rate_limit": 0.02
+    }
+  },
+  "lesson": {
+    "students": 20,
+    "context_tokens": 32000,
+    "shared_fraction": 0.5,
+    "arrival_window_s": 120,
+    "time_scale": 1.0
+  },
+  "output": {
+    "directory": "results",
+    "write_request_csv": true,
+    "write_charts": true
+  }
+}

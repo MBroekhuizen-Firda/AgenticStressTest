@@ -1,0 +1,185 @@
+{
+  "spec": {
+    "run_id": "les_90min",
+    "label": "Lesvalidatie 90 minuten, 20 studenten",
+    "kind": "lesson",
+    "students": 20,
+    "context_tokens": 32000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 120.0,
+    "expects_shared_prefix": true,
+    "duration_s": 5400.0,
+    "phases": [
+      {
+        "name": "opstartpiek",
+        "duration_s": 480.0,
+        "intensity": 1.5,
+        "active_fraction": 1.0,
+        "measure": true
+      },
+      {
+        "name": "opbouw",
+        "duration_s": 1620.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      },
+      {
+        "name": "klassikale_uitleg",
+        "duration_s": 600.0,
+        "intensity": 1.0,
+        "active_fraction": 0.0,
+        "measure": false
+      },
+      {
+        "name": "eindpiek",
+        "duration_s": 2100.0,
+        "intensity": 1.6,
+        "active_fraction": 1.0,
+        "measure": true
+      },
+      {
+        "name": "afbouw",
+        "duration_s": 600.0,
+        "intensity": 0.6,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "lesson"
+    },
+    "notes": "Fase 2: de koude start van een echte les plus wat er met de cache gebeurt tijdens tien minuten klassikale uitleg."
+  },
+  "started": "2026-09-09T12:58:59Z",
+  "finished": "2026-09-09T14:29:06Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "doorpakker": 3,
+    "afhaker": 3,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "aggregate": {
+    "requests_total": 3891,
+    "requests_ok": 3891,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 483,
+    "ttft": {
+      "count": 3891,
+      "mean": 0.41214789228270415,
+      "p50": 0.20764052006416023,
+      "p90": 0.7450167119968683,
+      "p99": 4.028922479948949,
+      "max": 12.054902566829696
+    },
+    "burst_duration": {
+      "count": 483,
+      "mean": 67.42792255064862,
+      "p50": 51.03454375592992,
+      "p90": 144.439766414417,
+      "p99": 267.90809515780313,
+      "max": 340.1038151818793
+    },
+    "decode_tps": {
+      "count": 3891,
+      "mean": 45.14626164591844,
+      "p50": 40.98619521389644,
+      "p90": 66.28807419672316,
+      "p99": 114.93959622741437,
+      "max": 156.28141178811808
+    },
+    "request_total_s": {
+      "count": 3891,
+      "mean": 8.366638555786011,
+      "p50": 5.755062220850959,
+      "p90": 17.377844884991646,
+      "p99": 41.59156437912023,
+      "max": 74.18941167206503
+    },
+    "output_tokens_total": 1247354,
+    "prompt_tokens_total": 91190371,
+    "client_output_tokens_per_s": 230.9914814814815,
+    "requests_per_minute": 43.23333333333333,
+    "compactions": 250,
+    "restarts": 50,
+    "context_tokens_peak": 81631,
+    "compactions_per_burst": 0.5175983436853002,
+    "compactions_per_100_steps": 6.42508352608584,
+    "by_persona": {
+      "afhaker": {
+        "requests": 44,
+        "ttft_p90": 0.31827704322058714,
+        "burst_p90": 40.480278036370876,
+        "decode_tps_p50": 32.17168833614651
+      },
+      "doorpakker": {
+        "requests": 1664,
+        "ttft_p90": 0.4147128450218588,
+        "burst_p90": 154.90269994307312,
+        "decode_tps_p50": 44.334450722249755
+      },
+      "gemiddelde": {
+        "requests": 1839,
+        "ttft_p90": 0.9865975281689316,
+        "burst_p90": 153.7109452868346,
+        "decode_tps_p50": 39.62857441383215
+      },
+      "worstelaar": {
+        "requests": 344,
+        "ttft_p90": 0.5826770232757551,
+        "burst_p90": 75.13275207323017,
+        "decode_tps_p50": 36.33236483638043
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9404798802326102,
+    "prefix_cache_queries": 96092935.0,
+    "prefix_cache_hits": 90373472.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.10738649607366729,
+    "kv_cache_usage_peak": 0.26597979527664417,
+    "requests_running_avg": 5.916976917349218,
+    "requests_running_peak": 18.0,
+    "queue_depth_avg": 0.016381236038719285,
+    "queue_depth_peak": 9.0,
+    "server_prefill_tokens_per_s": 17794.98796296296,
+    "server_prompt_tokens": 96092935.0,
+    "server_decode_tokens_per_s": 256.07296296296295,
+    "server_generation_tokens": 1382794.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 144s"
+    ],
+    "warnings": [
+      "wachtrij piekte op 9 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "94%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}
