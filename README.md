@@ -50,15 +50,18 @@ er niet vanzelf in. De variabele moet `GITHUB_TOKEN` of `GH_TOKEN` heten — dat
 wat `pod.sh` leest. Hoe je het secret en de token maakt staat in
 [hoofdstuk 3](#1-een-github-token-om-te-kunnen-pushen).
 
-Daarna op de pod:
+Daarna op de pod. Klonen naar `/workspace`, want dat is bij RunPod het
+persistente volume; de containerschijf wordt bij een herbouw gewist:
 
 ```bash
-git clone <deze repository> /workspace/AgenticStressTest
-cd /workspace/AgenticStressTest
-
-# De remote draagt zelf geen token; die komt uit de omgeving.
-git remote set-url origin https://github.com/<eigenaar>/<repo>.git
+cd /workspace
+git clone https://github.com/<eigenaar>/<repo>.git
+cd AgenticStressTest
 ```
+
+Is de repo publiek, dan heeft die kloon geen token nodig — alleen het pushen
+straks. Na een gewone kloon staat `origin` al goed; `git remote set-url` heb je
+alleen nodig als je remote een token in de URL draagt of naar een fork wijst.
 
 `scripts/pod.sh` controleert de push-toegang vóór de meting en weigert te
 starten als die er niet is — dat wil je nu weten, niet over zes uur.
