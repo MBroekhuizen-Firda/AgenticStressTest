@@ -243,9 +243,8 @@ resultaten in de repo staan. Hoe je het GitHub-token en de RunPod-API-sleutel
 maakt staat in [README hoofdstuk 3](README.md#de-resultaten-ophalen).
 
 ```bash
-read -rsp 'GitHub-token: ' GH_TOKEN && echo
-git remote set-url origin \
-  "https://x-access-token:$GH_TOKEN@github.com/<eigenaar>/<repo>.git"
+# GITHUB_TOKEN komt uit een RunPod-secret; de remote zelf draagt geen token.
+git remote set-url origin https://github.com/<eigenaar>/<repo>.git
 git ls-remote origin >/dev/null && echo "push-toegang in orde"
 
 scripts/pod.sh doctor                              # endpoint, metrics, tokenizer, corpus
