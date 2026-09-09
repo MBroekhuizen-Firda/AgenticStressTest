@@ -104,32 +104,67 @@ Dat is de goede kant op — geteld is beter dan geschat — maar noteer het, wan
 een strikte A/B in plaats van een betere meting, draai dan met
 `--set tokenizer.prefer_exact=false`; dan blijven beide runs op de schatting.
 
-### 2. Het corpus moet hetzelfde zijn
+### 2. Eén variabele tegelijk — dit is nu het grootste risico
+
+Het gedragsmodel is veranderd sinds de meting op de RTX PRO 6000: er zijn
+werkprofielen bijgekomen, en een Unity-groep met bestanden die twee tot drie
+keer zo groot zijn. Dat is een verbetering — de oude aanname (één klein bestand
+per lees, een paar honderd outputtokens) was de zwakste in het hele harnas —
+maar het betekent wel dat een run op twee 5090's onder het nieuwe model **niet**
+te vergelijken is met de oude 96 GB-meting. Wordt hij langzamer door de kaart of
+door het zwaardere gedragsmodel? Zo weet je dat niet.
+
+Er zijn twee uitwegen, en de eerste is de betere:
+
+**Draai het nieuwe model ook op de RTX PRO 6000.** Die is te huren voor
+$ 2,09/uur, dus ongeveer € 13 voor de hele matrix. Dan heb je twee metingen
+onder hetzelfde gedragsmodel en is het verschil toe te schrijven aan de kaart.
+Als bonus zie je meteen hoeveel de conclusie over de 96 GB-kaart zelf verschuift
+door het realistischer gedrag — en dat is een uitspraak die de aanvraag direct
+raakt.
+
+**Of houd het oude model aan** door in `config/default.json` `corpus.groups` te
+vervangen door de platte `project`-lijst en `behaviour.work_profiles` weg te
+laten. Dan is de vergelijking zuiver, maar meet je opnieuw met de aanname
+waarvan we inmiddels weten dat hij te licht is.
+
+Totaal voor de eerste route: twee keer de matrix, ongeveer € 25. Dat is nog
+steeds een fractie van een tiende procent van de aanvraag, en het levert een
+bandbreedte op in plaats van een punt.
+
+### 3. Het corpus moet hetzelfde zijn
 
 Het harnas kloont de voorbeeldprojecten met `git clone --depth 1` op HEAD, dus
 zonder vaste versie. Verandert er iets bovenstrooms, dan meet je een ander
 corpus en verschuift de contextsamenstelling.
 
-Controleer in `environment.json` van de nieuwe run dat het corpus overeenkomt:
+Het corpus is nu twee groepen. Controleer in `environment.json` van de nieuwe
+run dat ze overeenkomen met wat hieronder staat; wijkt het af, dan is er
+bovenstrooms iets veranderd en meet je een ander corpus.
 
-| | Meting RTX PRO 6000 |
-|---|---|
-| `files` | 187 |
-| `shared_files` | 75 |
-| `private_files` | 112 |
-| `total_characters` | 331940 |
+| Groep | Bestanden | Gedeeld skelet | Tekens | Mediaan bestand |
+|---|---|---|---|---|
+| `web` (drie RealWorld-projecten) | 187 | 75 | 331.940 | 232 tok |
+| `unity` (FPSSample, alleen scripts) | 372 | 149 | 1.691.942 | 584 tok |
+
+Van het Unity-project wordt alleen `Assets/Scripts` uitgecheckt — een volledige
+kloon is gigabytes aan textures die niemand leest. De sparse checkout kost
+6,3 MB en duurt een halve minuut.
 
 Wijkt het af, kopieer dan `corpus_cache/` van de vorige pod mee, of zet
-`corpus.local_path` op die map.
+`corpus.local_path` per groep op een eigen map.
 
-### 3. `endpoint.timeout_s` blijft op 300
+De `web`-groep is precies het corpus van de meting op de RTX PRO 6000, dus die
+helft blijft vergelijkbaar.
+
+### 4. `endpoint.timeout_s` blijft op 300
 
 Niet ophogen. Op een kleinere kaart is een verzoek dat de tijdslimiet raakt een
 waarschijnlijke uitkomst, geen storing; het harnas telt hem als fout en dat
 kleurt de run rood. Dat ís het antwoord. Wie de limiet ophoogt om de run "af te
 laten lopen", meet een klas die niemand accepteert.
 
-### 4. De klifzoeker stapt nu met twee tegelijk
+### 5. De klifzoeker stapt nu met twee tegelijk
 
 `matrix.rampup.step_students` staat op `2`. Dat halveert de duurste run van de
 matrix — van ruim 76 naar 40 minuten — ten koste van de nauwkeurigheid: het
@@ -141,7 +176,7 @@ studenten resolutie ruim genoeg. Wil je de grens exact weten, draai hem daarna
 nog eens met `--set matrix.rampup.step_students=1` en
 `--set matrix.rampup.start_students=<een paar onder de gevonden grens>`.
 
-### 5. De engine-varianten worden nu wél belangrijk
+### 6. De engine-varianten worden nu wél belangrijk
 
 Op de RTX PRO 6000 gaven `--max-num-seqs 16`, `32` en `64` en
 `--max-model-len 65536` tegen `131072` identieke getallen tot in de derde
@@ -149,7 +184,7 @@ decimaal, omdat de geheugendruk nergens in de buurt van de grens kwam. Op een
 pool van 26,5 GB komt hij daar wel. Sla `--only engine` dus niet over om tijd
 te besparen; dit is de opstelling waarop die vlaggen iets doen.
 
-### 6. `hardware.alternatives` blijft staan zoals hij is
+### 7. `hardware.alternatives` blijft staan zoals hij is
 
 Dan vergelijkt het rapport opnieuw dezelfde drie kaarten, nu vanaf de andere
 kant van de schaal.

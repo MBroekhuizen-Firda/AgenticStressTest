@@ -18,7 +18,8 @@ from .conversation import TOOLS, Session
 from .corpus import CodeCorpus
 from .grading import Grade, grade_run, grade_run_brief_definition
 from .metrics import BurstRecord, Collector, RequestRecord
-from .personas import StudentProfile, build_class, class_composition, personas_from_config
+from .personas import (StudentProfile, build_class, class_composition,
+                       personas_from_config, work_composition, work_profiles_from_config)
 from .runspec import Phase, RunSpec
 from .tokens import TokenCounter
 from .util import human_duration, log, now, percentile, wall
@@ -131,10 +132,13 @@ class RunEngine:
     async def run(self, spec: RunSpec, sampler: MetricsSampler,
                   progress: bool = True) -> RunResult:
         seed = int(self.config.get("seed", 20250908))
-        personas = personas_from_config(self.config.get("behaviour", {}).get("personas"))
+        behaviour = self.config.get("behaviour", {})
+        personas = personas_from_config(behaviour.get("personas"))
+        work_profiles = work_profiles_from_config(behaviour.get("work_profiles"))
         activity_mix = self.config.get("behaviour", {}).get("activity_levels")
         profiles = build_class(spec.students, personas, spec.activity,
-                               spec.context_tokens, seed, activity_mix)
+                               spec.context_tokens, seed, activity_mix,
+                               work_profiles=work_profiles)
 
         collector = Collector(spec.run_id)
         clock = _Clock(spec.phases)
@@ -182,7 +186,9 @@ class RunEngine:
         return RunResult(
             spec=spec, started_wall=started_wall, finished_wall=finished_wall,
             aggregate=aggregate, server=server, grade=grade, grade_brief=grade_brief,
-            composition=class_composition(profiles), collector=collector,
+            composition={**class_composition(profiles),
+                         "werk": work_composition(profiles)},
+            collector=collector,
             metric_rows=sampler.rows(clock.origin),
             ramp=state.ramp_result if spec.ramp else None,
         )
@@ -200,6 +206,7 @@ class RunEngine:
             shared_fraction=spec.shared_fraction,
             rng=rng,
             message_style="tool_calls" if self.client.supports_tool_messages else "text",
+            work=profile.work,
         )
         # The class does not arrive in one instant, except in the cold-start
         # scenario where a narrow arrival window is the whole point.

@@ -309,6 +309,33 @@ def render(results: Sequence[RunResult], config: dict, environment: dict,
                 f"| {_pct(entry.get('kv_peak'))} | {entry['grade']} |")
         add("")
 
+    # ------------------------------------------------------------- de klas
+    mix = findings.get("class_mix") or {}
+    work_mix = mix.get("werk") if isinstance(mix.get("werk"), dict) else None
+    if work_mix:
+        add("## Uit wie de klas bestond")
+        add("")
+        add("Twee assen, los van elkaar geloot. Een *persona* is een tempo: hoe "
+            "lang iemand nadenkt, hoeveel stappen een instructie kost, of hij "
+            "afhaakt. Een *werkprofiel* is een gewicht: hoe groot de codebase "
+            "is, hoeveel bestanden de agent per keer leest, hoeveel het model "
+            "per stap schrijft.")
+        add("")
+        personas = {k: v for k, v in mix.items() if k != "werk"}
+        add("| Persona | Studenten | Werkprofiel | Studenten |")
+        add("|---|---|---|---|")
+        left = sorted(personas.items(), key=lambda kv: -kv[1])
+        right = sorted(work_mix.items(), key=lambda kv: -kv[1])
+        for i in range(max(len(left), len(right))):
+            a = f"{left[i][0]} | {left[i][1]}" if i < len(left) else " | "
+            b = f"{right[i][0]} | {right[i][1]}" if i < len(right) else " | "
+            add(f"| {a} | {b} |")
+        add("")
+        add("Het werkprofiel bepaalt hoeveel werk één modelaanroep is, en dat "
+            "is het getal waar de doorlooptijd het gevoeligst voor is. De "
+            "gebruikte waarden staan in `environment.json` naast dit bestand.")
+        add("")
+
     # -------------------------------------------------------- contextdruk
     if findings.get("context_pressure"):
         add("## Is de context groot genoeg?")

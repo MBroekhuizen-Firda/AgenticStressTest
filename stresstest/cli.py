@@ -26,6 +26,7 @@ from .matrix import BUILDERS, PHASE1, build_specs, describe_plan
 from .report import ResultsWriter, load_results, write_analysis
 from .runner import RunEngine, RunResult
 from .runspec import RunSpec, standard_phases
+from .personas import work_profiles_from_config
 from .tokens import build_counter
 from .util import (colored, deep_merge, human_duration, iso, load_jsonc, log)
 from .vllm_metrics import MetricsSampler
@@ -93,6 +94,12 @@ def build_environment(config: dict, counter, corpus, endpoint: Endpoint) -> dict
         "tokenizer_exact": counter.exact,
         "corpus": corpus.describe(),
         "seed": config.get("seed"),
+        # The work profiles decide how heavy one agent step is, which turned
+        # out to be the assumption the conclusion is most sensitive to. They
+        # belong with the results, not only in the config next to them.
+        "work_profiles": [w.to_dict() for w in
+                          work_profiles_from_config(
+                              config.get("behaviour", {}).get("work_profiles"))],
         "hardware": config.get("hardware", {}),
     }
 
@@ -100,8 +107,10 @@ def build_environment(config: dict, counter, corpus, endpoint: Endpoint) -> dict
 def _largest_context(config: dict) -> int:
     """Largest prompt any run in this configuration will send.
 
-    A run grows to its context target and then adds up to 700 output tokens
-    per step, so that headroom is included.
+    A run grows to its context target and then adds the model's own output on
+    top, so the heaviest work profile's closing answer is the headroom that
+    has to fit. With a heavy profile that is thousands of tokens, not the
+    couple of hundred this used to assume.
     """
     from .matrix import BUILDERS, PHASE1
     largest = 0
@@ -111,7 +120,9 @@ def _largest_context(config: dict) -> int:
                 largest = max(largest, spec.context_tokens)
         except Exception:  # noqa: BLE001 - a disabled group must not break doctor
             continue
-    return largest + 1024
+    profiles = work_profiles_from_config(config.get("behaviour", {}).get("work_profiles"))
+    headroom = max((int(w.output_tokens_final[1]) for w in profiles), default=700)
+    return largest + headroom + 1024
 
 
 def _round_up(value: int, step: int = 8192) -> int:

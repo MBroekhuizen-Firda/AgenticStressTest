@@ -61,9 +61,29 @@
   // Echte broncode, geen vulling: tokenverdeling en vooral prefix caching
   // hangen af van realistische, herhaalde prefixen.
   "corpus": {
-    // Een naam of een lijst namen; meerdere projecten worden gecombineerd tot
-    // een corpus van een paar duizend regels over Python, JavaScript en PHP.
-    "project": ["django-realworld", "react-realworld", "laravel-realworld"],
+    // Een groep is één opdracht. Studenten binnen een groep delen het skelet
+    // byte-voor-byte (daar leeft de prefix cache van); studenten in
+    // verschillende groepen delen onder de systeemprompt niets. Welke groep
+    // een student krijgt, bepaalt zijn werkprofiel hieronder.
+    //
+    // Twee groepen, omdat een echte klas niet aan één ding werkt: een
+    // webopdracht met kleine bestanden (mediaan ~230 tokens) en een
+    // Unity-project met flink grotere (mediaan ~585 tokens, p90 ~2.450). Dat
+    // verschil bepaalt hoe snel een contextvenster volloopt, en dat was de
+    // zwakste aanname in de eerste meting.
+    //
+    // Wil je precies de opzet van de meting op de RTX PRO 6000 herhalen, haal
+    // "groups" dan weg en zet "project" terug op de drie RealWorld-projecten.
+    "groups": {
+      "web": {
+        "project": ["django-realworld", "react-realworld", "laravel-realworld"]
+      },
+      "unity": {
+        // Alleen Assets/Scripts wordt uitgecheckt; een volledige kloon van een
+        // Unity-repo is gigabytes aan textures die niemand leest.
+        "project": ["unity-fpssample"]
+      }
+    },
     "cache_dir": "corpus_cache",
     // Het deel van het corpus dat het gedeelde projectskelet vormt: het blok
     // dat voor elke student byte-identiek is en dus cachehits over studenten
@@ -121,6 +141,42 @@
         "restart_probability": 0.15, "idle_probability": 0.30
       }
     ],
+    // Werkprofielen: hoe zwaar één agentstap is. Los van de persona getrokken,
+    // want hoe snel iemand werkt en hoe groot zijn codebase is, zijn twee
+    // dingen. Een klas is dus een mix op beide assen.
+    //
+    // LET OP: dit zijn beredeneerde startwaarden, geen metingen. "klein" is
+    // het gedrag dat het harnas altijd had; "doorspitten" is wat een sessie op
+    // een echte codebase doet. Neem een paar echte agentsessies op en leid deze
+    // getallen daaruit af -- tot die tijd is de waarde vooral dat de matrix
+    // laat zien hóéveel het antwoord verschuift tussen deze drie.
+    "work_profiles": [
+      {
+        "name": "klein", "share": 0.50, "group": "web",
+        "files_per_read": [1, 1],
+        "search_matches": [4, 10], "search_context_lines": 0,
+        "test_output_blocks": [1, 1],
+        "output_tokens_tool": [60, 260], "output_tokens_final": [220, 700]
+      },
+      {
+        "name": "middel", "share": 0.30, "group": "web",
+        "files_per_read": [1, 3],
+        "search_matches": [8, 20], "search_context_lines": 2,
+        "test_output_blocks": [1, 3],
+        "output_tokens_tool": [120, 500], "output_tokens_final": [400, 1200]
+      },
+      {
+        "name": "doorspitten", "share": 0.20, "group": "unity",
+        "files_per_read": [2, 5],
+        "search_matches": [15, 40], "search_context_lines": 3,
+        "test_output_blocks": [2, 5],
+        "output_tokens_tool": [250, 900], "output_tokens_final": [800, 2500],
+        // Een onbekende codebase doorspitten is vooral lezen en zoeken.
+        "tool_mix": {"read_file": 0.50, "edit_file": 0.15,
+                     "run_tests": 0.15, "search_code": 0.20}
+      }
+    ],
+
     // De activiteitsniveaus verschuiven de verdeling; het gedrag per persona
     // blijft hetzelfde.
     "activity_levels": {

@@ -18,6 +18,14 @@ Two properties matter for the experiment:
    context comes from that identical block.
 *  **Byte-identical ordering**: the shared block is emitted first and in a
    fixed order, otherwise it is not a prefix and the cache never sees it.
+
+A corpus holds one or more **groups**. A group is one assignment: the students
+working on it share its skeleton, and students on a different assignment share
+nothing with them beyond the system prompt. One group reproduces the original
+single-assignment behaviour exactly; several groups model a class where some
+students are on a small web app and others on a Unity project, which is both
+more realistic and harder on the cache. Which group a student works in is
+decided by their work profile, not here.
 """
 
 from __future__ import annotations
@@ -50,6 +58,16 @@ DEFAULT_PROJECTS: list[dict[str, str]] = [
         "url": "https://github.com/gothinkster/laravel-realworld-example-app",
         "extensions": ".php,.blade.php,.json,.md",
     },
+    {
+        # A Unity game project: the files are several times larger than a
+        # RealWorld controller, which is the whole reason it is here. Unity
+        # repositories are mostly binary art, so only the scripts are checked
+        # out -- a full clone is gigabytes of textures nobody reads.
+        "name": "unity-fpssample",
+        "url": "https://github.com/Unity-Technologies/FPSSample",
+        "extensions": ".cs",
+        "sparse_paths": "/Assets/Scripts/**/*.cs",
+    },
 ]
 
 SKIP_DIRECTORIES = {".git", "node_modules", "vendor", "dist", "build", "__pycache__",
@@ -69,12 +87,17 @@ class SourceFile:
         return len(self.content)
 
 
-class CodeCorpus:
-    """An indexed checkout, split into a shared skeleton and per-student files."""
+class CorpusGroup:
+    """One assignment: a file set with its own shared skeleton.
+
+    Students inside a group share the skeleton byte-for-byte, which is what
+    the prefix cache lives on. Students in different groups share nothing
+    below the system prompt -- that is the point of having groups.
+    """
 
     def __init__(self, name: str, files: Sequence[SourceFile], shared_count: int) -> None:
         if not files:
-            raise ValueError("corpus is empty")
+            raise ValueError(f"corpus group {name!r} is empty")
         self.name = name
         # Deterministic order: the shared block must be byte-identical and in
         # the same sequence for every student, or prefix caching sees nothing.
@@ -108,7 +131,88 @@ class CodeCorpus:
             "shared_files": len(self.shared_files),
             "private_files": len(self.private_files),
             "total_characters": self.total_characters,
+            "median_file_tokens_estimate": self._median_file_tokens(),
         }
+
+    def _median_file_tokens(self) -> int:
+        """Rough median file size, for the record.
+
+        How big the files are is the difference between "read a controller"
+        and "read a Unity system", and that difference drives how fast a
+        context window fills. It belongs in environment.json.
+        """
+        if not self.files:
+            return 0
+        sizes = sorted(f.characters for f in self.files)
+        return int(round(sizes[len(sizes) // 2] / 4.65))
+
+
+class CodeCorpus:
+    """One or more assignments the simulated class works on.
+
+    A single group behaves exactly like the original flat corpus, so runs made
+    before groups existed stay reproducible.
+    """
+
+    def __init__(self, name: str, groups: Sequence[CorpusGroup] | Sequence[SourceFile],
+                 shared_count: int | None = None) -> None:
+        # Two call shapes, deliberately: a list of groups, or the original
+        # (name, files, shared_count) which makes one group. Keeping the second
+        # means a flat corpus is not a special case anywhere else.
+        if shared_count is not None:
+            groups = [CorpusGroup(name, groups, shared_count)]  # type: ignore[arg-type]
+        if not groups:
+            raise ValueError("corpus has no groups")
+        self.name = name
+        self.groups = {g.name: g for g in groups}   # type: ignore[union-attr]
+        self.default_group = groups[0].name         # type: ignore[union-attr]
+
+    def group(self, name: str | None = None) -> CorpusGroup:
+        """The named group, falling back to the default.
+
+        An unknown name is a configuration mistake worth failing on: silently
+        handing back the wrong assignment would show up as an inexplicable
+        cache-hit rate three hours into a run.
+        """
+        if name is None:
+            return self.groups[self.default_group]
+        try:
+            return self.groups[name]
+        except KeyError:
+            raise RuntimeError(
+                f"unknown corpus group {name!r}; known: "
+                + ", ".join(sorted(self.groups))) from None
+
+    # ------------------------------------------------- flat-corpus interface
+
+    @property
+    def files(self) -> list[SourceFile]:
+        return [f for g in self.groups.values() for f in g.files]
+
+    @property
+    def shared_files(self) -> list[SourceFile]:
+        return self.group().shared_files
+
+    @property
+    def private_files(self) -> list[SourceFile]:
+        return self.group().private_files
+
+    @property
+    def total_characters(self) -> int:
+        return sum(g.total_characters for g in self.groups.values())
+
+    def student_files(self, student_index: int, count: int,
+                      group: str | None = None) -> list[SourceFile]:
+        return self.group(group).student_files(student_index, count)
+
+    def describe(self) -> dict:
+        out = self.group().describe()
+        out["name"] = self.name
+        out["files"] = len(self.files)
+        out["total_characters"] = self.total_characters
+        if len(self.groups) > 1:
+            out["groups"] = {name: g.describe() for name, g in self.groups.items()}
+        return out
 
 
 def _iter_source_files(root: str, extensions: Sequence[str]) -> Iterable[SourceFile]:
@@ -136,54 +240,59 @@ def _iter_source_files(root: str, extensions: Sequence[str]) -> Iterable[SourceF
 
 
 def fetch_project(project: dict, cache_dir: str, quiet: bool = False) -> str:
-    """Shallow-clone a public project. Returns the checkout directory."""
+    """Shallow-clone a public project. Returns the checkout directory.
+
+    A project with ``sparse_paths`` is fetched without blobs and then narrowed
+    to those paths. That is not an optimisation: a Unity repository is mostly
+    textures, meshes and audio, and cloning it whole would cost gigabytes and
+    minutes for source files that add up to a few megabytes.
+    """
     target = os.path.join(cache_dir, project["name"])
     if os.path.isdir(os.path.join(target, ".git")):
         if not quiet:
             log(f"corpus: {project['name']} already present at {target}")
         return target
     os.makedirs(cache_dir, exist_ok=True)
+    sparse = project.get("sparse_paths")
     if not quiet:
-        log(f"corpus: cloning {project['url']}")
-    result = subprocess.run(
-        ["git", "clone", "--depth", "1", "--quiet", project["url"], target],
-        capture_output=True, text=True, timeout=300,
-    )
+        log(f"corpus: cloning {project['url']}"
+            + (f" (alleen {sparse})" if sparse else ""))
+    command = ["git", "clone", "--depth", "1", "--quiet"]
+    if sparse:
+        command += ["--filter=blob:none", "--sparse"]
+    command += [project["url"], target]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=900)
     if result.returncode != 0:
         raise RuntimeError(f"git clone of {project['url']} failed: {result.stderr.strip()[:300]}")
+    if sparse:
+        patterns = [p.strip() for p in str(sparse).split(",") if p.strip()]
+        narrowed = subprocess.run(
+            ["git", "-C", target, "sparse-checkout", "set", "--no-cone", *patterns],
+            capture_output=True, text=True, timeout=900)
+        if narrowed.returncode != 0:
+            raise RuntimeError(f"sparse-checkout of {project['url']} failed: "
+                               f"{narrowed.stderr.strip()[:300]}")
     return target
 
 
-def load_corpus(config: dict, quiet: bool = False) -> CodeCorpus:
-    """Build a corpus from config.
-
-    ``corpus.local_path`` wins if set (useful on a machine without outbound
-    git access); otherwise the configured project or projects are cloned into
-    ``corpus.cache_dir``. Combining the three RealWorld example apps gives a
-    corpus of a few thousand lines across Python, JavaScript and PHP, which
-    is what an MBO class actually has in front of it.
-    """
-    cache_dir = config.get("cache_dir", "corpus_cache")
-
-    local_path = config.get("local_path")
+def _build_group(name: str, spec: dict, cache_dir: str, projects: Sequence[dict],
+                 quiet: bool) -> CorpusGroup:
+    local_path = spec.get("local_path")
     if local_path:
         extensions = [e.strip() for e in
-                      str(config.get("extensions", ".py,.js,.php,.md")).split(",")]
+                      str(spec.get("extensions", ".py,.js,.php,.md")).split(",")]
         files = list(_iter_source_files(local_path, extensions))
         if not files:
             raise RuntimeError(f"no usable source files under {local_path}")
-        name = os.path.basename(local_path.rstrip("/")) or "local"
-        return CodeCorpus(name, files, _shared_count(config, len(files)))
+        return CorpusGroup(name, files, _shared_count(spec, len(files)))
 
-    wanted = config.get("project", DEFAULT_PROJECTS[0]["name"])
+    wanted = spec.get("project", DEFAULT_PROJECTS[0]["name"])
     names = [wanted] if isinstance(wanted, str) else list(wanted)
-    projects = config.get("projects") or DEFAULT_PROJECTS
-
     files: list[SourceFile] = []
-    for name in names:
-        project = next((p for p in projects if p["name"] == name), None)
+    for project_name in names:
+        project = next((p for p in projects if p["name"] == project_name), None)
         if project is None:
-            raise RuntimeError(f"unknown corpus project {name!r}; known: "
+            raise RuntimeError(f"unknown corpus project {project_name!r}; known: "
                                + ", ".join(p["name"] for p in projects))
         checkout = fetch_project(project, cache_dir, quiet=quiet)
         extensions = [e.strip() for e in project.get("extensions", ".py,.md").split(",")]
@@ -191,11 +300,51 @@ def load_corpus(config: dict, quiet: bool = False) -> CodeCorpus:
         if not found:
             raise RuntimeError(f"no usable source files in {checkout}")
         # Namespace the paths so two projects cannot collide on e.g. README.md.
-        files.extend(SourceFile(f"{name}/{f.path}", f.content) for f in found)
-
+        files.extend(SourceFile(f"{project_name}/{f.path}", f.content) for f in found)
     if not files:
-        raise RuntimeError("corpus is empty")
-    return CodeCorpus("+".join(names), files, _shared_count(config, len(files)))
+        raise RuntimeError(f"corpus group {name!r} is empty")
+    return CorpusGroup(name, files, _shared_count(spec, len(files)))
+
+
+def load_corpus(config: dict, quiet: bool = False) -> CodeCorpus:
+    """Build a corpus from config.
+
+    Two shapes are accepted. The flat one -- ``project``/``local_path`` at the
+    top level -- makes a single group and behaves exactly as it always did.
+    The grouped one, ``corpus.groups``, makes one group per assignment:
+
+        "groups": {
+          "web":   {"project": ["django-realworld", "react-realworld"]},
+          "unity": {"project": ["unity-fpssample"]}
+        }
+
+    Work profiles then say which group a student works in. Settings given at
+    the top level (``extensions``, ``shared_skeleton_fraction``) are defaults
+    that a group can override.
+    """
+    cache_dir = config.get("cache_dir", "corpus_cache")
+    projects = config.get("projects") or DEFAULT_PROJECTS
+    groups_config = config.get("groups")
+
+    if not groups_config:
+        group = _build_group(_flat_name(config, projects), config, cache_dir, projects, quiet)
+        return CodeCorpus(group.name, [group])
+
+    groups: list[CorpusGroup] = []
+    for name, spec in groups_config.items():
+        merged = {k: v for k, v in config.items() if k not in ("groups", "projects")}
+        merged.update(spec or {})
+        groups.append(_build_group(name, merged, cache_dir, projects, quiet))
+    return CodeCorpus("+".join(g.name for g in groups), groups)
+
+
+def _flat_name(config: dict, projects: Sequence[dict]) -> str:
+    local_path = config.get("local_path")
+    if local_path:
+        return os.path.basename(local_path.rstrip("/")) or "local"
+    wanted = config.get("project", DEFAULT_PROJECTS[0]["name"])
+    names = [wanted] if isinstance(wanted, str) else list(wanted)
+    return "+".join(names)
 
 
 def _shared_count(config: dict, total: int) -> int:

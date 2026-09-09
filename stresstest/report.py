@@ -518,6 +518,14 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
 
     disagreements = [r.spec.run_id for r in results
                      if r.grade.colour != r.grade_brief.colour]
+    # The class as it was actually composed, on both axes. A reader comparing
+    # two measurements needs to see that the behaviour model was the same.
+    reference = next((r for r in results if r.spec.kind == "lesson"), None) or \
+        next((r for r in results if r.spec.kind == "sweep"), None) or \
+        (results[0] if results else None)
+    if reference is not None and reference.composition:
+        findings["class_mix"] = dict(reference.composition)
+
     findings["grading_disagreements"] = disagreements
     return findings
 

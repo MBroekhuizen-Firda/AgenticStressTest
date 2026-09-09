@@ -966,8 +966,8 @@ er halverwege tegenaan.
 
 ### Het gedragsmodel
 
-Een klas bestaat uit vier soorten studenten. De verdeling en het gedrag staan in
-`config/default.json` en zijn aan te passen.
+Een klas bestaat uit vier soorten studenten, elk met een eigen werkprofiel. De
+verdeling en het gedrag staan in `config/default.json` en zijn aan te passen.
 
 | Persona | Aandeel | Denktijd tussen instructies | Stappen per burst | Contextgedrag |
 |---|---|---|---|---|
@@ -984,6 +984,37 @@ samenloop wegpoetsen die de pieken maakt.
 De activiteitsniveaus *rustig* en *intensief* verschuiven deze verdeling —
 rustig heeft meer worstelaars en afhakers, intensief meer doorpakkers — en
 comprimeren of rekken de denktijd. Het gedrag per persona blijft gelijk.
+
+#### Werkprofielen: de tweede as
+
+Een persona is een *tempo*. Daarnaast heeft elke student een **werkprofiel**:
+een *gewicht*. Hoe groot is de codebase, hoeveel bestanden leest de agent per
+keer, hoeveel schrijft het model per stap. Die twee zijn los van elkaar
+geloot, want de ene student maakt kleine aanpassingen aan een formulier en de
+andere laat de agent een Unity-project doorspitten — en allebei kunnen ze een
+"gemiddelde" persona zijn.
+
+| Werkprofiel | Aandeel | Opdracht | Bestanden per lees | Toolresultaat (p50/p90) | Model-output (p50/p90) |
+|---|---|---|---|---|---|
+| klein | 50 % | webapp | 1 | 137 / 629 tok | 193 / 518 tok |
+| middel | 30 % | webapp | 1 – 3 | 315 / 1.396 tok | 376 / 894 tok |
+| doorspitten | 20 % | Unity | 2 – 5 | 1.780 / 4.967 tok | 671 / 1.821 tok |
+
+Dit is de gevoeligste aanname van het hele harnas. De doorlooptijd van een
+instructie — het getal dat de kleuren bepaalt — schaalt vrijwel recht evenredig
+mee met de model-output per stap, en hoe snel een contextvenster volloopt hangt
+volledig af van wat er per stap bij komt.
+
+> **Deze getallen zijn beredeneerd, niet gemeten.** Ze komen uit een
+> vergelijking van het oude gedragsmodel met echte agentsessies, niet uit een
+> opname van studenten aan het werk. Neem een handvol echte sessies op en leid
+> ze daaruit af zodra dat kan. Tot die tijd is de waarde vooral dat je de
+> matrix op meerdere profielen kunt draaien en kunt zien *hoeveel* het antwoord
+> verschuift — een bandbreedte is eerlijker dan één puntschatting op een
+> verborgen aanname.
+
+De profielen staan in `behaviour.work_profiles` in `config/default.json` en
+worden meegeschreven in `environment.json` naast elke meting.
 
 ### De berichten
 

@@ -16,10 +16,11 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stresstest.conversation import Session
-from stresstest.corpus import CodeCorpus, SourceFile
+from stresstest.corpus import CodeCorpus, CorpusGroup, SourceFile
 from stresstest.grading import grade_run
 from stresstest.matrix import build_specs, describe_plan
-from stresstest.personas import DEFAULT_PERSONAS, build_class, class_composition
+from stresstest.personas import (DEFAULT_PERSONAS, DEFAULT_WORK_PROFILES, WorkProfile,
+                                 build_class, class_composition, work_composition)
 from stresstest.tokens import build_counter
 from stresstest.util import load_jsonc, percentile, sample_lognormal
 from stresstest.vllm_metrics import parse_prometheus, pick
@@ -87,6 +88,104 @@ class TestClassComposition(unittest.TestCase):
         busy = class_composition(build_class(20, DEFAULT_PERSONAS, "intensief", 32000, 1))
         self.assertGreater(busy.get("doorpakker", 0), quiet.get("doorpakker", 0))
         self.assertGreater(quiet.get("afhaker", 0), busy.get("afhaker", 0))
+
+
+class TestWorkProfiles(unittest.TestCase):
+    """The two behaviour axes. A persona is a pace, a work profile is a
+    weight, and the whole point of splitting them is that they mix freely."""
+
+    def test_both_axes_are_allocated_and_are_not_correlated(self):
+        profiles = build_class(20, DEFAULT_PERSONAS, "normaal", 32000, 20250908)
+        self.assertEqual(sum(class_composition(profiles).values()), 20)
+        self.assertEqual(sum(work_composition(profiles).values()), 20)
+        # Every work profile in the default mix must actually appear, and the
+        # heavy one must not land on a single persona.
+        work = work_composition(profiles)
+        self.assertEqual(set(work), {"klein", "middel", "doorspitten"})
+        heavy_personas = {p.persona.name for p in profiles if p.work.name == "doorspitten"}
+        self.assertGreater(len(heavy_personas), 1,
+                           "the heavy profile landed on one persona only; "
+                           "the axes are correlated")
+
+    def test_the_class_is_reproducible_on_both_axes(self):
+        a = build_class(20, DEFAULT_PERSONAS, "normaal", 32000, 7)
+        b = build_class(20, DEFAULT_PERSONAS, "normaal", 32000, 7)
+        self.assertEqual([(x.persona.name, x.work.name) for x in a],
+                         [(x.persona.name, x.work.name) for x in b])
+
+    def test_a_heavier_profile_produces_heavier_steps(self):
+        """The reason the profiles exist. If 'doorspitten' does not actually
+        return more per tool call and emit more per step, the matrix measures
+        the same thing three times."""
+        corpus = make_corpus(files=80, shared=20)
+        counter = build_counter("test", prefer_exact=False)
+        sizes = {}
+        for work in DEFAULT_WORK_PROFILES:
+            session = Session(0, corpus, counter, 32000, 0.5, random.Random(3),
+                              work=work)
+            session.reset()
+            results, outputs = [], []
+            for _ in range(400):
+                _, arguments, result = session._synthesise_tool_result()
+                results.append(counter.count(result) + counter.count(arguments))
+                outputs.append(session._step_output_tokens())
+            results.sort(); outputs.sort()
+            sizes[work.name] = (results[len(results) // 2], outputs[len(outputs) // 2])
+        light, heavy = sizes["klein"], sizes["doorspitten"]
+        self.assertGreater(heavy[0], 3 * light[0],
+                           f"tool results per profile: {sizes}")
+        self.assertGreater(heavy[1], 2 * light[1],
+                           f"model output per profile: {sizes}")
+
+
+class TestCorpusGroups(unittest.TestCase):
+    """A group is one assignment. Students inside one share a prefix; students
+    in different ones must not, or the cache axis measures the wrong thing."""
+
+    def _corpus(self) -> CodeCorpus:
+        def files(prefix, n, body):
+            return [SourceFile(f"{prefix}/f{i:03d}.cs", body * (i % 5 + 3))
+                    for i in range(n)]
+        return CodeCorpus("two", [
+            CorpusGroup("web", files("web", 40, "def a():\n    return 1\n" * 20), 15),
+            CorpusGroup("unity", files("unity", 40, "void Update() { }\n" * 60), 15),
+        ])
+
+    def test_a_flat_corpus_still_behaves_as_one_group(self):
+        corpus = make_corpus(files=30, shared=10)
+        self.assertEqual(len(corpus.groups), 1)
+        self.assertEqual(len(corpus.shared_files), 10)
+        self.assertEqual(corpus.student_files(0, 5), corpus.group().student_files(0, 5))
+
+    def test_groups_do_not_share_files(self):
+        corpus = self._corpus()
+        web = {f.path for f in corpus.group("web").files}
+        unity = {f.path for f in corpus.group("unity").files}
+        self.assertFalse(web & unity)
+
+    def test_two_students_in_different_groups_share_no_project_prefix(self):
+        corpus = self._corpus()
+        counter = build_counter("test", prefer_exact=False)
+
+        def session(group):
+            work = WorkProfile(name=group, share=1.0, group=group)
+            s = Session(0, corpus, counter, 16000, 0.9, random.Random(1), work=work)
+            s.reset()
+            return s
+
+        a, b = session("web"), session("unity")
+        common = 0
+        for left, right in zip(a.messages, b.messages):
+            if json.dumps(left, sort_keys=True) != json.dumps(right, sort_keys=True):
+                break
+            common += 1
+        # The system prompt and the assignment brief are shared by everyone;
+        # anything beyond that would mean the groups leaked into each other.
+        self.assertLessEqual(common, 2, "groups must not share project files")
+
+    def test_an_unknown_group_fails_loudly(self):
+        with self.assertRaises(RuntimeError):
+            self._corpus().group("bestaat-niet")
 
 
 class TestConversation(unittest.TestCase):
