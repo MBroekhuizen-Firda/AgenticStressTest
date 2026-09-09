@@ -584,9 +584,11 @@ mislukte download niet met een mislukte serverstart verwart.
 ```bash
 pip install "huggingface_hub[cli]"
 
-# Een Hugging Face-token is voor dit model niet nodig, maar wel als je
-# later een model met toegangsvoorwaarden gebruikt:
-# huggingface-cli login
+# Een Hugging Face-token is voor dit model niet verplicht -- er zijn geen
+# toegangsvoorwaarden -- maar wel aan te raden: anoniem verkeer wordt per
+# IP-adres afgeknepen, en dat adres deel je op een gehuurde pod met de
+# buren. Een read-token is genoeg.
+export HF_TOKEN=hf_...        # of: huggingface-cli login
 
 hf download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
 
@@ -602,6 +604,14 @@ du -sh ~/.cache/huggingface/hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8
 
 Zit je op ongeveer 31 GB, dan is het goed. Zit je op 2 GB, dan zijn alleen de
 metadata gedownload en is de download afgebroken.
+
+> **`429 Too Many Requests` bij het downloaden of starten?** Dan knijpt
+> huggingface.co af. Vervelend genoeg raakt dat ook een start waarbij je niets
+> meer nodig hebt: vLLM vraagt de bestandslijst bij elke start opnieuw op.
+> Geef het dan de snapshotmap hierboven in plaats van de repo-naam, met
+> `HF_HUB_OFFLINE=1` erbij. `scripts/pod.sh` doet dat zelf zodra het een 429
+> ziet en het model compleet op schijf staat; zie
+> [VALKUILEN.md](VALKUILEN.md#429-too-many-requests-van-huggingfaceco).
 
 ### 4.5 vLLM starten
 

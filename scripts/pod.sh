@@ -67,6 +67,24 @@ RUN_LOCK_FILE="$STATE_DIR/run.lock"
 NO_FLASHINFER_SAMPLER=0
 [ "${VLLM_USE_FLASHINFER_SAMPLER:-}" = 0 ] && NO_FLASHINFER_SAMPLER=1
 
+# Same idea for the Hugging Face Hub. vLLM asks the Hub for the repo's file
+# list on every start, also when all 31 GB are already on disk, and the Hub
+# rate-limits anonymous API calls per IP -- an IP a rented pod shares with
+# every other container on the machine. Once we have served from the local
+# snapshot, every later engine variant does the same straight away instead of
+# burning a doomed start-up first.
+HF_OFFLINE=0
+[ "${HF_HUB_OFFLINE:-}" = 1 ] && HF_OFFLINE=1
+# How long to wait out a 429 when there is no complete download to fall back
+# on. Doubles per attempt; the Hub's anonymous window resets in minutes.
+HF_RATE_LIMIT_WAIT_S="${HF_RATE_LIMIT_WAIT_S:-60}"
+HF_RATE_LIMIT_MAX_WAIT_S="${HF_RATE_LIMIT_MAX_WAIT_S:-240}"
+HF_DOWNLOAD_RETRIES="${HF_DOWNLOAD_RETRIES:-4}"
+# How many times start_server may try. Six, not one: the FlashInfer and
+# tool-parser fallbacks each cost an attempt, and waiting out a rate limit
+# costs the rest.
+SERVER_START_ATTEMPTS="${SERVER_START_ATTEMPTS:-6}"
+
 PY="${PY:-python3}"
 # Mock mode drives the harness's built-in fake vLLM instead of a real one, so
 # the whole wrapper can be rehearsed on a laptop before any money is spent.
@@ -170,6 +188,25 @@ model_size_gb() {
   local dir; dir="$(model_dir)"
   [ -d "$dir" ] || { echo "0"; return; }
   du -sb --dereference "$dir" 2>/dev/null | awk '{printf "%.1f", $1/1024/1024/1024}' | grep . || echo 0
+}
+
+# The weights are either there or they are not: 25 GB is the line between a
+# finished download and one that only brought the metadata in.
+model_is_complete() {
+  awk -v s="$(model_size_gb)" 'BEGIN{exit !(s > 25)}'
+}
+
+# The directory the weights actually live in, or empty when the download is
+# not complete. vLLM takes a path everywhere it takes a repo id, and a path
+# needs nothing from the Hub -- which is the way out when the Hub answers 429.
+model_snapshot_dir() {
+  model_is_complete || return 0
+  local config
+  # `|| true`: under `set -e` with pipefail a missing snapshots directory
+  # would otherwise abort the whole script, while "not there" is an answer.
+  config="$(find "$(model_dir)/snapshots" -maxdepth 2 -name config.json -print 2>/dev/null | head -1 || true)"
+  if [ -n "$config" ]; then dirname "$config"; fi
+  return 0
 }
 
 # Weights plus CUDA and activation overhead. The config ships 33.0 for a 31 GB
@@ -290,27 +327,53 @@ ensure_python_deps() {
   [ "$MOCK" = 1 ] || "$PY" -m pip install "huggingface_hub[cli]" hf_transfer >&2
 }
 
+# One attempt, so the retry below reads as a retry. Both CLIs resume a partial
+# download, so a second attempt costs the bytes that did not arrive yet.
+download_model_once() {
+  if command -v hf >/dev/null 2>&1; then
+    hf download "$MODEL" >&2
+  else
+    huggingface-cli download "$MODEL" >&2
+  fi
+}
+
 download_model() {
   [ "$MOCK" = 1 ] && { say "MOCK: model niet nodig"; return; }
   head_ "Model ophalen: $MODEL"
   local dir size
   dir="$(model_dir)"
   size="$(model_size_gb)"
-  if awk -v s="$size" 'BEGIN{exit !(s > 25)}'; then
+  if model_is_complete; then
     say "staat er al: $dir (${size} GB), download overgeslagen"
     return
   fi
   [ "$size" != "0" ] && warn "onvolledige download gevonden (${size} GB), wordt hervat"
-
-  mkdir -p "$HF_HOME"
-  if command -v hf >/dev/null 2>&1; then
-    hf download "$MODEL" >&2
-  else
-    huggingface-cli download "$MODEL" >&2
+  # Retrying a download that is not allowed to touch the network costs four
+  # attempts and seven minutes before it says the same thing.
+  if [ "$HF_OFFLINE" = 1 ]; then
+    die "HF_HUB_OFFLINE staat aan, maar $MODEL staat niet compleet op schijf (${size} GB in $dir). Zet HF_HUB_OFFLINE uit voor deze ene stap, of zet de gewichten er zelf neer."
   fi
 
+  mkdir -p "$HF_HOME"
+  # huggingface.co rate-limits anonymous requests per IP, and on a rented pod
+  # that IP is shared with every other container on the machine: a 429 says
+  # nothing about this download and everything about the neighbours. Waiting
+  # it out is cheaper than ending a run that has a GPU on the meter.
+  local attempt wait_s="$HF_RATE_LIMIT_WAIT_S"
+  for attempt in $(seq 1 "$HF_DOWNLOAD_RETRIES"); do
+    if download_model_once; then break; fi
+    [ "$attempt" -lt "$HF_DOWNLOAD_RETRIES" ] \
+      || die "de download van $MODEL bleef mislukken, ook na $HF_DOWNLOAD_RETRIES pogingen. Zie de melding hierboven. Staat daar '429 Too Many Requests', dan knijpt huggingface.co af: wacht een kwartier, of zet een HF_TOKEN in de omgeving -- ingelogd verkeer krijgt een ruimere limiet dan anoniem."
+    warn "poging $attempt van $HF_DOWNLOAD_RETRIES mislukt; over ${wait_s}s opnieuw (de download wordt hervat, niet overgedaan)"
+    if [ -z "${HF_TOKEN:-}" ]; then
+      warn "tip: een HF_TOKEN in de omgeving geeft een ruimere limiet bij huggingface.co dan anoniem verkeer."
+    fi
+    sleep "$wait_s"
+    wait_s=$(( wait_s * 2 > HF_RATE_LIMIT_MAX_WAIT_S ? HF_RATE_LIMIT_MAX_WAIT_S : wait_s * 2 ))
+  done
+
   size="$(model_size_gb)"
-  awk -v s="$size" 'BEGIN{exit !(s > 25)}' \
+  model_is_complete \
     || die "na de download staat er maar ${size} GB in $dir. Waarschijnlijk zijn alleen de metadata binnengehaald en is de download afgebroken. Draai dit commando opnieuw."
   say "binnen: ${size} GB in $dir"
 }
@@ -407,7 +470,14 @@ wait_ready() {
 # vLLM prints a Python traceback on failure, and its last lines are the least
 # informative part: the real reason sits further up. Surface that first, then
 # the tail, so the operator does not have to go spelunking in a 500-line log.
-SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|ValueError|RuntimeError|Error'
+SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|Too Many Requests|ValueError|RuntimeError|Error'
+
+# What the Hub looks like when it is throttling us. Deliberately narrow: not a
+# bare "429", which matches a port number or a byte count somewhere in a
+# 500-line log, and not vLLM's own "Error retrieving file list", which covers
+# every Hub failure including a mistyped MODEL -- waiting one out costs a
+# quarter of an hour of GPU rent for nothing.
+HF_RATE_LIMIT_PATTERNS='Too Many Requests|429 Client Error|RateLimitExceeded'
 
 show_server_error() {
   local log="$1" hits
@@ -419,6 +489,30 @@ show_server_error() {
   fi
   printf '%s\n' "--- laatste 25 regels van $log ---" >&2
   tail -n 25 "$log" >&2 || true
+}
+
+# Why the server is not there, in the operator's words. Shared by the two ways
+# a start-up runs out of options: an attempt with nothing left to try, and a
+# loop that has spent every attempt.
+#   die_server_start <status from wait_ready>
+die_server_start() {
+  local status="${1:-2}"
+  # First, because it is the one cause that has nothing to do with this
+  # machine -- and the generic message below would send the operator after the
+  # KV cache for a problem the neighbours' traffic caused.
+  if grep -qEi "$HF_RATE_LIMIT_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+    die "huggingface.co blijft vLLM met 429 (te veel verzoeken) afwijzen. Dit is geen geheugen- of kernelprobleem: vLLM vraagt bij elke start de bestandslijst op bij de Hub, ook als het model al op schijf staat, en die limiet per IP-adres deel je met alle andere containers op deze machine. Uitwegen: haal het model eerst compleet binnen ('scripts/pod.sh setup'), want dan dient dit script de map zelf aan vLLM aan in plaats van de repo-naam; of zet HF_HUB_OFFLINE=1; of zet een HF_TOKEN in de omgeving en probeer het over een kwartier opnieuw."
+  fi
+  if [ "$status" = 2 ]; then
+    if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
+      die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 zodat de JIT-compiler er niet aan te pas komt."
+    fi
+    if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
+      die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Een image met een nieuwere toolkit is dan de uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
+    fi
+    die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
+  fi
+  die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s, maar draait nog wel. Zie $SERVER_LOG; verhoog zo nodig SERVER_START_TIMEOUT_S."
 }
 
 # start_server [tunable flags]. Without an argument the baseline is used.
@@ -451,15 +545,28 @@ start_server() {
 
   local tool_flags="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
   local backend="$ATTENTION_BACKEND"
-  local server_env attempt
-  for attempt in 1 2 3; do
-    local cmd="vllm serve $MODEL --served-model-name $SERVED_NAME --host $HOST_BIND --port $PORT"
+  local server_env attempt model_arg snapshot
+  local hf_wait_s="$HF_RATE_LIMIT_WAIT_S"
+  for attempt in $(seq 1 "$SERVER_START_ATTEMPTS"); do
+    # A path where a repo id would do. Identical weights and identical config,
+    # so the measurement is the same; the difference is that vLLM then needs
+    # nothing from huggingface.co to start.
+    model_arg="$MODEL"
+    if [ "$HF_OFFLINE" = 1 ]; then
+      snapshot="$(model_snapshot_dir)"
+      [ -n "$snapshot" ] && model_arg="$snapshot"
+    fi
+    local cmd="vllm serve $model_arg --served-model-name $SERVED_NAME --host $HOST_BIND --port $PORT"
     cmd="$cmd --gpu-memory-utilization $GPU_UTIL --enable-prefix-caching $tunable"
     [ "$TENSOR_PARALLEL" -gt 1 ] && cmd="$cmd --tensor-parallel-size $TENSOR_PARALLEL"
     cmd="$cmd $tool_flags"
 
     say "start: $cmd"
     server_env=(HF_HOME="$HF_HOME")
+    if [ "$HF_OFFLINE" = 1 ]; then
+      server_env+=(HF_HUB_OFFLINE=1)
+      say "       HF_HUB_OFFLINE=1 (alles komt van schijf, niets van huggingface.co)"
+    fi
     if [ -n "$backend" ]; then
       server_env+=(VLLM_ATTENTION_BACKEND="$backend")
       say "       VLLM_ATTENTION_BACKEND=$backend"
@@ -482,6 +589,32 @@ start_server() {
       printf '%s' "$tunable" | sed -n 's/.*--kv-cache-dtype \([a-z0-9]*\).*/\1/p' \
         > "$STATE_DIR/current_kv_dtype"
       return 0
+    fi
+
+    # The Hub throttles anonymous API calls per IP, and vLLM asks it for the
+    # repo's file list on every start -- also when all 31 GB are already on
+    # disk. A 429 there stops a server that needs nothing from the network,
+    # and the log blames neither memory nor kernels: it is the traffic of the
+    # other containers on the same machine.
+    if [ "$status" = 2 ] \
+       && grep -qEi "$HF_RATE_LIMIT_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      snapshot="$(model_snapshot_dir)"
+      if [ "$HF_OFFLINE" != 1 ] && [ -n "$snapshot" ]; then
+        warn "huggingface.co antwoordt met 429 (te veel verzoeken), terwijl het model compleet op schijf staat."
+        warn "opnieuw vanaf die map ($snapshot), zonder de Hub te raadplegen. Dat raakt de meting niet: het zijn dezelfde gewichten."
+        HF_OFFLINE=1
+        continue
+      fi
+      if [ "$HF_OFFLINE" != 1 ]; then
+        warn "huggingface.co antwoordt met 429 (te veel verzoeken) en er staat nog geen complete download ($(model_size_gb) GB)."
+        warn "wachten ${hf_wait_s}s en dan opnieuw; haal het model anders eerst apart binnen met 'scripts/pod.sh setup'."
+        if [ -z "${HF_TOKEN:-}" ]; then
+          warn "tip: een HF_TOKEN in de omgeving geeft een ruimere limiet dan anoniem verkeer."
+        fi
+        sleep "$hf_wait_s"
+        hf_wait_s=$(( hf_wait_s * 2 > HF_RATE_LIMIT_MAX_WAIT_S ? HF_RATE_LIMIT_MAX_WAIT_S : hf_wait_s * 2 ))
+        continue
+      fi
     fi
 
     # FlashInfer is used for top-k/top-p sampling regardless of the attention
@@ -520,17 +653,19 @@ start_server() {
     if [ "$strict" = 1 ]; then
       return 1
     fi
-    if [ "$status" = 2 ]; then
-      if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
-        die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 zodat de JIT-compiler er niet aan te pas komt."
-      fi
-      if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
-        die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Een image met een nieuwere toolkit is dan de uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
-      fi
-      die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
-    fi
-    die "vLLM kwam niet omhoog binnen ${SERVER_START_TIMEOUT_S}s, maar draait nog wel. Zie $SERVER_LOG; verhoog zo nodig SERVER_START_TIMEOUT_S."
+    die_server_start "$status"
   done
+
+  # Every attempt spent. Falling out of the loop must not read as success:
+  # start_server would return 0 and the harness would go and measure a server
+  # that is not there, which shows up as a wall of connection errors much
+  # later.
+  show_server_error "$SERVER_LOG"
+  if [ "$strict" = 1 ]; then
+    return 1
+  fi
+  warn "$attempt pogingen gedaan, en vLLM staat nog steeds niet."
+  die_server_start "${status:-2}"
 }
 
 # Counting series is too crude: what matters is whether the three numbers the
@@ -1103,15 +1238,19 @@ Opties
 
 Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
-  MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND
+  MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND SERVER_START_ATTEMPTS
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
   RESULTS_BRANCH PUSH_RETRIES
+  HF_TOKEN HF_HUB_OFFLINE HF_DOWNLOAD_RETRIES HF_RATE_LIMIT_WAIT_S
+  HF_RATE_LIMIT_MAX_WAIT_S
 
 Voorbeelden
   scripts/pod.sh all --deadman auto
   TENSOR_PARALLEL=2 VRAM_GB=64 scripts/pod.sh all      # twee RTX 5090's
   MODEL=Qwen/Qwen2.5-Coder-7B-Instruct MAX_MODEL_LEN=32768 \
     VRAM_GB=24 scripts/pod.sh all --skip-engine         # goedkoop uitproberen
+  HF_TOKEN=hf_... scripts/pod.sh setup                  # ruimere limiet bij de Hub
+  HF_HUB_OFFLINE=1 scripts/pod.sh serve                # niets van huggingface.co
 USAGE
 }
 

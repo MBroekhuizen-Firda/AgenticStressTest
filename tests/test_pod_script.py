@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -301,6 +302,199 @@ class TestFlashInferFallback(unittest.TestCase):
                          "the flag must outlive a single start_server call")
         self.assertIn("NO_FLASHINFER_SAMPLER=0\n", text,
                       "the flag needs a default outside start_server")
+
+
+class TestHubRateLimit(unittest.TestCase):
+    """vLLM asks huggingface.co for the repo's file list on every start, also
+    when all 31 GB are already on disk. The Hub throttles anonymous calls per
+    IP, and on a rented pod that IP is shared with the neighbours -- so a 429
+    ends a start-up that needs nothing from the network at all."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _snapshot(self, gigabytes: int) -> str:
+        """An HF cache layout with a weights file of the given apparent size.
+
+        Sparse, so a 26 GB download costs no disk here: `du -sb` reports the
+        apparent size, which is what the script measures.
+        """
+        model = "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"
+        snapshot = os.path.join(self.tmp, "hf", "hub",
+                                "models--" + model.replace("/", "--"),
+                                "snapshots", "deadbeef")
+        os.makedirs(snapshot)
+        for name in ("config.json", "tokenizer.json"):
+            with open(os.path.join(snapshot, name), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        with open(os.path.join(snapshot, "model.safetensors"), "wb") as handle:
+            handle.truncate(gigabytes * 1024 ** 3)
+        return snapshot
+
+    def _ask(self, helper: str) -> str:
+        """Run one of the model helpers against that fake cache."""
+        text = script_text()
+        bodies = []
+        for name in ("model_dir", "model_size_gb", "model_is_complete",
+                     "model_snapshot_dir"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
+        script = ("set -Eeuo pipefail\n"
+                  'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"\n'
+                  f'HF_HOME="{self.tmp}/hf"\n'
+                  + "\n".join(bodies) + "\n" + helper)
+        done = subprocess.run(["bash", "-c", script], capture_output=True,
+                              text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout.strip()
+
+    def test_a_complete_download_is_offered_as_the_local_fallback(self):
+        snapshot = self._snapshot(26)
+        self.assertEqual(self._ask("model_snapshot_dir"), snapshot)
+
+    def test_a_download_that_only_brought_metadata_is_not(self):
+        """Serving half a model is worse than saying the Hub is throttling:
+        vLLM would fail later, on something that reads like a broken repo."""
+        self._snapshot(2)
+        self.assertEqual(self._ask("model_snapshot_dir"), "")
+
+    def test_no_download_at_all_is_not_an_error(self):
+        """`set -e` plus an empty command substitution ends the whole run, and
+        this helper is called on a path where nothing has been fetched yet."""
+        self.assertEqual(self._ask("model_snapshot_dir"), "")
+
+    def test_the_retry_recognises_a_throttled_hub(self):
+        text = script_text()
+        pattern = re.search(r"^HF_RATE_LIMIT_PATTERNS='([^']+)'", text, re.M)
+        self.assertIsNotNone(pattern, "the rate-limit pattern is gone")
+        self.assertRegex("429 Too Many Requests for url: https://huggingface.co/api",
+                         f"(?i){pattern.group(1)}")
+
+    def test_the_retry_does_not_fire_on_every_hub_error(self):
+        """A mistyped MODEL gives a Hub error too. Waiting that one out burns a
+        quarter of an hour of GPU rent on a typo."""
+        text = script_text()
+        pattern = re.search(r"^HF_RATE_LIMIT_PATTERNS='([^']+)'", text, re.M)
+        self.assertNotRegex("Error retrieving file list: RepositoryNotFoundError",
+                            f"(?i){pattern.group(1)}")
+
+    def test_the_flag_survives_the_next_server_start(self):
+        """Every engine variant restarts the server. Learning this once per
+        start would cost a failed start-up each time."""
+        text = script_text()
+        self.assertNotIn("local HF_OFFLINE", text,
+                         "the flag must outlive a single start_server call")
+        self.assertIn("HF_OFFLINE=0\n", text,
+                      "the flag needs a default outside start_server")
+
+    def _drive_start_server(self, model_on_disk: bool) -> subprocess.CompletedProcess:
+        """Run the real start_server against a vLLM that only ever gets a 429.
+
+        Stubbed: stop_server (nothing to stop) and wait_ready (the fake server
+        announces itself in the log instead of on a port). Everything the test
+        is about -- the fallback, the retry, the diagnosis -- is the script's.
+        """
+        home = os.path.join(self.tmp, "hf")
+        if model_on_disk:
+            self._snapshot(26)
+        bin_dir = os.path.join(self.tmp, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        vllm = os.path.join(bin_dir, "vllm")
+        with open(vllm, "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent("""\
+                #!/usr/bin/env bash
+                # A repo id goes to the Hub and is throttled; a path does not.
+                case "$2" in
+                  # exec, so the pid the script records is the one to kill.
+                  /*) echo "Application startup complete."; exec sleep 5 ;;
+                  *)  echo "ERROR [repo_utils.py:117] 429 Too Many Requests for url:"
+                      echo "  https://huggingface.co/api/models/$2/tree/main"
+                      exit 1 ;;
+                esac
+                """))
+        os.chmod(vllm, os.stat(vllm).st_mode | stat.S_IEXEC)
+
+        text = script_text()
+        bodies = []
+        for name in ("model_dir", "model_size_gb", "model_is_complete",
+                     "model_snapshot_dir", "show_server_error",
+                     "die_server_start", "start_server"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
+        consts = [line for line in text.splitlines()
+                  if line.startswith(("SERVER_ERROR_PATTERNS=", "HF_RATE_LIMIT_PATTERNS="))]
+        state = os.path.join(self.tmp, "state")
+        os.makedirs(state, exist_ok=True)
+        script = "\n".join([
+            "set -Eeuo pipefail",
+            'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
+            "SERVED_NAME=qwen3-coder; HOST_BIND=127.0.0.1; PORT=8000",
+            "GPU_UTIL=0.90; TENSOR_PARALLEL=1; MOCK=0",
+            "KV_CACHE_DTYPE=fp8; MAX_NUM_SEQS=32; MAX_MODEL_LEN=131072",
+            'ATTENTION_BACKEND=""; NO_FLASHINFER_SAMPLER=0',
+            "HF_OFFLINE=0; SERVER_START_ATTEMPTS=2",
+            "HF_RATE_LIMIT_WAIT_S=1; HF_RATE_LIMIT_MAX_WAIT_S=1",
+            "SERVER_START_TIMEOUT_S=900",
+            f'HF_HOME="{home}"',
+            f'STATE_DIR="{state}"',
+            'SERVER_LOG="$STATE_DIR/vllm.log"',
+            'SERVER_PID_FILE="$STATE_DIR/vllm.pid"',
+            *consts,
+            'say()  { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die()  { echo "[die] $*" >&2; exit 1; }',
+            "stop_server() { :; }",
+            "wait_ready() {",
+            "  sleep 0.3",
+            '  grep -q "Application startup complete" "$SERVER_LOG" 2>/dev/null && return 0',
+            "  return 2",
+            "}",
+            *bodies,
+            "start_server",
+            'echo "[ok] HF_OFFLINE=$HF_OFFLINE"',
+        ])
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"])
+        done = subprocess.run(["bash", "-c", script], env=env,
+                              capture_output=True, text=True, timeout=180)
+        # A start that succeeded left the fake server running, exactly as the
+        # real one does. Nothing here waits for it, so take it down.
+        self.addCleanup(self._kill, os.path.join(state, "vllm.pid"))
+        return done
+
+    @staticmethod
+    def _kill(pid_file: str) -> None:
+        try:
+            with open(pid_file, encoding="utf-8") as handle:
+                pid = int(handle.read().strip())
+        except (OSError, ValueError):
+            return
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+    def test_a_throttled_hub_falls_back_to_the_weights_on_disk(self):
+        done = self._drive_start_server(model_on_disk=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[ok] HF_OFFLINE=1", done.stdout)
+        self.assertIn("snapshots/deadbeef --served-model-name", done.stderr,
+                      "the second attempt still passed the repo id")
+
+    def test_a_throttled_hub_is_not_reported_as_a_memory_problem(self):
+        """Two failures in one: reporting success on a server that never came
+        up, and blaming the KV cache for the neighbours' traffic. The first
+        would send the harness at a dead port; the second would send the
+        operator to lower --max-model-len, which changes nothing."""
+        done = self._drive_start_server(model_on_disk=False)
+        self.assertNotEqual(done.returncode, 0,
+                            "start_server reported success without a server")
+        self.assertIn("429", done.stderr)
+        self.assertNotIn("te weinig geheugen voor de KV-cache", done.stderr)
 
 
 class TestPushingResults(unittest.TestCase):

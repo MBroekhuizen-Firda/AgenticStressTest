@@ -53,6 +53,46 @@ Zoek niet naar de "juiste" versie. vLLM 0.28 pint `flashinfer-python==0.6.16.pos
 en pip klaagt over elke andere, maar ook de gepinde versie compileert hier niet:
 het probleem is de toolkit, niet de versie.
 
+### `429 Too Many Requests` van huggingface.co
+
+```
+ERROR repo_utils.py:117 429 Too Many Requests for url:
+  https://huggingface.co/api/models/Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8/tree/main
+huggingface_hub.errors.HfHubHTTPError
+```
+
+vLLM vraagt bij **elke** start de bestandslijst van de repo op bij de Hub, ook
+als de 31 GB al lang op schijf staat. De Hub knijpt anoniem verkeer af per
+IP-adres, en dat adres deel je op een gehuurde pod met alle andere containers
+op die machine. Je start dus stuk op verkeer van iemand anders, terwijl je
+zelf niets van het netwerk nodig hebt.
+
+Verwarrend is dat het log verder niets zegt: geen geheugen, geen kernels. Wie
+de melding onderaan leest ziet alleen een traceback en gaat `--max-model-len`
+verlagen — dat helpt niet.
+
+**Oplossing:** geef vLLM de map in plaats van de repo-naam, en zet de Hub uit.
+
+```bash
+export HF_HUB_OFFLINE=1
+vllm serve /workspace/hf/hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/<hash> \
+  --served-model-name qwen3-coder ...
+```
+
+Dezelfde gewichten, dezelfde config, dus aan de meting verandert niets.
+`scripts/pod.sh` doet dit zelf: ziet het een 429 en staat het model compleet
+op schijf, dan start het opnieuw vanaf de snapshotmap en houdt het die keuze
+vast voor alle volgende enginevarianten. Staat het model er nog niet, dan
+wacht het (60 s, 120 s, 240 s) en probeert het opnieuw.
+
+**Voorkomen:** zet een Hugging Face-token in de omgeving. Ingelogd verkeer
+krijgt een veel ruimere limiet dan anoniem. Een read-token is genoeg — dit
+model heeft geen toegangsvoorwaarden, het gaat puur om de limiet.
+
+```bash
+export HF_TOKEN=hf_...        # op de pod zelf, niet in een chat
+```
+
 ### `Unknown vLLM environment variable detected: VLLM_ATTENTION_BACKEND`
 
 Die variabele bestaat niet meer in vLLM 0.28. Zetten heeft geen effect en de
