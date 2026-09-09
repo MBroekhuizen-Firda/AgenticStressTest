@@ -106,6 +106,59 @@ hoort in het rapport genoemd te worden.
   Rond 600 W is de volle kaart, rond 300 W een Max-Q. Meet je op een Max-Q en
   rapporteer je dat als de kaart uit de aanvraag, dan klopt het getal niet.
 
+### De resultaten van de pod halen
+
+Drie dingen staan tussen jou en een `scp` die werkt. Ze geven alle drie een
+andere fout, en samen kosten ze een halve avond.
+
+**De poort is niet 22.** Onder *Connect* staan twee SSH-regels. De bovenste
+gaat via de proxy (`ssh.runpod.io`) en draagt **geen scp of sftp** — het
+dashboard zegt dat er zelf bij. Die verbinding valt bij een kopieeropdracht
+stil dicht (`Connection closed`). Je hebt de tweede nodig, *SSH over exposed
+TCP*, met een hoge poort rond de 30000:
+
+```
+ssh root@157.157.221.29 -p 33030 -i ~/.ssh/id_ed25519
+```
+
+Dat nummer verandert bij elke nieuwe pod. Kleine `-p` bij `ssh`, hoofdletter
+`-P` bij `scp`. Probeer je 22, dan krijg je geen weigering maar een
+`Connection timed out` — er luistert daar niets. Staat die tweede regel er
+helemaal niet, dan is poort 22 bij het aanmaken niet als *exposed TCP port*
+opgegeven; toevoegen kan niet meer op een draaiende pod.
+
+**Je publieke sleutel wordt alleen bij het opstarten geïnstalleerd.** RunPod
+schrijft de sleutels uit je accountinstellingen in `/root/.ssh/authorized_keys`
+op het moment dat de pod start. Zet je een sleutel er daarna bij, dan bereikt
+die een draaiende pod niet. Je merkt het aan een wachtwoordprompt — en omdat er
+geen root-wachtwoord is, blijft die eeuwig weigeren. Kijk met `ssh -v` of de
+sleutel wordt aangeboden én geaccepteerd. Een nieuwe pod starten met dezelfde
+sleutel is de schone oplossing; het netwerkvolume gaat gewoon mee.
+
+**Geef de sleutel expliciet mee.** Zonder `-i` probeert OpenSSH alleen de
+standaardnamen in `~/.ssh/`. Let op de naamgeving: `ssh-keygen -f runpod.pub`
+levert de *private* sleutel op als `runpod.pub` en de publieke als
+`runpod.pub.pub` — je geeft dan de eerste mee, hoe verkeerd dat ook oogt.
+
+Twee uitwegen als de sleutel niet werkt en je de pod niet opnieuw wilt starten:
+
+- De **web terminal** in het dashboard vraagt geen sleutel. Daar plak je de
+  sleutel alsnog in `authorized_keys`, of je verstuurt de tarball met
+  `runpodctl send <bestand>`; lokaal haal je hem op met `runpodctl receive
+  <code>`. Dat loopt over hetzelfde kanaal als de proxy en heeft geen API-sleutel
+  nodig.
+- **Jupyter** op poort 8888 heeft een bestandsbrowser met downloadknop. Alleen
+  losse bestanden, geen mappen, dus pak eerst in — `scripts/pod.sh all` doet dat
+  aan het eind al (`/workspace/stresstest-results-<datum>.tar.gz`), en anders:
+
+  ```bash
+  tar -czf /workspace/results.tar.gz -C /workspace/AgenticStressTest results
+  ```
+
+Is `/workspace` leeg op de nieuwe pod, dan hangt er een ander netwerkvolume
+onder dan bij de run. De resultaten staan op het volume, niet op de container
+disk; controleer bij de pod-instellingen welk volume gekoppeld is.
+
 ## Shell en gereedschap
 
 - **`tail -20 map/pod-*.log` weigert zodra er twee logbestanden zijn:**
