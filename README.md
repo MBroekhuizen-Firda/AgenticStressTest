@@ -240,11 +240,74 @@ Doe dit meteen bij het aanmaken:
 ### De resultaten ophalen
 
 `scripts/pod.sh all` pusht ze zelf naar de repo en stopt de pod pas als dat
-gelukt is. Zet daarvoor vooraf een remote klaar die mag pushen:
+gelukt is. Daar zijn twee sleutels voor nodig, en het is makkelijk ze te
+verwarren: **GitHub** geeft de pod het recht om te pushen, **RunPod** geeft hem
+het recht om zichzelf uit te zetten.
+
+#### 1. Een GitHub-token om te kunnen pushen
+
+Een gehuurde pod heeft geen toegang tot je repo. Maak een *fine-grained*
+personal access token — die is per repo af te bakenen, in tegenstelling tot de
+klassieke:
+
+1. GitHub → *Settings* → *Developer settings* → *Personal access tokens* →
+   *Fine-grained tokens* → **Generate new token**.
+2. **Repository access**: *Only select repositories*, en kies alleen deze repo.
+3. **Permissions** → *Repository permissions* → **Contents: Read and write**.
+   Meer is niet nodig; laat de rest op *No access*.
+4. **Expiration**: kort. De meting duurt een dag, dus zet hem op zeven dagen.
+
+Zet hem op de pod als remote, zonder dat hij in je shell-geschiedenis komt:
 
 ```bash
-git remote set-url origin https://<token>@github.com/<eigenaar>/<repo>.git
+read -rsp 'GitHub-token: ' GH_TOKEN && echo
+git remote set-url origin \
+  "https://x-access-token:$GH_TOKEN@github.com/<eigenaar>/<repo>.git"
 ```
+
+Twee dingen om te weten. De token staat daarna in platte tekst in
+`.git/config` op de pod; dat is te overzien op een machine die je binnen een
+dag termineert, maar het is wel een reden om hem daarna in te trekken in plaats
+van te bewaren. En een token met schrijfrechten op één repo is het minimum dat
+werkt — geef hem geen organisatiebrede rechten omdat het sneller klikt.
+
+Liever geen token in een URL? Een **deploy key** doet hetzelfde met SSH: maak op
+de pod een sleutel (`ssh-keygen -t ed25519`), plak de publieke helft onder
+*Settings* → *Deploy keys* van de repo met *Allow write access* aan, en gebruik
+de `git@github.com:` remote. Die sleutel geldt per definitie voor één repo.
+
+Controleer voor je begint of het werkt — een mislukte push merk je liever nu
+dan na zeven uur meten:
+
+```bash
+git ls-remote origin >/dev/null && echo "push-toegang in orde"
+```
+
+#### 2. Een RunPod-API-sleutel om de pod te stoppen
+
+`pod.sh` stopt de pod met `runpodctl stop pod $RUNPOD_POD_ID`. Lukt dat niet,
+dan valt hij terug op `poweroff` — en dat stopt de *container*, niet
+noodzakelijk de pod: de opslag tikt dan door. Voor de doodsklok en het
+automatisch afsluiten wil je dus dat `runpodctl` werkt.
+
+1. RunPod → *Settings* → *API Keys* → **Create API Key**, met schrijfrechten op
+   pods.
+2. Op de pod:
+
+```bash
+read -rsp 'RunPod API key: ' RUNPOD_KEY && echo
+runpodctl config --apiKey "$RUNPOD_KEY"
+```
+
+`RUNPOD_POD_ID` zet RunPod zelf al in de omgeving van de pod; controleer met
+`echo $RUNPOD_POD_ID`. Is die leeg, dan kan `pod.sh` de pod niet bij naam
+stoppen en moet je het zelf doen in het dashboard.
+
+Sla beide sleutels op als *Secret* in je RunPod-template als je vaker meet; dan
+staan ze bij de start al in de omgeving en hoef je ze niet per pod te plakken.
+Trek ze in zodra de meetreeks klaar is.
+
+#### Waar de resultaten belanden
 
 De resultaten belanden op een eigen branch, `resultaten/<kaart>-<tijdstempel>`,
 of op de branch die je met `--branch` meegeeft. `results/` staat in

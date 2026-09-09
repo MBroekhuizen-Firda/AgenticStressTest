@@ -204,10 +204,14 @@ de uitkomst vermeld.
 ## Draaien
 
 Zet eerst een remote klaar die mag pushen — `pod.sh` stopt de pod pas als de
-resultaten in de repo staan:
+resultaten in de repo staan. Hoe je het GitHub-token en de RunPod-API-sleutel
+maakt staat in [README hoofdstuk 3](README.md#de-resultaten-ophalen).
 
 ```bash
-git remote set-url origin https://<token>@github.com/<eigenaar>/<repo>.git
+read -rsp 'GitHub-token: ' GH_TOKEN && echo
+git remote set-url origin \
+  "https://x-access-token:$GH_TOKEN@github.com/<eigenaar>/<repo>.git"
+git ls-remote origin >/dev/null && echo "push-toegang in orde"
 
 scripts/pod.sh doctor                              # endpoint, metrics, tokenizer, corpus
 TENSOR_PARALLEL=2 VRAM_GB=64 scripts/pod.sh all --deadman auto
