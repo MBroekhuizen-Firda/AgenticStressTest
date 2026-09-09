@@ -123,6 +123,24 @@ Als bonus zie je meteen hoeveel de conclusie over de 96 GB-kaart zelf verschuift
 door het realistischer gedrag — en dat is een uitspraak die de aanvraag direct
 raakt.
 
+> **Half gedaan.** Op 9 september is hiervan alleen de *lesvalidatie* opnieuw
+> gedraaid, in `results-van-de-gpu/20260909-125855_les/`. Die bonus is meteen
+> ingelost en het antwoord is fors: het lesuur gaat van groen naar oranje, met de
+> p90-doorlooptijd van een instructie van 69 s naar 144 s. Zie
+> [CONCLUSIES-TWEEDE-LESVALIDATIE.md](CONCLUSIES-TWEEDE-LESVALIDATIE.md).
+>
+> **De matrix staat nog open**, en daarmee ook de vergelijkingsbasis voor de
+> 5090-meting: sweep, klifzoeker, engine-varianten en kaartvergelijking zijn nog
+> allemaal gemeten onder het oude, te lichte model. Draai die eerst, voordat je
+> een andere kaart huurt:
+>
+> ```bash
+> ATTENTION_BACKEND=TRITON_ATTN scripts/pod.sh all --skip-lesson --deadman auto
+> ```
+>
+> `--skip-lesson` omdat fase 2 nu net gedraaid is; de backend expliciet omdat de
+> vorige matrix er geen vastlegde (zie punt 8).
+
 **Of houd het oude model aan** door in `config/default.json` `corpus.groups` te
 vervangen door de platte `project`-lijst en `behaviour.work_profiles` weg te
 laten. Dan is de vergelijking zuiver, maar meet je opnieuw met de aanname
@@ -188,6 +206,27 @@ te besparen; dit is de opstelling waarop die vlaggen iets doen.
 
 Dan vergelijkt het rapport opnieuw dezelfde drie kaarten, nu vanaf de andere
 kant van de schaal.
+
+### 8. Zet de attention-backend expliciet
+
+De matrix en de eerste lesvalidatie hebben `"attention_backend": null` in hun
+`environment.json`: de operator koos niets en wat vLLM zelf koos is niet
+vastgelegd. De tweede lesvalidatie draaide op `TRITON_ATTN`, omdat FlashInfer op
+die pod niet wilde bouwen en `pod.sh` sindsdien uitwijkt. Dat is een tweede
+verschil tussen twee runs die je juist wilde vergelijken.
+
+Voor die ene vergelijking is het nagegaan en het bleek niets uit te maken — de
+decodesnelheid per gelijktijdig verzoek is in beide runs dezelfde, zie
+[CONCLUSIES-TWEEDE-LESVALIDATIE.md §4](CONCLUSIES-TWEEDE-LESVALIDATIE.md#4-de-backend-is-niet-de-verklaring).
+Reken daar niet op bij de volgende. Zet hem vast:
+
+```bash
+ATTENTION_BACKEND=TRITON_ATTN scripts/pod.sh all
+```
+
+Een backend die de operator zelf kiest wordt door `pod.sh` nooit vervangen, en
+komt in `environment.json` te staan. Op een kaart waar FlashInfer wél bouwt kun
+je ook voor FlashInfer kiezen — als het maar op beide kaarten dezelfde is.
 
 ---
 

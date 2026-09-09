@@ -1,0 +1,98 @@
+{
+  "kv_pool_gb": 54.93999999999999,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 1,
+  "kv_peak_overall_fraction": 0.26597979527664417,
+  "kv_peak_overall_gb": 14.612929952498828,
+  "kv_peak_overall_run": "les_90min",
+  "kv_peak_overall_label": "Lesvalidatie 90 minuten, 20 studenten",
+  "cliff_per_context": {},
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7,
+      "needed_kv_gb": 14.6,
+      "fits": true,
+      "margin_gb": 19.1,
+      "utilisation_on_alternative": 0.434,
+      "exceeded_by": []
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5,
+      "needed_kv_gb": 14.6,
+      "fits": true,
+      "margin_gb": 11.9,
+      "utilisation_on_alternative": 0.551,
+      "exceeded_by": []
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3,
+      "needed_kv_gb": 14.6,
+      "fits": true,
+      "margin_gb": 40.7,
+      "utilisation_on_alternative": 0.264,
+      "exceeded_by": []
+    }
+  ],
+  "alternatives_basis": "kv_peak_overall_fraction",
+  "scenarios": [],
+  "lesson": {
+    "grade": "oranje",
+    "ttft_p90_s": 0.7450167119968683,
+    "burst_p90_s": 144.439766414417,
+    "preemptions": 0.0,
+    "prefix_cache_hit_rate": 0.9404798802326102,
+    "kv_peak": 0.26597979527664417,
+    "compactions": 250,
+    "compactions_per_100_steps": 6.42508352608584,
+    "context_tokens_peak": 81631
+  },
+  "class_mix": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "doorpakker": 3,
+    "afhaker": 3,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "grading_disagreements": [
+    "les_90min"
+  ]
+}
