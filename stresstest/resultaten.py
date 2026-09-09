@@ -47,7 +47,8 @@ def _verdict_line(colour: str) -> str:
             RED: "**Nee.**"}.get(colour, "**Onbekend.**")
 
 
-def render(results: Sequence[RunResult], config: dict, environment: dict) -> str:
+def render(results: Sequence[RunResult], config: dict, environment: dict,
+           sources: Sequence[str] | None = None) -> str:
     findings = analyse(results, config)
     hardware = resolve_hardware(config)
     class_size = findings.get("class_size", 20)
@@ -62,9 +63,16 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
     add(f"Uitgevoerd op {iso()[:10]}, {findings.get('runs', 0)} runs, "
         f"seed {config.get('seed')}.")
     add("")
-    add("> Dit bestand is automatisch gegenereerd uit de meetgegevens in deze map. "
-        "De onderliggende getallen staan in `summary.csv`; per run staan alle "
-        "afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.")
+    if sources:
+        where = ", ".join(f"`{source}`" for source in sources)
+        add(f"> Dit bestand is automatisch gegenereerd uit de meetgegevens in "
+            f"{where}. De onderliggende getallen staan daar in `summary.csv`; per "
+            f"run staan alle afzonderlijke verzoeken in "
+            f"`runs/<run_id>/requests.csv`.")
+    else:
+        add("> Dit bestand is automatisch gegenereerd uit de meetgegevens in deze "
+            "map. De onderliggende getallen staan in `summary.csv`; per run staan "
+            "alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.")
     add("")
 
     # ---------------------------------------------------------------- kern
@@ -75,21 +83,38 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
     if class_grade:
         add(f"- Een klas van {class_size} studenten komt in de zwaarste geteste "
             f"contextgrootte uit op **{class_grade}**.")
-    if cliff:
+    if cliff is not None:
         broke = findings.get("cliff_broke_at")
-        add(f"- De klif ligt bij **{cliff} gelijktijdige studenten**"
-            + (f"; bij {broke} braken de drempels." if broke else
-               " (de test liep tot het ingestelde maximum zonder te breken)."))
+        if findings.get("cliff_found"):
+            add(f"- De klif ligt bij **{broke} gelijktijdige studenten**; tot "
+                f"{cliff} hield de oplopende run het.")
+        else:
+            add(f"- **Geen klif gevonden op de studenten-as.** De oplopende run "
+                f"liep tot het ingestelde plafond van {findings.get('cliff_ceiling', cliff)} "
+                f"studenten en was daar nog groen — dat plafond is een instelling, "
+                f"geen gemeten grens.")
     if findings.get("kv_peak_fraction") is not None:
-        add(f"- Piekgebruik van de KV-cache: **{_pct(findings['kv_peak_fraction'])}** "
-            f"van de {_n(findings['kv_pool_gb'], ' GB')} cachepool, oftewel "
+        add(f"- Piekgebruik van de KV-cache bij een klas van {class_size}: "
+            f"**{_pct(findings['kv_peak_fraction'])}** van de "
+            f"{_n(findings['kv_pool_gb'], ' GB')} cachepool, oftewel "
             f"**{_n(findings.get('kv_peak_gb'), ' GB')}** in gebruik en "
             f"**{_n(findings.get('kv_headroom_gb'), ' GB')}** over.")
+    if findings.get("kv_peak_overall_fraction") is not None:
+        add(f"- Hoogste piek over alle runs: "
+            f"**{_n(findings.get('kv_peak_overall_gb'), ' GB')}** "
+            f"({_pct(findings['kv_peak_overall_fraction'])}), in "
+            f"`{findings.get('kv_peak_overall_run')}`. Dat is het getal waartegen "
+            f"een kleinere kaart hieronder wordt afgemeten.")
     fitting = [a for a in findings.get("alternatives", []) if a.get("fits")]
     if fitting:
         cheapest = min(fitting, key=lambda a: a.get("price_eur") or 10 ** 9)
-        add(f"- Goedkoopste geteste kaart die volgens deze meting past: "
-            f"**{cheapest['name']}** ({_n(cheapest.get('price_eur'), ' euro', 0)}).")
+        add(f"- Goedkoopste geteste kaart die de zwaarste gemeten run nog aankan: "
+            f"**{cheapest['name']}** ({_n(cheapest.get('price_eur'), ' euro', 0)}) "
+            f"— op geheugen alleen; over de rekenkracht van die kaart zegt deze "
+            f"meting niets.")
+    elif findings.get("alternatives"):
+        add("- Geen van de goedkopere geteste kaarten heeft genoeg cachegeheugen "
+            "voor de zwaarste gemeten run.")
     add("")
 
     # ------------------------------------------------------------ vraag 1
@@ -119,6 +144,17 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
                 f"{_n(hardware.get('vram_gb'), ' GB', 0)} x "
                 f"{hardware.get('gpu_memory_utilization')} min "
                 f"{_n(hardware.get('model_weights_gb'), ' GB')} aan modelgewichten.")
+            overall = findings.get("kv_peak_overall_gb")
+            if overall is not None and findings.get("kv_peak_overall_run") not in (
+                    None, findings.get("class_worst_run")):
+                add("")
+                add(f"Dat getal geldt voor de sweep-runs met {class_size} studenten. "
+                    f"Over *alle* runs samen ligt de piek hoger: "
+                    f"{_n(overall, ' GB')} "
+                    f"({_pct(findings.get('kv_peak_overall_fraction'))}) in "
+                    f"`{findings.get('kv_peak_overall_run')}` — "
+                    f"{findings.get('kv_peak_overall_label')}. Vraag 3 rekent met "
+                    f"die hogere piek.")
         else:
             add("De KV-cachebezetting is niet gemeten; zonder bereikbare "
                 "`/metrics`-endpoint kan de geheugenmarge niet worden bepaald.")
@@ -134,11 +170,28 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
     # ------------------------------------------------------------ vraag 2
     add("## 2. Waar ligt de klif?")
     add("")
-    if cliff:
+    if cliff is not None:
         reasons = findings.get("cliff_reasons") or []
-        add(f"De oplopende run hield het uit tot **{cliff} gelijktijdige studenten**.")
-        if reasons:
-            add(f"Bij de volgende student braken: {', '.join(reasons)}.")
+        context = findings.get("cliff_context_tokens")
+        where = f" bij {context // 1000}k context" if context else ""
+        step = findings.get("cliff_step_students") or 1
+        if findings.get("cliff_found"):
+            add(f"De oplopende run brak bij **{findings.get('cliff_broke_at')} "
+                f"gelijktijdige studenten**{where}; tot {cliff} hield hij het.")
+            if reasons:
+                add(f"Wat er brak: {', '.join(reasons)}.")
+            if step > 1:
+                add(f"De run stapte met {step} studenten tegelijk, dus de grens ligt "
+                    f"ergens tussen {cliff} en {findings.get('cliff_broke_at')}. "
+                    f"Zet `matrix.rampup.step_students` op 1 om hem preciezer te "
+                    f"zoeken.")
+        else:
+            ceiling = findings.get("cliff_ceiling", cliff)
+            add(f"**Op de studenten-as is geen klif gevonden.** De oplopende run "
+                f"liep{where} door tot het ingestelde plafond van {ceiling} studenten "
+                f"en was daar nog groen. Die {ceiling} is dus de bovengrens van de "
+                f"test (`matrix.rampup.max_students`), niet een gemeten grens: "
+                f"verhoog hem om verder te zoeken.")
         add("")
     add("Per contextgrootte, het aantal studenten waarbij het oordeel omslaat:")
     add("")
@@ -156,23 +209,46 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
     # ------------------------------------------------------------ vraag 3
     add("## 3. Zou minder videogeheugen ook volstaan?")
     add("")
-    if not findings.get("alternatives") or findings.get("kv_peak_fraction") is None:
+    if not findings.get("alternatives") or findings.get("kv_peak_overall_fraction") is None:
         add("_Zonder gemeten KV-cachebezetting is deze vraag niet te beantwoorden. "
             "Controleer of `/metrics` bereikbaar was tijdens de runs._")
     else:
-        add(f"De zwaarste geteste klas gebruikte **{_n(findings.get('kv_peak_gb'), ' GB')}** "
-            f"aan KV-cache. Diezelfde behoefte afgezet tegen de alternatieven:")
+        add(f"Er zijn twee getallen in omloop, en ze geven een ander antwoord. Een "
+            f"klas van {class_size} in de sweep kwam niet hoger dan "
+            f"**{_n(findings.get('kv_peak_gb'), ' GB')}**. De zwaarste run uit de "
+            f"hele meting — `{findings.get('kv_peak_overall_run')}`, "
+            f"{findings.get('kv_peak_overall_label')} — vroeg "
+            f"**{_n(findings.get('kv_peak_overall_gb'), ' GB')}**. De kolom "
+            f"**Past?** hieronder oordeelt op dat tweede getal: een kaart die de "
+            f"zwaarste gemeten belasting niet aankan, kun je niet aanbevelen omdat "
+            f"het gemiddelde er wel op past.")
         add("")
-        add("| Kaart | Videogeheugen | Cachepool | Nodig | Marge | Past? | Prijs |")
-        add("|---|---|---|---|---|---|---|")
+        add("| Kaart | Videogeheugen | Cachepool | Nodig (klas) | Nodig (zwaarste run) | Marge | Past? | Prijs |")
+        add("|---|---|---|---|---|---|---|---|")
         for alternative in findings["alternatives"]:
             add(f"| {alternative['name']} | {_n(alternative.get('vram_gb'), ' GB', 0)} "
                 f"| {_n(alternative.get('kv_pool_gb'), ' GB')} "
+                f"| {_n(alternative.get('needed_kv_class_gb'), ' GB')} "
                 f"| {_n(alternative.get('needed_kv_gb'), ' GB')} "
                 f"| {_n(alternative.get('margin_gb'), ' GB')} "
-                f"| {'ja' if alternative.get('fits') else 'nee'} "
+                f"| {'ja' if alternative.get('fits') else '**nee**'} "
                 f"| {_n(alternative.get('price_eur'), ' euro', 0)} |")
         add("")
+        short = [a for a in findings["alternatives"] if a.get("exceeded_by")]
+        if short:
+            add("Welke runs er op welke kaart niet passen:")
+            add("")
+            for alternative in short:
+                runs = alternative["exceeded_by"]
+                add(f"- **{alternative['name']}**: {len(runs)} van "
+                    f"{findings.get('runs')} runs — {', '.join(f'`{r}`' for r in runs)}.")
+            add("")
+            add("Of die runs binnen bereik horen te vallen, is een keuze en geen "
+                "meting: de worst case is met opzet extreem en komt bij een klas "
+                "die aan dezelfde opdracht werkt niet voor. Maar hij staat wel in "
+                "de opdracht, dus wie hem meerekent koopt een andere kaart dan wie "
+                "hem weglaat. Zet die keuze expliciet op papier.")
+            add("")
         add("Deze vergelijking rekent alleen met geheugen. Een kaart met minder "
             "geheugen heeft doorgaans ook minder rekenkracht en geheugenbandbreedte, "
             "wat de doorlooptijd van een instructie raakt ook als het geheugen past. "
@@ -192,8 +268,24 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
                 f"| {_n(entry.get('preemptions'), '', 0)} "
                 f"| {_pct(entry.get('prefix_cache_hit_rate'))} |")
         add("")
+        equivalent = findings.get("engine_equivalent") or []
+        noise = findings.get("engine_ttft_noise_s")
         add(f"Beste variant in deze meting: **{findings.get('engine_best')}** "
             f"(`{findings.get('engine_best_flags')}`).")
+        if noise:
+            add("")
+            add(f"De keuze is niet op p90 TTFT gemaakt. Alle varianten zitten daar "
+                f"ver onder de groen-grens, en een verschil kleiner dan "
+                f"{_n(noise, ' s')} — vijf procent van die grens — is ruis, geen "
+                f"signaal. Wat wél uiteenloopt is de cachebezetting, en daarop is "
+                f"gerangschikt.")
+        if len(equivalent) > 1:
+            add("")
+            add(f"Binnen de meetruis gelijkwaardig: "
+                f"{', '.join('`' + name + '`' for name in equivalent)}. De vlaggen "
+                f"die deze varianten onderscheiden doen op deze kaart dus niets — "
+                f"wat niet wil zeggen dat ze op een kleinere kaart niets doen, "
+                f"want daar komt de geheugendruk wel in de buurt van de grens.")
     else:
         add("_Er zijn geen vLLM-variantruns in deze resultatenmap. Die vereisen een "
             "herstart van de server per variant; zie `stresstest matrix --only engine`._")
@@ -245,9 +337,10 @@ def render(results: Sequence[RunResult], config: dict, environment: dict) -> str
             f"{_pct(lesson.get('prefix_cache_hit_rate'))}, KV-piek "
             f"{_pct(lesson.get('kv_peak'))}.")
         add("")
-        add("De grafiek `charts/04_cache_en_kv_over_tijd.svg` laat zien wat er tijdens "
-            "de tien minuten klassikale uitleg met de cache gebeurt, en hoe duur de "
-            "eerste stap daarna is.")
+        add("De grafiek `04_cache_en_kv_over_tijd.svg`, in de `charts`-map van de "
+            "resultatenmap van de lesvalidatie, laat zien wat er tijdens de tien "
+            "minuten klassikale uitleg met de cache gebeurt, en hoe duur de eerste "
+            "stap daarna is.")
         add("")
 
     # ------------------------------------------------------------ drempels

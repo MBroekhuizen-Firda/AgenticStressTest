@@ -327,15 +327,22 @@ class RunEngine:
 
     async def _ramp_controller(self, state: "_RunState",
                                profiles: Sequence[StudentProfile]) -> None:
-        """Add one student every ``step_interval_s`` until the thresholds break.
+        """Add ``step_students`` students every ``step_interval_s`` until the
+        thresholds break.
 
         One run that answers 'how many students fit' directly, and it is
         reusable against any hardware configuration without changing anything.
+
+        A bigger step trades resolution for wall-clock time: the answer is then
+        accurate to within ``step_students``, which is the right trade when the
+        cliff is far from the starting point. ``max_students_ok`` stays the last
+        step that held, so a coarse run never claims more than it measured.
         """
         ramp = state.spec.ramp or {}
         start_students = int(ramp.get("start_students", 5))
         interval = float(ramp.get("step_interval_s", 120))
         max_students = int(ramp.get("max_students", len(profiles)))
+        step_students = max(int(ramp.get("step_students", 1)), 1)
         thresholds = dict(self.config.get("grading", {}).get("thresholds") or {})
         ttft_limit = float(ramp.get("ttft_p90_limit_s")
                            or thresholds.get("ttft_p90_amber_s") or 45.0)
@@ -344,8 +351,8 @@ class RunEngine:
         error_limit = float(ramp.get("error_rate_limit") or 0.02)
 
         state.activate_through(start_students)
-        log(f"klifzoeker: start met {start_students} studenten, +1 per {interval:.0f}s",
-            color="bold")
+        log(f"klifzoeker: start met {start_students} studenten, "
+            f"+{step_students} per {interval:.0f}s tot {max_students}", color="bold")
         steps: list[dict] = []
         last_ok = start_students
         active = start_students
@@ -391,17 +398,22 @@ class RunEngine:
                 f"{'GEBROKEN: ' + ', '.join(broke) if broke else 'ok'}", color=colour)
             if broke:
                 state.ramp_result = {"max_students_ok": last_ok, "broke_at": active,
-                                     "reasons": broke, "steps": steps}
+                                     "reasons": broke, "steps": steps,
+                                     "step_students": step_students}
                 state.stop.set()
                 return
             last_ok = active
             if active >= max_students:
                 break
-            active += 1
+            # Never overshoot the ceiling: a last step of one student is a
+            # smaller step than asked for, not a run past the configured
+            # maximum.
+            active = min(active + step_students, max_students)
             state.activate_through(active)
 
         state.ramp_result = {"max_students_ok": last_ok, "broke_at": None,
-                             "reasons": [], "steps": steps}
+                             "reasons": [], "steps": steps,
+                             "step_students": step_students}
         state.stop.set()
 
     # -------------------------------------------------------------- display

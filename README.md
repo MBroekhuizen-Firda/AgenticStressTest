@@ -239,7 +239,24 @@ Doe dit meteen bij het aanmaken:
 
 ### De resultaten ophalen
 
-Doe dit vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
+`scripts/pod.sh all` pusht ze zelf naar de repo en stopt de pod pas als dat
+gelukt is. Zet daarvoor vooraf een remote klaar die mag pushen:
+
+```bash
+git remote set-url origin https://<token>@github.com/<eigenaar>/<repo>.git
+```
+
+De resultaten belanden op een eigen branch, `resultaten/<kaart>-<tijdstempel>`,
+of op de branch die je met `--branch` meegeeft. `results/` staat in
+`.gitignore` — dat is voor lokale proefdraaien; deze meting wordt bewust met
+`git add -f` toegevoegd.
+
+Mislukt de push, dan blijft de pod draaien en blijft de doodsklok staan: de
+meting bestaat dan nog maar op één plek en de machine mag niet zomaar
+verdwijnen. Wil je helemaal niet pushen, gebruik dan `--no-push` — en haal ze
+dan zelf op, want dan stopt de pod ook niet uit zichzelf.
+
+Handmatig ophalen kan altijd nog. Doe dat vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
 ruwe verzoekregels zijn het waardevolst, want daarmee kun je later andere
 vragen beantwoorden zonder opnieuw te huren. `scripts/pod.sh all` pakt aan het
 eind alles in als `/workspace/stresstest-results-<datum>.tar.gz`; dat ene
@@ -543,8 +560,14 @@ python3 -m stresstest plan --price-per-hour 3.36
 ```
 
 Dit toont alle runs, hoe lang ze duren en wat de huur ongeveer kost. Fase 1 is
-38 runs en ongeveer **5 uur 40**, waarvan de klifzoeker het grootste blok is
+38 runs en ongeveer **4 uur 45**, waarvan de klifzoeker het grootste blok is
 (die stopt zodra de drempels breken, meestal ruim eerder dan het maximum).
+
+De klifzoeker stapt standaard met twee studenten tegelijk
+(`matrix.rampup.step_students`). Dat halveert de duurste run van de matrix en
+maakt het antwoord op twee studenten na nauwkeurig; zet hem op 1 als je de
+grens precies wilt weten, en begin dan met `start_students` vlak onder de
+verwachte grens.
 
 ### 5.4 Fase 1: de matrix
 
@@ -615,6 +638,18 @@ Grafieken en conclusie opnieuw maken van bestaande metingen, zonder GPU:
 ```bash
 python3 -m stresstest report results/20260420-101422_matrix
 ```
+
+Fase 1 en fase 2 landen in aparte mappen, dus geen van beide bevat het hele
+antwoord. Eén rapport over allebei, zonder de meetmappen zelf aan te raken:
+
+```bash
+python3 -m stresstest report results/20260420-101422_matrix \
+  --also results/20260420-183012_les --out RESULTATEN.md
+```
+
+De kaart moet in beide mappen dezelfde zijn; anders weigert het commando, want
+een rapport dat stilletjes twee kaarten mengt is slechter dan twee rapporten
+die er ieder de helft van dekken.
 
 ---
 
@@ -782,12 +817,12 @@ Bij $ 2,31 tot $ 3,36 per uur voor een RTX PRO 6000 Blackwell:
 | Fase 1 — gedeelde projectbasis (6 runs) | ~42 min | $ 1,60 – $ 2,35 |
 | Fase 1 — benoemde scenario's (6 runs) | ~50 min | $ 1,90 – $ 2,80 |
 | Fase 1 — vLLM-varianten (5 runs + herstarts) | ~45 min | $ 1,75 – $ 2,50 |
-| Fase 1 — klifzoeker (1 run) | 30 – 75 min | $ 1,15 – $ 4,20 |
-| **Fase 1 totaal** | **~5 u 40** | **$ 13 – $ 19** |
+| Fase 1 — klifzoeker (1 run, stappen van 2) | 20 – 40 min | $ 0,75 – $ 2,25 |
+| **Fase 1 totaal** | **~4 u 45** | **$ 11 – $ 16** |
 | Fase 2 — lesvalidatie van 90 minuten | ~1 u 40 | $ 3,85 – $ 5,60 |
-| **Alles bij elkaar** | **~7 u 15** | **$ 17 – $ 25** |
+| **Alles bij elkaar** | **~6 u 25** | **$ 15 – $ 22** |
 
-Ongeveer € 16 tot € 23. Ruim een tiende procent van de aanvraag.
+Ongeveer € 14 tot € 20. Ruim een tiende procent van de aanvraag.
 
 Wil je het op twee of drie kaarten doen om ze te kunnen vergelijken,
 vermenigvuldig dan met twee of drie: nog steeds onder de honderd euro.
@@ -948,7 +983,7 @@ python3 -m stresstest calibrate              # ijk de tokenschatting op dit corp
 python3 -m stresstest plan --price-per-hour 3.36
 python3 -m stresstest corpus                 # haal de voorbeeldprojecten binnen
 python3 -m stresstest matrix                 # fase 1, ~5u40
-python3 -m stresstest matrix --only rampup   # alleen de klifzoeker, ~30 min
+python3 -m stresstest matrix --only rampup   # alleen de klifzoeker, ~40 min
 python3 -m stresstest lesson                 # fase 2, ~1u40
 python3 -m stresstest run --students 24 --context 48000
 python3 -m stresstest report results/<map>   # grafieken en conclusie opnieuw

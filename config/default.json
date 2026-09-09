@@ -234,6 +234,13 @@
       "start_students": 5,
       "max_students": 40,
       "step_interval_s": 120,
+      // Hoeveel studenten er per stap bij komen. Op 1 duurt de klifzoeker
+      // (max - start) x step_interval_s, bij deze waarden ruim een uur, en dat
+      // is de duurste run van de hele matrix. Op 2 is hij half zo lang en is
+      // het antwoord op twee studenten nauwkeurig -- ruim genoeg zolang de
+      // klif ver van het startpunt ligt. Zet hem op 1 als je hem precies wilt
+      // weten, en zoek dan met start_students dicht bij de verwachte grens.
+      "step_students": 2,
       "context_tokens": 32000,
       "shared_fraction": 0.5,
       "activity": "normaal",

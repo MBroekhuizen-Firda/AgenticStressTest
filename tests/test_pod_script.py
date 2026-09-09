@@ -303,5 +303,84 @@ class TestFlashInferFallback(unittest.TestCase):
                       "the flag needs a default outside start_server")
 
 
+class TestPushingResults(unittest.TestCase):
+    """The results only become safe once they leave the rented machine, and
+    the pod is only allowed to stop after that has happened."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _repo(self, with_remote: bool) -> str:
+        """A throwaway clone with results/ ignored, like the real one."""
+        origin = os.path.join(self.tmp, "origin.git")
+        subprocess.run(["git", "init", "--bare", "-q", origin], check=True)
+        repo = os.path.join(self.tmp, "repo")
+        subprocess.run(["git", "init", "-q", "-b", "main", repo], check=True)
+        with open(os.path.join(repo, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write("results/\n")
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", "-C", repo, "add", ".gitignore"], check=True)
+        subprocess.run(["git", "-C", repo, "commit", "-qm", "init"], check=True, env=env)
+        if with_remote:
+            subprocess.run(["git", "-C", repo, "remote", "add", "origin", origin],
+                           check=True)
+        os.makedirs(os.path.join(repo, "results", "20260909_matrix"))
+        with open(os.path.join(repo, "results", "20260909_matrix", "RESULTATEN.md"),
+                  "w", encoding="utf-8") as handle:
+            handle.write("# meting\n")
+        return repo, origin
+
+    def _harness(self, repo: str, tail: str) -> str:
+        text = script_text()
+        found = re.search(r"^push_results\(\) \{.*?^\}", text, re.M | re.S)
+        self.assertIsNotNone(found, "push_results is gone")
+        return ("set -Eeuo pipefail\n"
+                f'REPO_DIR="{repo}"\n'
+                'GPU_NAME="NVIDIA RTX PRO 6000 Blackwell (600W)"\n'
+                'PUSH_RETRIES=1\n'
+                'RESULTS_BRANCH=""\n'
+                'say()   { echo "$*"; }\n'
+                'warn()  { echo "LET OP: $*" >&2; }\n'
+                'head_() { echo "$*"; }\n'
+                + found.group(0) + "\n" + tail)
+
+    def test_results_are_pushed_even_though_gitignore_excludes_them(self):
+        repo, origin = self._repo(with_remote=True)
+        done = subprocess.run(
+            ["bash", "-c", self._harness(repo, 'push_results results/20260909_matrix\n')],
+            capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        listing = subprocess.run(
+            ["git", "--git-dir", origin, "log", "--all", "--name-only", "--format="],
+            capture_output=True, text=True, check=True).stdout
+        self.assertIn("results/20260909_matrix/RESULTATEN.md", listing,
+                      "results/ is in .gitignore, so it needs `git add -f`")
+
+    def test_a_missing_remote_fails_instead_of_reporting_success(self):
+        """A push that silently did nothing would let the pod stop on top of
+        results that exist nowhere else."""
+        repo, _ = self._repo(with_remote=False)
+        done = subprocess.run(
+            ["bash", "-c", self._harness(repo, 'push_results results/20260909_matrix\n')],
+            capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(done.returncode, 0, done.stdout)
+        self.assertIn("origin", done.stderr)
+
+    def test_the_pod_only_stops_after_a_successful_push(self):
+        text = script_text()
+        body = re.search(r'^cmd_all\(\) \{.*?^\}', text, re.M | re.S)
+        self.assertIsNotNone(body, "cmd_all is gone")
+        tail = body.group(0)
+        self.assertIn('push_results "$dir" "$lesson_dir" && pushed=1', tail,
+                      "the shutdown must hang on the push actually succeeding")
+        self.assertIn('if [ "$pushed" = 1 ] || [ "$SHUTDOWN_WHEN_DONE" = 1 ]', tail)
+        # A failed push must not disarm the deadman: the pod stays up so the
+        # results can be fetched, but not forever.
+        failure_branch = tail.split('elif [ "$PUSH_RESULTS" = 1 ]; then')[1]
+        self.assertNotIn("disarm_deadman", failure_branch.split("else")[0])
+
+
 if __name__ == "__main__":
     unittest.main()

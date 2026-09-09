@@ -27,27 +27,47 @@
   },
   "hardware_defaults_used": [],
   "runs": 1,
+  "kv_peak_overall_fraction": 0.1544031049250535,
+  "kv_peak_overall_gb": 8.482906584582437,
+  "kv_peak_overall_run": "les_90min",
+  "kv_peak_overall_label": "Lesvalidatie 90 minuten, 20 studenten",
   "cliff_per_context": {},
   "alternatives": [
     {
       "name": "RTX PRO 5000 (72 GB)",
       "vram_gb": 72.0,
       "price_eur": 7602,
-      "kv_pool_gb": 33.7
+      "kv_pool_gb": 33.7,
+      "needed_kv_gb": 8.5,
+      "fits": true,
+      "margin_gb": 25.2,
+      "utilisation_on_alternative": 0.252,
+      "exceeded_by": []
     },
     {
       "name": "2x RTX 5090 (64 GB)",
       "vram_gb": 64.0,
       "price_eur": 10000,
-      "kv_pool_gb": 26.5
+      "kv_pool_gb": 26.5,
+      "needed_kv_gb": 8.5,
+      "fits": true,
+      "margin_gb": 18.0,
+      "utilisation_on_alternative": 0.32,
+      "exceeded_by": []
     },
     {
       "name": "RTX PRO 6000 (96 GB)",
       "vram_gb": 96.0,
       "price_eur": 37400,
-      "kv_pool_gb": 55.3
+      "kv_pool_gb": 55.3,
+      "needed_kv_gb": 8.5,
+      "fits": true,
+      "margin_gb": 46.8,
+      "utilisation_on_alternative": 0.153,
+      "exceeded_by": []
     }
   ],
+  "alternatives_basis": "kv_peak_overall_fraction",
   "scenarios": [],
   "lesson": {
     "grade": "groen",

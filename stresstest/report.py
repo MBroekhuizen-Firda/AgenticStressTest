@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Sequence
 
 from . import pngplot, svgplot
-from .grading import GREEN, RED
+from .grading import DEFAULT_THRESHOLDS, GREEN, ORDER, RED
 from .runner import RunResult
 from .util import iso, log, write_csv, write_json
 
@@ -304,6 +305,12 @@ def resolve_hardware(config: dict) -> dict[str, Any]:
     return hardware
 
 
+def _kv_peak(result: RunResult) -> float | None:
+    """The measured KV-cache peak of one run, or None when /metrics was absent."""
+    peak = result.server.get("kv_cache_usage_peak")
+    return None if peak is None else float(peak)
+
+
 def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
     hardware = resolve_hardware(config)
     vram = float(hardware["vram_gb"])
@@ -327,8 +334,8 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
     twenty = [r for r in sweep if r.spec.students == class_size]
     if twenty:
         worst = max(twenty, key=lambda r: {"groen": 0, "oranje": 1, "rood": 2}[r.grade.colour])
-        peaks = [r.server.get("kv_cache_usage_peak") for r in twenty
-                 if r.server.get("kv_cache_usage_peak") is not None]
+        peaked = [(r.spec.run_id, _kv_peak(r)) for r in twenty if _kv_peak(r) is not None]
+        peaks = [peak for _, peak in peaked]
         findings["class_size"] = class_size
         findings["class_grades"] = {f"{r.spec.context_tokens // 1000}k": r.grade.colour
                                     for r in twenty}
@@ -339,13 +346,34 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
             findings["kv_peak_gb"] = max(peaks) * pool_gb
             findings["kv_headroom_gb"] = pool_gb - max(peaks) * pool_gb
             findings["kv_headroom_fraction"] = 1.0 - max(peaks)
+            findings["class_worst_run"] = max(peaked, key=lambda item: item[1])[0]
+
+    # The highest KV peak over *every* run, not just the class-sized sweep.
+    # Sizing a smaller card against the sweep peak alone silently drops the
+    # scenarios the brief itself names -- the worst case above all -- and those
+    # are exactly the runs that decide whether less memory is enough.
+    measured = [(r.spec.run_id, _kv_peak(r)) for r in results if _kv_peak(r) is not None]
+    if measured:
+        worst_run, worst_peak = max(measured, key=lambda item: item[1])
+        findings["kv_peak_overall_fraction"] = worst_peak
+        findings["kv_peak_overall_gb"] = worst_peak * pool_gb
+        findings["kv_peak_overall_run"] = worst_run
+        findings["kv_peak_overall_label"] = next(
+            (r.spec.label for r in results if r.spec.run_id == worst_run), worst_run)
 
     # Question 2 -- where is the cliff?
     ramp = next((r for r in results if r.ramp), None)
     if ramp and ramp.ramp:
+        ceiling = (ramp.spec.ramp or {}).get("max_students")
         findings["cliff_students"] = ramp.ramp.get("max_students_ok")
         findings["cliff_broke_at"] = ramp.ramp.get("broke_at")
         findings["cliff_reasons"] = ramp.ramp.get("reasons")
+        findings["cliff_ceiling"] = ceiling
+        # A run that reached its own ceiling found no cliff. Reporting that
+        # ceiling as "the cliff" turns a setting into a measurement.
+        findings["cliff_found"] = ramp.ramp.get("broke_at") is not None
+        findings["cliff_context_tokens"] = ramp.spec.context_tokens
+        findings["cliff_step_students"] = ramp.ramp.get("step_students") or 1
     first_red = {}
     for context in sorted({r.spec.context_tokens for r in sweep}):
         subset = sorted([r for r in sweep if r.spec.context_tokens == context],
@@ -357,21 +385,34 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
 
     # Question 3 -- would less memory do?
     alternatives = []
-    peak_fraction = findings.get("kv_peak_fraction")
+    class_fraction = findings.get("kv_peak_fraction")
+    overall_fraction = findings.get("kv_peak_overall_fraction")
     for alternative in hardware["alternatives"]:
         alt_pool = float(alternative["vram_gb"]) * utilisation - weights
         entry = {"name": alternative.get("name"), "vram_gb": alternative.get("vram_gb"),
                  "price_eur": alternative.get("price_eur"),
                  "kv_pool_gb": round(alt_pool, 1)}
-        if peak_fraction is not None:
-            needed = peak_fraction * pool_gb
+        if class_fraction is not None:
+            needed_class = class_fraction * pool_gb
+            entry["needed_kv_class_gb"] = round(needed_class, 1)
+            entry["fits_class"] = alt_pool >= needed_class
+            entry["margin_class_gb"] = round(alt_pool - needed_class, 1)
+        if overall_fraction is not None:
+            # The verdict is the conservative one: a card has to hold the
+            # heaviest load actually measured, not the average of the sweep.
+            needed = overall_fraction * pool_gb
             entry["needed_kv_gb"] = round(needed, 1)
             entry["fits"] = alt_pool >= needed
             entry["margin_gb"] = round(alt_pool - needed, 1)
             entry["utilisation_on_alternative"] = (round(needed / alt_pool, 3)
                                                    if alt_pool > 0 else None)
+            entry["exceeded_by"] = [run_id for run_id, peak in
+                                    sorted(measured, key=lambda item: -item[1])
+                                    if peak * pool_gb > alt_pool]
         alternatives.append(entry)
     findings["alternatives"] = alternatives
+    findings["alternatives_basis"] = ("kv_peak_overall_fraction" if overall_fraction is not None
+                                      else None)
 
     # Question 4 -- which engine settings matter?
     engine = [r for r in results if r.spec.kind == "engine"]
@@ -385,11 +426,36 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
             "preemptions": r.server.get("preemptions"),
             "prefix_cache_hit_rate": r.server.get("prefix_cache_hit_rate"),
         } for r in engine]
-        best = min(engine, key=lambda r: (
-            {"groen": 0, "oranje": 1, "rood": 2}[r.grade.colour],
-            r.aggregate.get("ttft", {}).get("p90") or 1e9))
+        # Ranking engine variants on p90 TTFT alone lets differences far below
+        # the grading threshold decide the recommendation. A TTFT gap smaller
+        # than 5 % of the green limit is noise here, so it is bucketed away and
+        # the cache headroom -- which differs by more than a factor two between
+        # these variants -- decides instead.
+        thresholds = dict(DEFAULT_THRESHOLDS)
+        thresholds.update(config.get("grading", {}).get("thresholds") or {})
+        noise = max(0.05 * float(thresholds.get("ttft_p90_green_s", 20.0)), 1e-6)
+
+        def _rank(result: RunResult) -> tuple:
+            ttft = result.aggregate.get("ttft", {}).get("p90")
+            ttft = ttft if ttft is not None and ttft == ttft else 1e9
+            peak = _kv_peak(result)
+            return (ORDER[result.grade.colour],
+                    1 if float(result.server.get("preemptions") or 0.0) else 0,
+                    round(ttft / noise),
+                    peak if peak is not None else 1e9)
+
+        best = min(engine, key=_rank)
+        best_rank = _rank(best)
         findings["engine_best"] = best.spec.run_id.replace("engine_", "")
         findings["engine_best_flags"] = best.spec.tags.get("server_flags")
+        findings["engine_ttft_noise_s"] = noise
+        # Variants that are indistinguishable from the winner: same grade, same
+        # TTFT bucket, and a cache peak within one percentage point. Naming them
+        # keeps a reader from reading a ranking into a tie.
+        findings["engine_equivalent"] = [
+            r.spec.run_id.replace("engine_", "") for r in engine
+            if _rank(r)[:3] == best_rank[:3]
+            and abs((_kv_peak(r) if _kv_peak(r) is not None else 1e9) - best_rank[3]) <= 0.01]
 
     # The shared-project-base axis: how much does it actually save?
     shared = [r for r in results if r.spec.kind == "shared"]
@@ -477,8 +543,12 @@ def load_results(directory: str) -> tuple[list[RunResult], dict, dict]:
         grade = Grade(**payload["grade"])
         grade_brief = Grade(**payload["grade_brief_definition"])
         metric_rows = _read_csv(os.path.join(runs_dir, run_id, "server_metrics.csv"))
+        # Without these the regenerated summary reports every run as lasting
+        # zero seconds -- a measurement quietly replaced by a placeholder.
+        started = _epoch(payload.get("started"))
+        finished = _epoch(payload.get("finished"))
         results.append(RunResult(
-            spec=spec, started_wall=0.0, finished_wall=0.0,
+            spec=spec, started_wall=started, finished_wall=finished,
             aggregate=payload["aggregate"], server=payload["server"],
             grade=grade, grade_brief=grade_brief,
             composition=payload.get("composition", {}),
@@ -486,6 +556,17 @@ def load_results(directory: str) -> tuple[list[RunResult], dict, dict]:
             ramp=payload.get("ramp"),
         ))
     return results, config, environment
+
+
+def _epoch(stamp: Any) -> float:
+    """Parse the ISO stamps written into run.json back to a UTC epoch."""
+    if not isinstance(stamp, str) or not stamp:
+        return 0.0
+    import calendar
+    try:
+        return float(calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")))
+    except ValueError:
+        return 0.0
 
 
 def _read_csv(path: str) -> list[dict]:

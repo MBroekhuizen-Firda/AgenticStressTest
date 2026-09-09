@@ -8,5 +8,6 @@ venv/
 corpus_cache/
 
 # Meetresultaten van lokale proefdraaien. Resultaten die je wilt bewaren,
-# commit je bewust met `git add -f results/<map>`.
+# commit je bewust met `git add -f results/<map>` -- dat is precies wat
+# scripts/pod.sh aan het eind van een echte meting doet.
 results/

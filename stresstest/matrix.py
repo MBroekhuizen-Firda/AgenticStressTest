@@ -213,10 +213,13 @@ def build_rampup(config: dict) -> list[RunSpec]:
     start = int(block.get("start_students", 5))
     max_students = int(block.get("max_students", 40))
     interval = float(block.get("step_interval_s", 120))
-    duration = interval * (max_students - start + 2)
+    step = max(int(block.get("step_students", 1)), 1)
+    # math.ceil without the import: how many steps to walk from start to max.
+    steps = -(-(max_students - start) // step)
+    duration = interval * (steps + 2)
     return [RunSpec(
         run_id="rampup",
-        label=f"Klifzoeker: {start} studenten, +1 per {int(interval)}s tot het breekt",
+        label=f"Klifzoeker: {start} studenten, +{step} per {int(interval)}s tot het breekt",
         kind="rampup", students=max_students,
         context_tokens=int(block.get("context_tokens", 32000)),
         activity=block.get("activity", "normaal"),
@@ -230,6 +233,7 @@ def build_rampup(config: dict) -> list[RunSpec]:
             "start_students": start,
             "max_students": max_students,
             "step_interval_s": interval,
+            "step_students": step,
             "ttft_p90_limit_s": block.get("ttft_p90_limit_s"),
             "burst_p90_limit_s": block.get("burst_p90_limit_s"),
             "error_rate_limit": block.get("error_rate_limit", 0.02),

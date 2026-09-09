@@ -40,9 +40,18 @@
   "kv_peak_gb": 15.743045235546035,
   "kv_headroom_gb": 39.196954764453956,
   "kv_headroom_fraction": 0.7134502141327623,
+  "class_worst_run": "sweep_s20_c100k",
+  "kv_peak_overall_fraction": 0.7904175588865097,
+  "kv_peak_overall_gb": 43.42554068522483,
+  "kv_peak_overall_run": "scen_worst_case",
+  "kv_peak_overall_label": "Worst case: 20 studenten, maximale context, geen gedeelde prefix",
   "cliff_students": 40,
   "cliff_broke_at": null,
   "cliff_reasons": [],
+  "cliff_ceiling": 40,
+  "cliff_found": false,
+  "cliff_context_tokens": 32000,
+  "cliff_step_students": 1,
   "cliff_per_context": {
     "8k": {
       "eerste_oranje": null,
@@ -67,32 +76,50 @@
       "vram_gb": 72.0,
       "price_eur": 7602,
       "kv_pool_gb": 33.7,
-      "needed_kv_gb": 15.7,
-      "fits": true,
-      "margin_gb": 18.0,
-      "utilisation_on_alternative": 0.467
+      "needed_kv_class_gb": 15.7,
+      "fits_class": true,
+      "margin_class_gb": 18.0,
+      "needed_kv_gb": 43.4,
+      "fits": false,
+      "margin_gb": -9.7,
+      "utilisation_on_alternative": 1.289,
+      "exceeded_by": [
+        "scen_worst_case"
+      ]
     },
     {
       "name": "2x RTX 5090 (64 GB)",
       "vram_gb": 64.0,
       "price_eur": 10000,
       "kv_pool_gb": 26.5,
-      "needed_kv_gb": 15.7,
-      "fits": true,
-      "margin_gb": 10.8,
-      "utilisation_on_alternative": 0.594
+      "needed_kv_class_gb": 15.7,
+      "fits_class": true,
+      "margin_class_gb": 10.8,
+      "needed_kv_gb": 43.4,
+      "fits": false,
+      "margin_gb": -16.9,
+      "utilisation_on_alternative": 1.639,
+      "exceeded_by": [
+        "scen_worst_case",
+        "sweep_s30_c100k"
+      ]
     },
     {
       "name": "RTX PRO 6000 (96 GB)",
       "vram_gb": 96.0,
       "price_eur": 37400,
       "kv_pool_gb": 55.3,
-      "needed_kv_gb": 15.7,
+      "needed_kv_class_gb": 15.7,
+      "fits_class": true,
+      "margin_class_gb": 39.6,
+      "needed_kv_gb": 43.4,
       "fits": true,
-      "margin_gb": 39.6,
-      "utilisation_on_alternative": 0.285
+      "margin_gb": 11.9,
+      "utilisation_on_alternative": 0.785,
+      "exceeded_by": []
     }
   ],
+  "alternatives_basis": "kv_peak_overall_fraction",
   "engine": [
     {
       "name": "kv_auto",
@@ -140,8 +167,15 @@
       "prefix_cache_hit_rate": 0.9888359403405137
     }
   ],
-  "engine_best": "kv_auto",
-  "engine_best_flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+  "engine_best": "kv_fp8",
+  "engine_best_flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+  "engine_ttft_noise_s": 1.0,
+  "engine_equivalent": [
+    "kv_fp8",
+    "len_65k",
+    "seqs_16",
+    "seqs_64"
+  ],
   "shared": [
     {
       "shared_fraction": 0.0,
