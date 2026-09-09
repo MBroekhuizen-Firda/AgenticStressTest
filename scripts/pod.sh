@@ -276,7 +276,12 @@ ensure_python_deps() {
   # tokenizers is not optional in practice: without it the context sizes are
   # estimated, and context size is one of the two axes of the whole matrix.
   if "$PY" -c 'import tokenizers' 2>/dev/null; then
-    say "tokenizers aanwezig -- contextgroottes worden exact geteld"
+    # Alleen zeggen wat we hier weten. Dat het pakket er is, betekent nog niet
+    # dat er exact geteld wordt: bij de vorige meting was het geinstalleerd en
+    # werd er toch geschat, omdat de tokenizer onder de served-model-name werd
+    # gezocht en die geen HuggingFace-repo is. `doctor` bouwt de teller echt en
+    # zegt het pas als het waar is.
+    say "tokenizers aanwezig; doctor controleert straks of er ook exact geteld wordt"
   else
     "$PY" -m pip install tokenizers >&2 \
       || die "tokenizers kon niet geinstalleerd worden. Zonder tokenizer zijn de contextgroottes een schatting; draai eerst 'stresstest calibrate' of los dit op."
