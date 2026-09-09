@@ -825,7 +825,9 @@ cmd_all() {
   archive_results >/dev/null || true
   echo >&2
   say "Haal de resultaten op, vanaf je eigen machine:"
-  say "    scp -r root@<ip>:$REPO_DIR/results ./results-van-de-gpu"
+  say "    scp -P <poort> -i <private-sleutel> -r root@<ip>:$REPO_DIR/results ./results-van-de-gpu"
+  say "    De poort staat bij RunPod onder Connect > SSH over exposed TCP -- niet 22,"
+  say "    en de proxy-SSH erboven kan geen scp. Zie VALKUILEN.md."
   echo >&2
   warn "ZET DE INSTANCE UIT als je klaar bent. Terminate, niet Stop -- bij Stop tikt de opslag door."
 
