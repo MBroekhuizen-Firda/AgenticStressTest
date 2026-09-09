@@ -7,6 +7,7 @@
     python -m stresstest lesson        fase 2: een les van negentig minuten
     python -m stresstest run           een losse run met eigen parameters
     python -m stresstest report DIR    grafieken en RESULTATEN.md opnieuw maken
+    python -m stresstest monitor       een draaiende server meten zonder zelf last te maken
     python -m stresstest mock          een nep-vLLM om het harnas te testen
 """
 
@@ -28,8 +29,9 @@ from .runner import RunEngine, RunResult
 from .runspec import RunSpec, standard_phases
 from .personas import work_profiles_from_config
 from .tokens import build_counter
-from .util import (colored, deep_merge, human_duration, iso, load_jsonc, log)
-from .vllm_metrics import MetricsSampler
+from .util import (colored, deep_merge, human_duration, iso, load_jsonc, log,
+                   write_csv, write_json)
+from .vllm_metrics import METRIC_ALIASES, MetricSample, MetricsSampler
 
 DEFAULT_CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                               "config", "default.json")
@@ -545,6 +547,241 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# monitor: measuring a server that somebody else is using
+# --------------------------------------------------------------------------
+#
+# Every other command in this harness *makes* the load it measures. `monitor`
+# does not: it watches a vLLM that a real class is hammering through OpenCode
+# or anything else, and writes the same `server_metrics.csv` the runs write, so
+# a real lesson can be plotted on the same axes as `les_90min`.
+#
+# It is written for a machine that gets unplugged. Every sample is flushed to
+# disk as it arrives, so a lost SSH session, a killed pod or a Ctrl-C at the
+# wrong moment costs you the last two seconds and nothing more.
+
+# A superset of the run columns: whichever metrics this vLLM does not expose
+# simply stay empty, and the column list never depends on what the first sample
+# happened to contain.
+MONITOR_COLUMNS = (["t_s", "t_wall"] + list(METRIC_ALIASES)
+                   + ["prefix_cache_hit_rate_window"])
+
+
+class _MetricsCsv:
+    """Append-as-you-go writer for the live time series."""
+
+    def __init__(self, path: str) -> None:
+        import csv
+        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        self._handle = open(path, "w", encoding="utf-8", newline="")
+        self._writer = csv.DictWriter(self._handle, fieldnames=MONITOR_COLUMNS,
+                                      extrasaction="ignore", restval="",
+                                      lineterminator="\n")
+        self._writer.writeheader()
+        self._handle.flush()
+        self.origin: float | None = None
+        self.rows = 0
+        self._previous: MetricSample | None = None
+
+    def add(self, sample: MetricSample) -> None:
+        if self.origin is None:
+            self.origin = sample.t_monotonic
+        row: dict[str, Any] = {"t_s": round(sample.t_monotonic - self.origin, 2),
+                               "t_wall": sample.t_wall}
+        row.update(sample.values)
+        if self._previous is not None:
+            queries = (sample.values.get("prefix_cache_queries", 0.0)
+                       - self._previous.values.get("prefix_cache_queries", 0.0))
+            hits = (sample.values.get("prefix_cache_hits", 0.0)
+                    - self._previous.values.get("prefix_cache_hits", 0.0))
+            if queries > 0:
+                row["prefix_cache_hit_rate_window"] = hits / queries
+        self._previous = sample
+        self._writer.writerow(row)
+        # Flushing every row is what makes this survive a kill -9. Two seconds
+        # of buffering would be cheaper and would lose the whole lesson.
+        self._handle.flush()
+        self.rows += 1
+
+    def close(self) -> None:
+        try:
+            self._handle.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _monitor_status(sampler: MetricsSampler, pool_gb: float | None) -> str:
+    if not sampler.samples:
+        return "nog geen monsters"
+    latest = sampler.samples[-1]
+    parts = []
+    running = latest.values.get("requests_running")
+    waiting = latest.values.get("requests_waiting")
+    if running is not None:
+        parts.append(f"draaiend {running:.0f}")
+    if waiting is not None:
+        parts.append(f"wachtrij {waiting:.0f}")
+    usage = latest.values.get("kv_cache_usage")
+    if usage is not None:
+        if pool_gb:
+            parts.append(f"KV {usage * 100:.0f}% ({usage * pool_gb:.1f} GB)")
+        else:
+            parts.append(f"KV {usage * 100:.0f}%")
+    first = sampler.samples[0]
+    window = sampler.summarize(first.t_monotonic, latest.t_monotonic)
+    rate = window.get("prefix_cache_hit_rate")
+    if rate is not None:
+        parts.append(f"hit rate {rate * 100:.0f}%")
+    preemptions = window.get("preemptions")
+    if preemptions:
+        parts.append(colored(f"preempties {preemptions:.0f}", "red"))
+    return " \u00b7 ".join(parts) or "geen bruikbare meetwaarden"
+
+
+async def _monitor(args: argparse.Namespace, config: dict, url: str,
+                   directory: str) -> int:
+    from .report import resolve_hardware
+
+    hardware = resolve_hardware(config)
+    try:
+        pool_gb = max(float(hardware["vram_gb"]) * float(hardware["gpu_memory_utilization"])
+                      - float(hardware["model_weights_gb"]), 0.1)
+    except (KeyError, TypeError, ValueError):
+        pool_gb = None
+
+    csv_path = os.path.join(directory, "server_metrics.csv")
+    writer = _MetricsCsv(csv_path)
+    sampler = MetricsSampler(url, interval_s=args.interval,
+                             verify_tls=config.get("endpoint", {}).get("verify_tls", True),
+                             on_sample=writer.add)
+
+    if not await sampler.check():
+        writer.close()
+        log(f"kan {url} niet uitlezen: {sampler.error}", color="red")
+        log("draait vLLM, en klopt endpoint.metrics_url? Probeer: "
+            f"curl -s {url} | head", color="amber")
+        return 2
+
+    started_wall = iso()
+    log(f"meten van {url} elke {args.interval:g}s")
+    log(f"schrijft naar {csv_path}")
+    if args.duration:
+        log(f"stopt vanzelf na {human_duration(args.duration)}; "
+            "Ctrl-C stopt eerder en bewaart alles")
+    else:
+        log("Ctrl-C stopt de meting en schrijft de samenvatting")
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for signal_name in ("SIGINT", "SIGTERM"):
+        try:
+            import signal as signal_module
+            loop.add_signal_handler(getattr(signal_module, signal_name), stop.set)
+        except (AttributeError, NotImplementedError, RuntimeError, ValueError):
+            # Windows, and any loop that will not take handlers: Ctrl-C then
+            # arrives as KeyboardInterrupt, which main() already catches.
+            pass
+
+    await sampler.start()
+    began = time.monotonic()
+    deadline = began + args.duration if args.duration else None
+    try:
+        while not stop.is_set():
+            # Wake for the status line, but never sleep past the deadline: with
+            # a status interval of half a minute, waiting for the next tick
+            # would overshoot a fixed duration by up to that much.
+            timeout = args.status_interval
+            if deadline is not None:
+                timeout = min(timeout, max(deadline - time.monotonic(), 0.0))
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass
+            if stop.is_set():
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            log(f"[{human_duration(time.monotonic() - began)}] "
+                f"{_monitor_status(sampler, pool_gb)}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        await sampler.stop()
+        writer.close()
+
+    if len(sampler.samples) < 2:
+        log("te weinig monsters voor een samenvatting; de CSV staat er wel.", color="amber")
+        return 1
+
+    first, last = sampler.samples[0], sampler.samples[-1]
+    summary = sampler.summarize(first.t_monotonic, last.t_monotonic)
+    peak = summary.get("kv_cache_usage_peak")
+    payload = {
+        "kind": "monitor",
+        "label": args.label,
+        "harness_version": __version__,
+        "metrics_url": url,
+        "interval_s": args.interval,
+        "started": started_wall,
+        "finished": iso(),
+        "duration_s": round(last.t_monotonic - first.t_monotonic, 1),
+        "samples": len(sampler.samples),
+        "kv_pool_gb": round(pool_gb, 2) if pool_gb else None,
+        "kv_peak_gb": round(peak * pool_gb, 2) if (peak is not None and pool_gb) else None,
+        "hardware": hardware,
+        "server": summary,
+        "metric_names": dict(last.raw_names),
+    }
+    write_json(os.path.join(directory, "monitor.json"), payload)
+
+    log("")
+    log(f"gemeten: {human_duration(payload['duration_s'])}, "
+        f"{payload['samples']} monsters, {writer.rows} regels")
+    _print_monitor_summary(summary, pool_gb)
+    log("")
+    log(f"tijdreeks    : {csv_path}")
+    log(f"samenvatting : {os.path.join(directory, 'monitor.json')}")
+    return 0
+
+
+def _print_monitor_summary(summary: dict, pool_gb: float | None) -> None:
+    def pct(value: Any) -> str:
+        return "niet gemeten" if value is None else f"{float(value) * 100:.1f}%"
+
+    peak = summary.get("kv_cache_usage_peak")
+    gb = f" ({float(peak) * pool_gb:.1f} GB van {pool_gb:.1f} GB)" \
+        if (peak is not None and pool_gb) else ""
+    preemptions = summary.get("preemptions")
+    print(f"  KV-bezetting      gem {pct(summary.get('kv_cache_usage_avg'))}, "
+          f"piek {pct(peak)}{gb}")
+    print(f"  wachtrij          gem {summary.get('queue_depth_avg', 0) or 0:.2f}, "
+          f"piek {summary.get('queue_depth_peak', 0) or 0:.0f}")
+    print(f"  gelijktijdig      gem {summary.get('requests_running_avg', 0) or 0:.2f}, "
+          f"piek {summary.get('requests_running_peak', 0) or 0:.0f}")
+    rate = summary.get("prefix_cache_hit_rate")
+    print(f"  prefix cache      hit rate {pct(rate)}")
+    print(f"  preempties        {0 if preemptions is None else int(preemptions)}")
+    print(f"  doorvoer          {summary.get('server_prefill_tokens_per_s', 0) or 0:.0f} tok/s prefill, "
+          f"{summary.get('server_decode_tokens_per_s', 0) or 0:.1f} tok/s decode")
+    if preemptions:
+        print("  LET OP: er is gepreempt. De cachepool liep vol; sessies moesten")
+        print("          hun hele context opnieuw laten voorrekenen.")
+
+
+def cmd_monitor(args: argparse.Namespace) -> int:
+    config = load_config(args.config, args.set)
+    url = args.url or config.get("endpoint", {}).get("metrics_url")
+    if not url:
+        log("geen metrics-URL: zet endpoint.metrics_url in de configuratie of "
+            "geef --url mee.", color="red")
+        return 2
+    directory = args.out or os.path.join(
+        config.get("output", {}).get("directory", "results"),
+        f"{time.strftime('%Y%m%d-%H%M%S')}_monitor")
+    os.makedirs(directory, exist_ok=True)
+    return asyncio.run(_monitor(args, config, url, directory))
+
+
 def cmd_mock(args: argparse.Namespace) -> int:
     from .mockserver import main as mock_main
     rest = list(args.rest)
@@ -636,6 +873,25 @@ def build_parser() -> argparse.ArgumentParser:
                         help="schrijf RESULTATEN.md hierheen in plaats van in de "
                              "resultatenmap; de bronmappen blijven dan ongemoeid")
     report.set_defaults(func=cmd_report)
+
+    monitor = subparsers.add_parser(
+        "monitor",
+        help="meet een draaiende server zonder zelf belasting te maken")
+    common(monitor)
+    monitor.add_argument("--out", metavar="MAP",
+                         help="waar server_metrics.csv en monitor.json komen "
+                              "(standaard results/<tijdstempel>_monitor)")
+    monitor.add_argument("--url", metavar="URL",
+                         help="metrics-endpoint; standaard endpoint.metrics_url")
+    monitor.add_argument("--interval", type=float, default=2.0, metavar="SECONDEN",
+                         help="hoe vaak /metrics wordt uitgelezen (standaard 2)")
+    monitor.add_argument("--duration", type=float, default=None, metavar="SECONDEN",
+                         help="stop vanzelf na zoveel seconden; standaard tot Ctrl-C")
+    monitor.add_argument("--status-interval", type=float, default=30.0, metavar="SECONDEN",
+                         help="hoe vaak een statusregel wordt getoond (standaard 30)")
+    monitor.add_argument("--label", default="", metavar="TEKST",
+                         help="waar deze meting over gaat, bv. 'les 3H woensdag'")
+    monitor.set_defaults(func=cmd_monitor)
 
     mock = subparsers.add_parser("mock", help="start een nep-vLLM om het harnas te testen")
     mock.add_argument("rest", nargs=argparse.REMAINDER,

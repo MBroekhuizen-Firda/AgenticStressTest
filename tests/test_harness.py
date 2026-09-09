@@ -411,6 +411,137 @@ class TestPrometheus(unittest.TestCase):
         self.assertEqual(pick(totals, "prefix_cache_hits")[1], 90.0)
 
 
+class TestMonitor(unittest.TestCase):
+    """`monitor` watches a server somebody else is loading. Two things have to
+    hold: the time series must land on disk as it arrives (the pod gets killed,
+    the SSH session drops, the lesson ends abruptly), and the file must have the
+    same shape as the one a run writes, or the real lesson cannot be plotted
+    next to the simulated one."""
+
+    def _serve(self, pages):
+        """A fake /metrics that hands out `pages` in order, then repeats the last."""
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        state = {"i": 0}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                body = pages[min(state["i"], len(pages) - 1)].encode()
+                state["i"] += 1
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):  # silence
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}/metrics"
+
+    @staticmethod
+    def _page(queries, hits, usage, running, waiting, preemptions=0):
+        return (f"vllm:prefix_cache_queries_total {queries}\n"
+                f"vllm:prefix_cache_hits_total {hits}\n"
+                f"vllm:kv_cache_usage_perc {usage}\n"
+                f"vllm:num_requests_running {running}\n"
+                f"vllm:num_requests_waiting {waiting}\n"
+                f"vllm:num_preemptions_total {preemptions}\n"
+                f"vllm:prompt_tokens_total {queries * 10}\n"
+                f"vllm:generation_tokens_total {queries}\n")
+
+    def test_writes_the_same_columns_a_run_writes(self):
+        import csv as csv_module
+        import tempfile
+        from stresstest.cli import MONITOR_COLUMNS, build_parser, cmd_monitor
+
+        url = self._serve([self._page(50, 40, 0.05, 1, 0),
+                           self._page(100, 90, 0.10, 2, 0),
+                           self._page(200, 190, 0.25, 5, 1),
+                           self._page(300, 285, 0.20, 3, 0)])
+        with tempfile.TemporaryDirectory() as tmp:
+            args = build_parser().parse_args(
+                ["monitor", "--url", url, "--out", tmp, "--interval", "0.05",
+                 "--duration", "0.6", "--status-interval", "10"])
+            self.assertEqual(cmd_monitor(args), 0)
+            with open(os.path.join(tmp, "server_metrics.csv"), encoding="utf-8") as handle:
+                rows = list(csv_module.DictReader(handle))
+
+        self.assertGreaterEqual(len(rows), 3, "de tijdreeks moet regels bevatten")
+        self.assertEqual(list(rows[0].keys()), MONITOR_COLUMNS)
+        # Everything a run's server_metrics.csv carries must be here too, or the
+        # two cannot go on the same axes.
+        for column in ("t_s", "t_wall", "kv_cache_usage", "requests_running",
+                       "requests_waiting", "preemptions", "prefix_cache_queries",
+                       "prefix_cache_hits", "prefix_cache_hit_rate_window"):
+            self.assertIn(column, rows[0])
+        self.assertAlmostEqual(float(rows[0]["t_s"]), 0.0, places=2)
+
+    def test_the_summary_reports_what_the_server_did(self):
+        import json as json_module
+        import tempfile
+        from stresstest.cli import build_parser, cmd_monitor
+
+        # check() consumes the first page, so the two that carry the assertions
+        # are the second and third; the fake repeats the last one after that.
+        url = self._serve([self._page(50, 40, 0.05, 1, 0),
+                           self._page(100, 90, 0.10, 2, 0),
+                           self._page(200, 190, 0.50, 9, 4, preemptions=3)])
+        with tempfile.TemporaryDirectory() as tmp:
+            args = build_parser().parse_args(
+                ["monitor", "--url", url, "--out", tmp, "--interval", "0.05",
+                 "--duration", "0.5", "--status-interval", "10",
+                 "--set", "hardware.vram_gb=96",
+                 "--set", "hardware.gpu_memory_utilization=0.9",
+                 "--set", "hardware.model_weights_gb=31.1"])
+            self.assertEqual(cmd_monitor(args), 0)
+            payload = json_module.load(open(os.path.join(tmp, "monitor.json"),
+                                            encoding="utf-8"))
+
+        server = payload["server"]
+        self.assertEqual(payload["kind"], "monitor")
+        self.assertAlmostEqual(payload["kv_pool_gb"], 55.3, places=1)
+        self.assertAlmostEqual(server["kv_cache_usage_peak"], 0.50, places=6)
+        self.assertEqual(server["queue_depth_peak"], 4.0)
+        self.assertEqual(server["requests_running_peak"], 9.0)
+        # 100 extra queries, 100 extra hits over the window.
+        self.assertAlmostEqual(server["prefix_cache_hit_rate"], 1.0, places=6)
+        self.assertEqual(server["preemptions"], 3.0)
+        # The peak in gigabytes is what makes it comparable to the reports.
+        self.assertAlmostEqual(payload["kv_peak_gb"], 0.50 * payload["kv_pool_gb"],
+                               places=1)
+
+    def test_every_sample_is_on_disk_before_the_next_one(self):
+        """The property that matters when the pod is killed mid-lesson."""
+        import csv as csv_module
+        import tempfile
+        from stresstest.cli import _MetricsCsv
+        from stresstest.vllm_metrics import MetricSample
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "server_metrics.csv")
+            writer = _MetricsCsv(path)
+            for index in range(3):
+                writer.add(MetricSample(t_monotonic=100.0 + index, t_wall=1.0 + index,
+                                        values={"kv_cache_usage": 0.1 * index,
+                                                "prefix_cache_queries": 10.0 * (index + 1),
+                                                "prefix_cache_hits": 8.0 * (index + 1)}))
+                # Read it back with the writer still open and unflushed-by-us.
+                with open(path, encoding="utf-8") as handle:
+                    rows = list(csv_module.DictReader(handle))
+                self.assertEqual(len(rows), index + 1,
+                                 "elk monster moet meteen op schijf staan")
+            self.assertAlmostEqual(float(rows[-1]["t_s"]), 2.0, places=2)
+            self.assertAlmostEqual(float(rows[-1]["prefix_cache_hit_rate_window"]),
+                                   0.8, places=6)
+            writer.close()
+
+
 class TestGrading(unittest.TestCase):
     def _aggregate(self, ttft, burst, decode, errors=0.0):
         return {"ttft": {"p90": ttft}, "burst_duration": {"p90": burst},
