@@ -1,0 +1,151 @@
+{
+  "spec": {
+    "run_id": "engine_kv_auto",
+    "label": "vLLM-variant kv_auto",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072"
+    },
+    "notes": "Referentie zonder FP8-cache."
+  },
+  "started": "2026-09-09T00:22:50Z",
+  "finished": "2026-09-09T00:29:30Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 207,
+    "requests_ok": 207,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 37,
+    "ttft": {
+      "count": 207,
+      "mean": 0.276702165360684,
+      "p50": 0.2641623199451715,
+      "p90": 0.3524066289421171,
+      "p99": 0.4612955013196915,
+      "max": 2.0816978658549488
+    },
+    "burst_duration": {
+      "count": 37,
+      "mean": 24.98992881845255,
+      "p50": 23.787002983968705,
+      "p90": 44.666871585976324,
+      "p99": 66.2408578204643,
+      "max": 68.52886646497063
+    },
+    "decode_tps": {
+      "count": 207,
+      "mean": 56.72841110069344,
+      "p50": 51.167921352934734,
+      "p90": 81.87228925551997,
+      "p99": 129.04410936398682,
+      "max": 136.49236675165713
+    },
+    "request_total_s": {
+      "count": 207,
+      "mean": 4.575861422604868,
+      "p50": 3.7177696430590004,
+      "p90": 9.710296251950787,
+      "p99": 13.01752429147251,
+      "max": 14.636005820007995
+    },
+    "output_tokens_total": 44587,
+    "prompt_tokens_total": 7583755,
+    "client_output_tokens_per_s": 148.62333333333333,
+    "requests_per_minute": 41.4,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.20431728889234366,
+        "burst_p90": 10.15041049104184,
+        "decode_tps_p50": 34.02638252449298
+      },
+      "doorpakker": {
+        "requests": 93,
+        "ttft_p90": 0.3751153608318418,
+        "burst_p90": 62.17328689689748,
+        "decode_tps_p50": 53.12607886694968
+      },
+      "gemiddelde": {
+        "requests": 93,
+        "ttft_p90": 0.29414129424840213,
+        "burst_p90": 34.20147707886062,
+        "decode_tps_p50": 51.363534654232055
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.3065627143951134,
+        "burst_p90": 22.054310260456987,
+        "decode_tps_p50": 39.11444495162225
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9909578887627547,
+    "prefix_cache_queries": 7610059.0,
+    "prefix_cache_hits": 7541248.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.14234168868669142,
+    "kv_cache_usage_peak": 0.2810107404701999,
+    "requests_running_avg": 2.9261744966442955,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 25515.05,
+    "server_prompt_tokens": 7654515.0,
+    "server_decode_tokens_per_s": 165.13666666666666,
+    "server_generation_tokens": 49541.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

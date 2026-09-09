@@ -1,0 +1,150 @@
+{
+  "spec": {
+    "run_id": "shared_00_c64k",
+    "label": "20 studenten, 64k, 0% gedeelde projectbasis",
+    "kind": "shared",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.0,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": false,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "shared_fraction"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-08T23:22:33Z",
+  "finished": "2026-09-08T23:29:11Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 205,
+    "requests_ok": 205,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 35,
+    "ttft": {
+      "count": 205,
+      "mean": 0.31043123533017936,
+      "p50": 0.2935779099352658,
+      "p90": 0.42709031607955694,
+      "p99": 0.5985518896859143,
+      "max": 1.2419595690444112
+    },
+    "burst_duration": {
+      "count": 35,
+      "mean": 24.137627937072622,
+      "p50": 23.40403850399889,
+      "p90": 43.23803171035835,
+      "p99": 63.47832500344603,
+      "max": 68.58851535688154
+    },
+    "decode_tps": {
+      "count": 205,
+      "mean": 59.434143875774645,
+      "p50": 56.992887887874254,
+      "p90": 80.08592425963697,
+      "p99": 116.47830656571486,
+      "max": 122.6413435635605
+    },
+    "request_total_s": {
+      "count": 205,
+      "mean": 4.237860325922644,
+      "p50": 3.587403364945203,
+      "p90": 8.119362586271016,
+      "p99": 12.012530666925015,
+      "max": 14.535810627043247
+    },
+    "output_tokens_total": 46263,
+    "prompt_tokens_total": 7609495,
+    "client_output_tokens_per_s": 154.21,
+    "requests_per_minute": 41.0,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.21369468700140715,
+        "burst_p90": 9.719015325885266,
+        "decode_tps_p50": 52.92065948987053
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.43959232741035514,
+        "burst_p90": 53.55854372913018,
+        "decode_tps_p50": 59.31880578767608
+      },
+      "gemiddelde": {
+        "requests": 86,
+        "ttft_p90": 0.3463428659597412,
+        "burst_p90": 30.371357523370534,
+        "decode_tps_p50": 55.938025485230156
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.47291163150221116,
+        "burst_p90": 20.645773432101123,
+        "decode_tps_p50": 49.90114343132173
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.989859759604086,
+    "prefix_cache_queries": 7586901.0,
+    "prefix_cache_hits": 7509968.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.08712023770173749,
+    "kv_cache_usage_peak": 0.17718147751605995,
+    "requests_running_avg": 2.738255033557047,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 25289.67,
+    "server_prompt_tokens": 7586901.0,
+    "server_decode_tokens_per_s": 163.49666666666667,
+    "server_generation_tokens": 49049.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

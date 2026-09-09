@@ -1,0 +1,61 @@
+{
+  "kv_pool_gb": 54.93999999999999,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W) (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W) (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 1,
+  "cliff_per_context": {},
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3
+    }
+  ],
+  "scenarios": [],
+  "lesson": {
+    "grade": "groen",
+    "ttft_p90_s": 0.32969377178233117,
+    "burst_p90_s": 69.02997560533697,
+    "preemptions": 0.0,
+    "prefix_cache_hit_rate": 0.9647770656752006,
+    "kv_peak": 0.1544031049250535
+  },
+  "grading_disagreements": []
+}

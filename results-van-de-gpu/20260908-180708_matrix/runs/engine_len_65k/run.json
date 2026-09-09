@@ -1,0 +1,151 @@
+{
+  "spec": {
+    "run_id": "engine_len_65k",
+    "label": "vLLM-variant len_65k",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536"
+    },
+    "notes": "Korter contextvenster: meer blokken vrij voor parallelle sessies."
+  },
+  "started": "2026-09-09T00:49:28Z",
+  "finished": "2026-09-09T00:56:06Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 208,
+    "requests_ok": 208,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 37,
+    "ttft": {
+      "count": 208,
+      "mean": 0.32243974166340195,
+      "p50": 0.28504789888393134,
+      "p90": 0.4207129446091131,
+      "p99": 0.7659351510950376,
+      "max": 3.0234758141450584
+    },
+    "burst_duration": {
+      "count": 37,
+      "mean": 23.146184628791605,
+      "p50": 23.37021085806191,
+      "p90": 40.276578960800535,
+      "p99": 61.00591625887901,
+      "max": 66.92837386601605
+    },
+    "decode_tps": {
+      "count": 208,
+      "mean": 59.823614340785085,
+      "p50": 58.421606266990395,
+      "p90": 82.1395956674719,
+      "p99": 103.19887764347645,
+      "max": 153.69181207323933
+    },
+    "request_total_s": {
+      "count": 208,
+      "mean": 4.208706488908949,
+      "p50": 3.4339394324924797,
+      "p90": 7.873330758931116,
+      "p99": 11.449634735423606,
+      "max": 12.721588572952896
+    },
+    "output_tokens_total": 46432,
+    "prompt_tokens_total": 7674940,
+    "client_output_tokens_per_s": 154.77333333333334,
+    "requests_per_minute": 41.6,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.2259898121934384,
+        "burst_p90": 9.589473346946761,
+        "decode_tps_p50": 39.54089910530112
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.45857090030331166,
+        "burst_p90": 50.477102735079825,
+        "decode_tps_p50": 59.68293803230327
+      },
+      "gemiddelde": {
+        "requests": 89,
+        "ttft_p90": 0.3631946926005185,
+        "burst_p90": 30.47323080799542,
+        "decode_tps_p50": 58.73369558595981
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.4044452025787906,
+        "burst_p90": 17.377774527063593,
+        "decode_tps_p50": 45.8334860074461
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9888767200619517,
+    "prefix_cache_queries": 7680828.0,
+    "prefix_cache_hits": 7595392.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.06658459205716298,
+    "kv_cache_usage_peak": 0.12686052642251688,
+    "requests_running_avg": 2.7114093959731544,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 25757.556666666667,
+    "server_prompt_tokens": 7727267.0,
+    "server_decode_tokens_per_s": 163.06333333333333,
+    "server_generation_tokens": 48919.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

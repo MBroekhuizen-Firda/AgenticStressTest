@@ -1,0 +1,153 @@
+{
+  "spec": {
+    "run_id": "engine_seqs_16",
+    "label": "vLLM-variant seqs_16",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072"
+    },
+    "notes": "Minder parallelle sequenties: minder preempties, langere wachtrij."
+  },
+  "started": "2026-09-09T00:31:44Z",
+  "finished": "2026-09-09T00:38:22Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 208,
+    "requests_ok": 208,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 37,
+    "ttft": {
+      "count": 208,
+      "mean": 0.3349333710267764,
+      "p50": 0.29611724393907934,
+      "p90": 0.4203105323715136,
+      "p99": 0.7411901574721567,
+      "max": 3.377219672081992
+    },
+    "burst_duration": {
+      "count": 37,
+      "mean": 23.369637516144714,
+      "p50": 23.328002239810303,
+      "p90": 40.36824215520172,
+      "p99": 61.58246481545271,
+      "max": 67.31813238188624
+    },
+    "decode_tps": {
+      "count": 208,
+      "mean": 57.85882041985105,
+      "p50": 57.30452086472772,
+      "p90": 79.11553122211801,
+      "p99": 101.4120345041205,
+      "max": 124.11137847970063
+    },
+    "request_total_s": {
+      "count": 208,
+      "mean": 4.248363877513419,
+      "p50": 3.539311794564128,
+      "p90": 7.900742345931942,
+      "p99": 11.672181917733981,
+      "max": 12.890042243059725
+    },
+    "output_tokens_total": 44908,
+    "prompt_tokens_total": 7673667,
+    "client_output_tokens_per_s": 149.69333333333333,
+    "requests_per_minute": 41.6,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.2060395653359592,
+        "burst_p90": 9.647331637097523,
+        "decode_tps_p50": 35.36220169826506
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.47611254239454864,
+        "burst_p90": 51.385722475126386,
+        "decode_tps_p50": 58.05093449735455
+      },
+      "gemiddelde": {
+        "requests": 89,
+        "ttft_p90": 0.3686001225374639,
+        "burst_p90": 30.749680035701022,
+        "decode_tps_p50": 58.434427016151346
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.37863383605144924,
+        "burst_p90": 17.130228460533544,
+        "decode_tps_p50": 50.167179612161405
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9886099619734579,
+    "prefix_cache_queries": 7587332.0,
+    "prefix_cache_hits": 7500912.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.06669520900445765,
+    "kv_cache_usage_peak": 0.12673296759722186,
+    "requests_running_avg": 2.7114093959731544,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.006711409395973154,
+    "queue_depth_peak": 1.0,
+    "server_prefill_tokens_per_s": 25291.106666666667,
+    "server_prompt_tokens": 7587332.0,
+    "server_decode_tokens_per_s": 162.77,
+    "server_generation_tokens": 48831.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [
+      "wachtrij piekte op 1 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

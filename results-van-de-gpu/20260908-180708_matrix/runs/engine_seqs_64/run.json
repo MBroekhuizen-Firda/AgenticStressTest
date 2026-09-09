@@ -1,0 +1,151 @@
+{
+  "spec": {
+    "run_id": "engine_seqs_64",
+    "label": "vLLM-variant seqs_64",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072"
+    },
+    "notes": "Meer parallelle sequenties: kortere wachtrij, meer geheugendruk."
+  },
+  "started": "2026-09-09T00:40:36Z",
+  "finished": "2026-09-09T00:47:14Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 208,
+    "requests_ok": 208,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 37,
+    "ttft": {
+      "count": 208,
+      "mean": 0.33505917397269513,
+      "p50": 0.2913240739144385,
+      "p90": 0.4106946161715315,
+      "p99": 0.9338864365965133,
+      "max": 3.323258284945041
+    },
+    "burst_duration": {
+      "count": 37,
+      "mean": 23.175450896976415,
+      "p50": 23.32826740993187,
+      "p90": 40.030338795669365,
+      "p99": 60.9177772555221,
+      "max": 66.59518216783181
+    },
+    "decode_tps": {
+      "count": 208,
+      "mean": 60.15597648527553,
+      "p50": 58.32521811655716,
+      "p90": 82.48682337426926,
+      "p99": 102.44944525769796,
+      "max": 138.99439180994804
+    },
+    "request_total_s": {
+      "count": 208,
+      "mean": 4.213471737724971,
+      "p50": 3.523577331448905,
+      "p90": 7.94172290172428,
+      "p99": 11.643621499247386,
+      "max": 13.054277520859614
+    },
+    "output_tokens_total": 46732,
+    "prompt_tokens_total": 7673623,
+    "client_output_tokens_per_s": 155.77333333333334,
+    "requests_per_minute": 41.6,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.3064429588150233,
+        "burst_p90": 9.789522357983515,
+        "decode_tps_p50": 36.53234864914839
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.46906883150804785,
+        "burst_p90": 50.82461296697147,
+        "decode_tps_p50": 60.46937212866159
+      },
+      "gemiddelde": {
+        "requests": 89,
+        "ttft_p90": 0.3503024410922081,
+        "burst_p90": 30.48639980521984,
+        "decode_tps_p50": 59.10962886071965
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.354669834417291,
+        "burst_p90": 17.16928669461049,
+        "decode_tps_p50": 44.84298733183095
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9888359403405137,
+    "prefix_cache_queries": 7637813.0,
+    "prefix_cache_hits": 7552544.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.06637368678025991,
+    "kv_cache_usage_peak": 0.12656378906936794,
+    "requests_running_avg": 2.6912751677852347,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 25459.376666666667,
+    "server_prompt_tokens": 7637813.0,
+    "server_decode_tokens_per_s": 163.07666666666665,
+    "server_generation_tokens": 48923.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

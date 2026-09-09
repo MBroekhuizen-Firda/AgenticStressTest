@@ -1,0 +1,43 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-09-09T00:49:28Z",
+  "python": "3.12.3",
+  "model": "qwen3-coder",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "metrics_url": "http://127.0.0.1:8000/metrics",
+  "tokenizer": "estimate (4.65 chars/token)",
+  "tokenizer_exact": false,
+  "corpus": {
+    "name": "django-realworld+react-realworld+laravel-realworld",
+    "files": 187,
+    "shared_files": 75,
+    "private_files": 112,
+    "total_characters": 331940
+  },
+  "seed": 20250908,
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "attention_backend": null,
+    "kv_cache_dtype": "fp8",
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ]
+  }
+}

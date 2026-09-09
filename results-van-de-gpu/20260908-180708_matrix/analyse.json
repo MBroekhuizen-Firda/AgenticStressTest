@@ -1,0 +1,266 @@
+{
+  "kv_pool_gb": 54.93999999999999,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 38,
+  "class_size": 20,
+  "class_grades": {
+    "100k": "groen",
+    "32k": "groen",
+    "64k": "groen",
+    "8k": "groen"
+  },
+  "class_worst_context": 100000,
+  "class_worst_grade": "groen",
+  "kv_peak_fraction": 0.28654978586723767,
+  "kv_peak_gb": 15.743045235546035,
+  "kv_headroom_gb": 39.196954764453956,
+  "kv_headroom_fraction": 0.7134502141327623,
+  "cliff_students": 40,
+  "cliff_broke_at": null,
+  "cliff_reasons": [],
+  "cliff_per_context": {
+    "8k": {
+      "eerste_oranje": null,
+      "eerste_rood": null
+    },
+    "32k": {
+      "eerste_oranje": null,
+      "eerste_rood": null
+    },
+    "64k": {
+      "eerste_oranje": null,
+      "eerste_rood": null
+    },
+    "100k": {
+      "eerste_oranje": 30,
+      "eerste_rood": 30
+    }
+  },
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7,
+      "needed_kv_gb": 15.7,
+      "fits": true,
+      "margin_gb": 18.0,
+      "utilisation_on_alternative": 0.467
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5,
+      "needed_kv_gb": 15.7,
+      "fits": true,
+      "margin_gb": 10.8,
+      "utilisation_on_alternative": 0.594
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3,
+      "needed_kv_gb": 15.7,
+      "fits": true,
+      "margin_gb": 39.6,
+      "utilisation_on_alternative": 0.285
+    }
+  ],
+  "engine": [
+    {
+      "name": "kv_auto",
+      "flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+      "grade": "groen",
+      "ttft_p90_s": 0.3524066289421171,
+      "kv_peak": 0.2810107404701999,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9909578887627547
+    },
+    {
+      "name": "kv_fp8",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+      "grade": "groen",
+      "ttft_p90_s": 0.41366944028995933,
+      "kv_peak": 0.12619111349036405,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9886979821453515
+    },
+    {
+      "name": "len_65k",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536",
+      "grade": "groen",
+      "ttft_p90_s": 0.4207129446091131,
+      "kv_peak": 0.12686052642251688,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9888767200619517
+    },
+    {
+      "name": "seqs_16",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072",
+      "grade": "groen",
+      "ttft_p90_s": 0.4203105323715136,
+      "kv_peak": 0.12673296759722186,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9886099619734579
+    },
+    {
+      "name": "seqs_64",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+      "grade": "groen",
+      "ttft_p90_s": 0.4106946161715315,
+      "kv_peak": 0.12656378906936794,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9888359403405137
+    }
+  ],
+  "engine_best": "kv_auto",
+  "engine_best_flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+  "shared": [
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9687733250891073,
+      "ttft_p90_s": 0.24900553904008121,
+      "kv_peak": 0.08475642398286942,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9747246585465072,
+      "ttft_p90_s": 0.2838729490758851,
+      "kv_peak": 0.06905781584582438,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9790854589553671,
+      "ttft_p90_s": 0.28094831136986614,
+      "kv_peak": 0.04982601713062096,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.989859759604086,
+      "ttft_p90_s": 0.42709031607955694,
+      "kv_peak": 0.17718147751605995,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9888160690954313,
+      "ttft_p90_s": 0.43183053524699067,
+      "kv_peak": 0.12517398286937897,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9920687917409826,
+      "ttft_p90_s": 0.4168328681727871,
+      "kv_peak": 0.0936964668094219,
+      "grade": "groen"
+    }
+  ],
+  "scenarios": [
+    {
+      "run_id": "scen_deadline",
+      "label": "Deadline, 20 studenten in burst",
+      "grade": "oranje",
+      "ttft_p90_s": 0.348545295605436,
+      "burst_p90_s": 122.70701893784576,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9739759236034999,
+      "reasons": [
+        "p90 doorlooptijd instructie 123s"
+      ]
+    },
+    {
+      "run_id": "scen_koudestart_s20",
+      "label": "Koude start, 20 studenten",
+      "grade": "groen",
+      "ttft_p90_s": 0.22272804561071108,
+      "burst_p90_s": 42.69939965684898,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.90376315030221,
+      "reasons": []
+    },
+    {
+      "run_id": "scen_koudestart_s30",
+      "label": "Koude start, 30 studenten",
+      "grade": "groen",
+      "ttft_p90_s": 0.23635826208628719,
+      "burst_p90_s": 52.846722866711204,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9183378276223895,
+      "reasons": []
+    },
+    {
+      "run_id": "scen_lange_sessies",
+      "label": "Lange sessies, weinig studenten, zeer grote context",
+      "grade": "groen",
+      "ttft_p90_s": 0.617435320513323,
+      "burst_p90_s": 51.065786101482814,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9954888844815463,
+      "reasons": []
+    },
+    {
+      "run_id": "scen_na_de_stilte",
+      "label": "Na de stilte: tien minuten niets, dan hervat iedereen tegelijk",
+      "grade": "groen",
+      "ttft_p90_s": 0.3459205883089459,
+      "burst_p90_s": 82.97270856134126,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9737860730454855,
+      "reasons": []
+    },
+    {
+      "run_id": "scen_worst_case",
+      "label": "Worst case: 20 studenten, maximale context, geen gedeelde prefix",
+      "grade": "rood",
+      "ttft_p90_s": 0.6636640640906991,
+      "burst_p90_s": 396.19962741718626,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9641940772519865,
+      "reasons": [
+        "p90 doorlooptijd instructie 396s"
+      ]
+    }
+  ],
+  "grading_disagreements": [
+    "scen_deadline",
+    "scen_worst_case",
+    "sweep_s30_c100k"
+  ]
+}

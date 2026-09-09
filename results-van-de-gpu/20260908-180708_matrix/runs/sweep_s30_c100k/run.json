@@ -1,0 +1,154 @@
+{
+  "spec": {
+    "run_id": "sweep_s30_c100k",
+    "label": "30 studenten, 100k context",
+    "kind": "sweep",
+    "students": 30,
+    "context_tokens": 100000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "sweep"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-08T22:05:16Z",
+  "finished": "2026-09-08T22:11:56Z",
+  "composition": {
+    "worstelaar": 7,
+    "gemiddelde": 14,
+    "doorpakker": 5,
+    "afhaker": 4
+  },
+  "aggregate": {
+    "requests_total": 275,
+    "requests_ok": 275,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 48,
+    "ttft": {
+      "count": 275,
+      "mean": 0.4206073819989847,
+      "p50": 0.39660745090804994,
+      "p90": 0.5704215431120245,
+      "p99": 0.8350903243245554,
+      "max": 1.3021568518597633
+    },
+    "burst_duration": {
+      "count": 48,
+      "mean": 92.61656674989597,
+      "p50": 60.85982656199485,
+      "p90": 197.21500688616655,
+      "p99": 213.5462389313849,
+      "max": 222.04585055308416
+    },
+    "decode_tps": {
+      "count": 275,
+      "mean": 32.643313087901085,
+      "p50": 33.0798738394472,
+      "p90": 48.20056380563952,
+      "p99": 77.11950815152066,
+      "max": 84.85026755008927
+    },
+    "request_total_s": {
+      "count": 275,
+      "mean": 7.320859333879568,
+      "p50": 5.9073647109325975,
+      "p90": 14.494357587676491,
+      "p99": 23.459804007490163,
+      "max": 25.02916070492938
+    },
+    "output_tokens_total": 55202,
+    "prompt_tokens_total": 14572540,
+    "client_output_tokens_per_s": 184.00666666666666,
+    "requests_per_minute": 55.0,
+    "by_persona": {
+      "afhaker": {
+        "requests": 5,
+        "ttft_p90": 0.6504567315801978,
+        "burst_p90": 110.64854068402201,
+        "decode_tps_p50": 16.710669285416852
+      },
+      "doorpakker": {
+        "requests": 128,
+        "ttft_p90": 0.6125319906976073,
+        "burst_p90": 198.95155346286484,
+        "decode_tps_p50": 36.19749390665112
+      },
+      "gemiddelde": {
+        "requests": 132,
+        "ttft_p90": 0.5251896889181807,
+        "burst_p90": 182.96809533729686,
+        "decode_tps_p50": 31.25948084594775
+      },
+      "worstelaar": {
+        "requests": 10,
+        "ttft_p90": 0.46203370080329476,
+        "burst_p90": 136.1929411834106,
+        "decode_tps_p50": 14.472140609210246
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9849835810214566,
+    "prefix_cache_queries": 15058184.0,
+    "prefix_cache_hits": 14832064.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.24298230171162494,
+    "kv_cache_usage_peak": 0.4970824411134903,
+    "requests_running_avg": 10.577181208053691,
+    "requests_running_peak": 29.0,
+    "queue_depth_avg": 0.5973154362416108,
+    "queue_depth_peak": 8.0,
+    "server_prefill_tokens_per_s": 50396.573333333334,
+    "server_prompt_tokens": 15118972.0,
+    "server_decode_tokens_per_s": 218.81,
+    "server_generation_tokens": 65643.0
+  },
+  "grade": {
+    "colour": "rood",
+    "reasons": [
+      "p90 doorlooptijd instructie 197s"
+    ],
+    "warnings": [
+      "wachtrij piekte op 8 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "rood",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "98%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

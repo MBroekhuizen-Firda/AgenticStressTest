@@ -1,0 +1,151 @@
+{
+  "spec": {
+    "run_id": "engine_kv_fp8",
+    "label": "vLLM-variant kv_fp8",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072"
+    },
+    "notes": "FP8 KV-cache: ruwweg de helft van het cachegeheugen per token."
+  },
+  "started": "2026-09-09T00:13:27Z",
+  "finished": "2026-09-09T00:20:05Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "afhaker": 3,
+    "doorpakker": 3
+  },
+  "aggregate": {
+    "requests_total": 208,
+    "requests_ok": 208,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 37,
+    "ttft": {
+      "count": 208,
+      "mean": 0.32381319564928374,
+      "p50": 0.2974896614905447,
+      "p90": 0.41366944028995933,
+      "p99": 0.6119442422199064,
+      "max": 3.2254458819516003
+    },
+    "burst_duration": {
+      "count": 37,
+      "mean": 23.336505457123337,
+      "p50": 23.332868088036776,
+      "p90": 40.47900416944175,
+      "p99": 61.7507472441625,
+      "max": 67.58846304588951
+    },
+    "decode_tps": {
+      "count": 208,
+      "mean": 60.028568044646676,
+      "p50": 59.22389661460953,
+      "p90": 81.18370928254048,
+      "p99": 110.18407878349156,
+      "max": 143.18626178724756
+    },
+    "request_total_s": {
+      "count": 208,
+      "mean": 4.242867109291883,
+      "p50": 3.5111349809449166,
+      "p90": 7.96526580997743,
+      "p99": 11.387451412291266,
+      "max": 12.827143274014816
+    },
+    "output_tokens_total": 47402,
+    "prompt_tokens_total": 7670168,
+    "client_output_tokens_per_s": 158.00666666666666,
+    "requests_per_minute": 41.6,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.21163673968985675,
+        "burst_p90": 9.349534964188933,
+        "decode_tps_p50": 38.11298373023978
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.4783238782314583,
+        "burst_p90": 51.37258581886999,
+        "decode_tps_p50": 60.21166600798803
+      },
+      "gemiddelde": {
+        "requests": 89,
+        "ttft_p90": 0.35757751725614073,
+        "burst_p90": 30.784898910624904,
+        "decode_tps_p50": 59.856795497227175
+      },
+      "worstelaar": {
+        "requests": 18,
+        "ttft_p90": 0.30546778521966195,
+        "burst_p90": 16.96790280006826,
+        "decode_tps_p50": 45.793943748082654
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9886979821453515,
+    "prefix_cache_queries": 7559712.0,
+    "prefix_cache_hits": 7474272.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.06626501803601455,
+    "kv_cache_usage_peak": 0.12619111349036405,
+    "requests_running_avg": 2.697986577181208,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 25199.04,
+    "server_prompt_tokens": 7559712.0,
+    "server_decode_tokens_per_s": 162.77,
+    "server_generation_tokens": 48831.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}
