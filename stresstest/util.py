@@ -167,7 +167,10 @@ def write_csv(path: str, rows: Iterable[dict], columns: Sequence[str] | None = N
                     columns = list(columns) + [key]
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(columns), extrasaction="ignore")
+        # csv defaults to CRLF; everything else this harness writes is LF, and a
+        # regenerated report should not show up as a diff in every line.
+        writer = csv.DictWriter(handle, fieldnames=list(columns),
+                                extrasaction="ignore", lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({k: _csv_value(row.get(k)) for k in columns})

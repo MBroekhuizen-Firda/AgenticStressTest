@@ -8,9 +8,10 @@ Uitgevoerd op 2026-09-09, 38 runs, seed 20250908.
 ## De korte versie
 
 - Een klas van 20 studenten komt in de zwaarste geteste contextgrootte uit op **groen**.
-- De klif ligt bij **40 gelijktijdige studenten** (de test liep tot het ingestelde maximum zonder te breken).
-- Piekgebruik van de KV-cache: **29%** van de 54.9 GB cachepool, oftewel **15.7 GB** in gebruik en **39.2 GB** over.
-- Goedkoopste geteste kaart die volgens deze meting past: **RTX PRO 5000 (72 GB)** (7602 euro).
+- **Geen klif gevonden op de studenten-as.** De oplopende run liep tot het ingestelde plafond van 40 studenten en was daar nog groen — dat plafond is een instelling, geen gemeten grens.
+- Piekgebruik van de KV-cache bij een klas van 20: **29%** van de 54.9 GB cachepool, oftewel **15.7 GB** in gebruik en **39.2 GB** over.
+- Hoogste piek over alle runs: **43.4 GB** (79%), in `scen_worst_case`. Dat is het getal waartegen een kleinere kaart hieronder wordt afgemeten.
+- Goedkoopste geteste kaart die de zwaarste gemeten run nog aankan: **RTX PRO 6000 (96 GB)** (37400 euro) — op geheugen alleen; over de rekenkracht van die kaart zegt deze meting niets.
 
 ## 1. Past een klas van 20 op 96 GB, en met hoeveel marge?
 
@@ -25,9 +26,11 @@ Uitgevoerd op 2026-09-09, 38 runs, seed 20250908.
 
 De marge in geheugen is **71%** van de cachepool: bij de zwaarste run stond 15.7 GB van de 54.9 GB vol. De pool is berekend als 96 GB x 0.9 min 31.1 GB aan modelgewichten.
 
+Dat getal geldt voor de sweep-runs met 20 studenten. Over *alle* runs samen ligt de piek hoger: 43.4 GB (79%) in `scen_worst_case` — Worst case: 20 studenten, maximale context, geen gedeelde prefix. Vraag 3 rekent met die hogere piek.
+
 ## 2. Waar ligt de klif?
 
-De oplopende run hield het uit tot **40 gelijktijdige studenten**.
+**Op de studenten-as is geen klif gevonden.** De oplopende run liep bij 32k context door tot het ingestelde plafond van 40 studenten en was daar nog groen. Die 40 is dus de bovengrens van de test (`matrix.rampup.max_students`), niet een gemeten grens: verhoog hem om verder te zoeken.
 
 Per contextgrootte, het aantal studenten waarbij het oordeel omslaat:
 
@@ -42,13 +45,20 @@ De contextgrootte is hier de belangrijkere as: een grotere context kost per stud
 
 ## 3. Zou minder videogeheugen ook volstaan?
 
-De zwaarste geteste klas gebruikte **15.7 GB** aan KV-cache. Diezelfde behoefte afgezet tegen de alternatieven:
+Er zijn twee getallen in omloop, en ze geven een ander antwoord. Een klas van 20 in de sweep kwam niet hoger dan **15.7 GB**. De zwaarste run uit de hele meting — `scen_worst_case`, Worst case: 20 studenten, maximale context, geen gedeelde prefix — vroeg **43.4 GB**. De kolom **Past?** hieronder oordeelt op dat tweede getal: een kaart die de zwaarste gemeten belasting niet aankan, kun je niet aanbevelen omdat het gemiddelde er wel op past.
 
-| Kaart | Videogeheugen | Cachepool | Nodig | Marge | Past? | Prijs |
-|---|---|---|---|---|---|---|
-| RTX PRO 5000 (72 GB) | 72 GB | 33.7 GB | 15.7 GB | 18.0 GB | ja | 7602 euro |
-| 2x RTX 5090 (64 GB) | 64 GB | 26.5 GB | 15.7 GB | 10.8 GB | ja | 10000 euro |
-| RTX PRO 6000 (96 GB) | 96 GB | 55.3 GB | 15.7 GB | 39.6 GB | ja | 37400 euro |
+| Kaart | Videogeheugen | Cachepool | Nodig (klas) | Nodig (zwaarste run) | Marge | Past? | Prijs |
+|---|---|---|---|---|---|---|---|
+| RTX PRO 5000 (72 GB) | 72 GB | 33.7 GB | 15.7 GB | 43.4 GB | -9.7 GB | **nee** | 7602 euro |
+| 2x RTX 5090 (64 GB) | 64 GB | 26.5 GB | 15.7 GB | 43.4 GB | -16.9 GB | **nee** | 10000 euro |
+| RTX PRO 6000 (96 GB) | 96 GB | 55.3 GB | 15.7 GB | 43.4 GB | 11.9 GB | ja | 37400 euro |
+
+Welke runs er op welke kaart niet passen:
+
+- **RTX PRO 5000 (72 GB)**: 1 van 38 runs — `scen_worst_case`.
+- **2x RTX 5090 (64 GB)**: 2 van 38 runs — `scen_worst_case`, `sweep_s30_c100k`.
+
+Of die runs binnen bereik horen te vallen, is een keuze en geen meting: de worst case is met opzet extreem en komt bij een klas die aan dezelfde opdracht werkt niet voor. Maar hij staat wel in de opdracht, dus wie hem meerekent koopt een andere kaart dan wie hem weglaat. Zet die keuze expliciet op papier.
 
 Deze vergelijking rekent alleen met geheugen. Een kaart met minder geheugen heeft doorgaans ook minder rekenkracht en geheugenbandbreedte, wat de doorlooptijd van een instructie raakt ook als het geheugen past. Meet daarom de gekozen alternatieven na met dezelfde matrix voordat je bestelt; het harnas draait ongewijzigd tegen elk endpoint.
 
@@ -62,7 +72,11 @@ Deze vergelijking rekent alleen met geheugen. Een kaart met minder geheugen heef
 | seqs_16 | `--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072` | groen | 0.4 s | 13% | 0 | 99% |
 | seqs_64 | `--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072` | groen | 0.4 s | 13% | 0 | 99% |
 
-Beste variant in deze meting: **kv_auto** (`--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072`).
+Beste variant in deze meting: **kv_fp8** (`--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072`).
+
+De keuze is niet op p90 TTFT gemaakt. Alle varianten zitten daar ver onder de groen-grens, en een verschil kleiner dan 1.0 s — vijf procent van die grens — is ruis, geen signaal. Wat wél uiteenloopt is de cachebezetting, en daarop is gerangschikt.
+
+Binnen de meetruis gelijkwaardig: `kv_fp8`, `len_65k`, `seqs_16`, `seqs_64`. De vlaggen die deze varianten onderscheiden doen op deze kaart dus niets — wat niet wil zeggen dat ze op een kleinere kaart niets doen, want daar komt de geheugendruk wel in de buurt van de grens.
 
 ## Wat de gedeelde projectbasis oplevert
 

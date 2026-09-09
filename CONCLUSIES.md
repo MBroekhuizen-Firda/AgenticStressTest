@@ -5,9 +5,10 @@ verzoeken) en `results-van-de-gpu/20260909-005751_les/` (de lesvalidatie van
 negentig minuten). Alles hieronder is terug te rekenen uit `summary.csv` en de
 `requests.csv` per run.
 
-Dit bestand staat naast de automatisch gegenereerde `RESULTATEN.md` in die
-mappen. Waar ik van die gegenereerde tekst afwijk, staat dat er expliciet bij —
-zie [Twee correcties op het gegenereerde rapport](#twee-correcties-op-het-gegenereerde-rapport).
+Dit bestand staat naast de automatisch gegenereerde `RESULTATEN.md`. De punten
+waarop die tekst een andere conclusie trok dan de meetgegevens dragen, staan
+onder [De correcties die hierop gemaakt zijn](#de-correcties-die-hierop-gemaakt-zijn);
+ze zijn inmiddels in de analysecode verwerkt.
 
 ---
 
@@ -25,14 +26,16 @@ zie [Twee correcties op het gegenereerde rapport](#twee-correcties-op-het-gegene
 3. **De 96 GB wordt in geen enkel realistisch scenario gebruikt.** De zwaarste
    realistische run zat op 15,7 GB, de lesvalidatie op 8,5 GB. Er is geen
    gemeten grond om 96 GB nodig te hebben voor een klas van twintig.
-4. **Maar "72 GB volstaat dus ook" is te snel geconcludeerd.** Tegen de
+4. **Maar "72 GB volstaat dus ook" volgt er niet uit.** Tegen de
    *werkelijke* piek over alle runs (43,4 GB in de worst case) past een kaart
    van 72 GB níét. En over de rekenkracht van de goedkopere kaarten — de factor
    die volgens punt 2 bepalend is — zegt deze meting niets. Zie
    [vraag 3](#3-zou-minder-videogeheugen-ook-volstaan).
-5. **De volgende meting is belangrijker dan deze.** Dezelfde matrix op een
-   RTX PRO 5000 draaien kost opnieuw ongeveer € 20 en is het enige experiment
-   dat het aankoopbesluit werkelijk beslist.
+5. **De volgende meting is belangrijker dan deze.** De RTX PRO 5000 is niet te
+   huren op RunPod, maar het andere alternatief uit de aanvraag wél: dezelfde
+   matrix op twee RTX 5090's kost ongeveer € 12 en is het experiment dat het
+   aankoopbesluit werkelijk beslist. Zie
+   [OPZET-VERVOLGMETING.md](OPZET-VERVOLGMETING.md).
 
 ---
 
@@ -118,8 +121,11 @@ gelijktijdige belasting.
 
 **Daarom is de eerlijke conclusie niet "koop de goedkope kaart", maar: deze
 meting weerlegt de onderbouwing van € 37.400 op capaciteitsgronden, en het
-alternatief is nog niet gemeten.** Dezelfde matrix op een RTX PRO 5000 kost
-ongeveer € 20 aan rekentijd; het harnas draait ongewijzigd tegen elk endpoint.
+alternatief is nog niet gemeten.** De RTX PRO 5000 blijkt niet te huren bij
+RunPod; twee RTX 5090's — het andere alternatief uit de aanvraag — wel, voor
+ongeveer € 12 aan rekentijd. Het harnas draait ongewijzigd tegen elk endpoint.
+Met 96 GB en 64 GB gemeten wordt 72 GB bovendien een tussenwaarde in plaats van
+een gok, want de KV-cache schaalt lineair met het aantal tokens.
 
 ## 4. Welke vLLM-instellingen zijn bepalend?
 
@@ -209,38 +215,47 @@ de oorspronkelijke definitie is te optimistisch.
 
 ---
 
-## Twee correcties op het gegenereerde rapport
+## De correcties die hierop gemaakt zijn
 
-De automatisch gegenereerde `RESULTATEN.md` bevat twee conclusies die ik uit
-dezelfde meetgegevens niet zou trekken. Beide komen voort uit de analysecode,
-niet uit de meting zelf.
+De automatisch gegenereerde `RESULTATEN.md` trok op drie punten een conclusie
+die uit dezelfde meetgegevens niet volgde. Alle drie zaten in de analysecode,
+niet in de meting, en alle drie zijn nu gerepareerd; `RESULTATEN.md` in de
+hoofdmap is opnieuw gegenereerd en dekt beide fases.
 
-**1. De alternatievenvergelijking rekent met de verkeerde piek.** Het rapport
-zet de kaarten af tegen 15,7 GB — de hoogste piek uit de *sweep*-runs — en
-concludeert dat alle drie de kaarten passen. De hoogste piek over álle 38 runs
-is 43,4 GB (worst case). Tegen dat getal past de RTX PRO 5000 niet, en de twee
-5090's vallen op twee runs af. Dit is de conclusie waar een aankoopbesluit van
-€ 37.400 aan hangt, dus het is niet cosmetisch.
+**1. De alternatievenvergelijking rekende met de verkeerde piek.** Het rapport
+zette de kaarten af tegen 15,7 GB — de hoogste piek uit de *sweep*-runs — en
+concludeerde dat alle drie de kaarten passen. De analyse kijkt nu naar de
+hoogste piek over álle runs (43,4 GB, de worst case), toont beide getallen
+naast elkaar, en noemt per kaart wélke runs er niet op passen. De conclusie
+draait daarmee om: op geheugen alleen haalt alleen de RTX PRO 6000 de zwaarste
+gemeten run.
 
-**2. `kv_auto` wordt "beste variant" genoemd op ruis.** De keuze is gemaakt op
-p90-TTFT: 0,352 s tegen 0,414 s. Dat verschil van 60 ms staat tegenover een
-cachegebruik van 28,1 % versus 12,6 % — meer dan het dubbele. `fp8` is de
-betere keuze, en het rapport beveelt de andere aan.
+**2. `kv_auto` werd "beste variant" genoemd op ruis.** De keuze viel op
+p90-TTFT: 0,352 s tegen 0,414 s, terwijl het cachegebruik 28,1 % tegen 12,6 %
+was. De rangschikking negeert nu TTFT-verschillen kleiner dan vijf procent van
+de groen-grens en kiest op cachebezetting; dat wijst `kv_fp8` aan. Het rapport
+noemt er ook bij welke varianten binnen de meetruis gelijkwaardig zijn, zodat
+niemand een rangorde leest in een gelijkspel.
 
-Daarnaast: de zin "de klif ligt bij 40 gelijktijdige studenten" beschrijft het
-ingestelde plafond van de oplopende run, niet een gemeten grens
-(`rampup.max_students: 40`, en die run was daar nog groen). Beter: "tot veertig
-studenten bij 32k is geen klif gevonden."
+**3. "De klif ligt bij 40 studenten" was het testplafond.** De analyse
+onderscheidt nu of de oplopende run brak of zijn eigen bovengrens raakte, en
+zegt in het tweede geval dat er geen klif gevonden is.
 
-Ik kan die drie punten in de analysecode aanpassen en het rapport opnieuw laten
-genereren; dat is geen nieuwe meting nodig, alleen een andere berekening over
-dezelfde `summary.csv`.
+Bij het nalopen van de opzet kwamen daar nog drie dingen uit die de meting zelf
+raakten:
 
-En: de `RESULTATEN.md` in de hoofdmap staat nog op "nog niet gemeten", terwijl
-de meting er is. Die hoort vervangen te worden door de gegenereerde versie —
-maar pas nadat bovenstaande punten erin verwerkt zijn.
+- **De tokenizer viel stil terug op schatten.** `pod.sh` zette `endpoint.model`
+  op de `--served-model-name`, en daar bestaat geen tokenizer onder — dus werden
+  de contextgroottes geschat terwijl `tokenizers` gewoon geïnstalleerd was.
+  Gerepareerd, en `doctor` wijst nu het echte probleem aan.
+- **Herlezen van resultaten wiste de duur van elke run.** `duration_s` werd bij
+  opnieuw genereren 0,0 omdat de tijdstempels niet werden teruggelezen. Nu wel;
+  de echte duren staan weer in `summary.csv`.
+- **De kaartnaam kreeg er per fase een "(600W)" bij** — vandaar
+  "... (600W) (600W)" in de lesmap.
 
----
+Welke kaart de vervolgmeting moet krijgen en wat je daarvoor aanpast, staat in
+[OPZET-VERVOLGMETING.md](OPZET-VERVOLGMETING.md).
 
 ## Wat deze meting niet zegt
 

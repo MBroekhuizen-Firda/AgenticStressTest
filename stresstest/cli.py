@@ -26,6 +26,7 @@ from .matrix import BUILDERS, PHASE1, build_specs, describe_plan
 from .report import ResultsWriter, load_results, write_analysis
 from .runner import RunEngine, RunResult
 from .runspec import RunSpec, standard_phases
+from .personas import work_profiles_from_config
 from .tokens import build_counter
 from .util import (colored, deep_merge, human_duration, iso, load_jsonc, log)
 from .vllm_metrics import MetricsSampler
@@ -93,6 +94,12 @@ def build_environment(config: dict, counter, corpus, endpoint: Endpoint) -> dict
         "tokenizer_exact": counter.exact,
         "corpus": corpus.describe(),
         "seed": config.get("seed"),
+        # The work profiles decide how heavy one agent step is, which turned
+        # out to be the assumption the conclusion is most sensitive to. They
+        # belong with the results, not only in the config next to them.
+        "work_profiles": [w.to_dict() for w in
+                          work_profiles_from_config(
+                              config.get("behaviour", {}).get("work_profiles"))],
         "hardware": config.get("hardware", {}),
     }
 
@@ -100,8 +107,10 @@ def build_environment(config: dict, counter, corpus, endpoint: Endpoint) -> dict
 def _largest_context(config: dict) -> int:
     """Largest prompt any run in this configuration will send.
 
-    A run grows to its context target and then adds up to 700 output tokens
-    per step, so that headroom is included.
+    A run grows to its context target and then adds the model's own output on
+    top, so the heaviest work profile's closing answer is the headroom that
+    has to fit. With a heavy profile that is thousands of tokens, not the
+    couple of hundred this used to assume.
     """
     from .matrix import BUILDERS, PHASE1
     largest = 0
@@ -111,7 +120,9 @@ def _largest_context(config: dict) -> int:
                 largest = max(largest, spec.context_tokens)
         except Exception:  # noqa: BLE001 - a disabled group must not break doctor
             continue
-    return largest + 1024
+    profiles = work_profiles_from_config(config.get("behaviour", {}).get("work_profiles"))
+    headroom = max((int(w.output_tokens_final[1]) for w in profiles), default=700)
+    return largest + headroom + 1024
 
 
 def _round_up(value: int, step: int = 8192) -> int:
@@ -274,8 +285,27 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("               De contextgrootte is een as van de hele matrix, dus een")
         print("               systematische fout hierin verschuift de conclusie over")
         print("               hoeveel geheugen een klas nodig heeft.")
-        print("               Los dit op met:  pip install tokenizers")
-        print("               Kan dat niet, ijk dan eerst: stresstest calibrate")
+        try:
+            import tokenizers  # noqa: F401
+            installed = True
+        except Exception:  # noqa: BLE001 - any import failure means "not usable"
+            installed = False
+        if installed:
+            # The package is there, so the fallback is a wiring problem, not a
+            # missing dependency: the tokenizer was looked up under
+            # `endpoint.model`, which is vLLM's --served-model-name and not a
+            # HuggingFace repo. Telling the operator to pip install something
+            # they already have sends them down the wrong path.
+            source = (config.get("tokenizer", {}).get("path")
+                      or config.get("endpoint", {}).get("model"))
+            print("               `tokenizers` is wel geinstalleerd, maar er is geen")
+            print(f"               tokenizer gevonden onder '{source}'.")
+            print("               Zet `tokenizer.path` in de config op de map van het")
+            print("               model of op de repo-id, bijvoorbeeld:")
+            print("                 --set tokenizer.path=Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8")
+        else:
+            print("               Los dit op met:  pip install tokenizers")
+            print("               Kan dat niet, ijk dan eerst: stresstest calibrate")
 
     try:
         corpus = load_corpus(config.get("corpus", {}), quiet=True)
@@ -470,6 +500,40 @@ def cmd_report(args: argparse.Namespace) -> int:
     results, config, environment = load_results(args.directory)
     if not results:
         raise SystemExit(f"geen runs gevonden in {args.directory}")
+
+    # Fase 1 and fase 2 land in separate directories, so neither one on its own
+    # holds the whole answer. --also folds extra directories in; the hardware
+    # has to match, because a report that silently mixes two cards is worse
+    # than two reports that each cover half.
+    for extra in getattr(args, "also", None) or []:
+        more, other_config, _ = load_results(extra)
+        if not more:
+            raise SystemExit(f"geen runs gevonden in {extra}")
+        here = (config.get("hardware") or {}).get("gpu_name")
+        there = (other_config.get("hardware") or {}).get("gpu_name")
+        if here and there and here.split(" (")[0] != there.split(" (")[0]:
+            raise SystemExit(
+                f"{extra} is gemeten op '{there}' en {args.directory} op '{here}'. "
+                f"Resultaten van twee kaarten horen niet in een rapport.")
+        known = {r.spec.run_id for r in results}
+        added = [r for r in more if r.spec.run_id not in known]
+        if len(added) < len(more):
+            log(f"{extra}: {len(more) - len(added)} runs overgeslagen, "
+                f"die run_id staat al in {args.directory}", color="amber")
+        results += added
+
+    if args.out:
+        # Writing elsewhere leaves the measurement directories untouched: their
+        # summary.csv must keep describing the runs that directory contains.
+        path = os.path.abspath(args.out)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(resultaten.render(
+                results, config, environment,
+                sources=[args.directory, *(getattr(args, "also", None) or [])]))
+        log(f"{len(results)} runs, conclusie in {path}", color="bold")
+        return 0
+
     writer = ResultsWriter(args.directory, config, environment)
     writer.results = results
     writer.flush_summary()
@@ -565,6 +629,12 @@ def build_parser() -> argparse.ArgumentParser:
     report = subparsers.add_parser("report",
                                    help="grafieken en RESULTATEN.md opnieuw maken")
     report.add_argument("directory", help="een resultatenmap")
+    report.add_argument("--also", nargs="+", metavar="MAP", default=[],
+                        help="extra resultatenmappen van dezelfde kaart om mee te "
+                             "nemen, bijvoorbeeld de lesvalidatie naast de matrix")
+    report.add_argument("--out", metavar="PAD",
+                        help="schrijf RESULTATEN.md hierheen in plaats van in de "
+                             "resultatenmap; de bronmappen blijven dan ongemoeid")
     report.set_defaults(func=cmd_report)
 
     mock = subparsers.add_parser("mock", help="start een nep-vLLM om het harnas te testen")

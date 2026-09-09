@@ -28,10 +28,13 @@
     "server_prefill_tps": 18829.606666666667,
     "server_decode_tps": 181.67666666666668,
     "client_output_tps": 168.13666666666666,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 396.0
   },
   {
     "run_id": "act_intensief_s20",
@@ -62,10 +65,13 @@
     "server_prefill_tps": 28199.82,
     "server_decode_tps": 276.93,
     "client_output_tps": 261.8466666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "act_rustig_s10",
@@ -96,10 +102,13 @@
     "server_prefill_tps": 7620.043333333333,
     "server_decode_tps": 87.28333333333333,
     "client_output_tps": 81.43666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 399.0
   },
   {
     "run_id": "act_rustig_s20",
@@ -130,10 +139,13 @@
     "server_prefill_tps": 9883.316666666668,
     "server_decode_tps": 121.13666666666667,
     "client_output_tps": 108.0,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 395.0
   },
   {
     "run_id": "engine_kv_auto",
@@ -164,10 +176,13 @@
     "server_prefill_tps": 25515.05,
     "server_decode_tps": 165.13666666666666,
     "client_output_tps": 148.62333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "engine_kv_fp8",
@@ -198,10 +213,13 @@
     "server_prefill_tps": 25199.04,
     "server_decode_tps": 162.77,
     "client_output_tps": 158.00666666666666,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "engine_len_65k",
@@ -232,10 +250,13 @@
     "server_prefill_tps": 25757.556666666667,
     "server_decode_tps": 163.06333333333333,
     "client_output_tps": 154.77333333333334,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "engine_seqs_16",
@@ -266,10 +287,13 @@
     "server_prefill_tps": 25291.106666666667,
     "server_decode_tps": 162.77,
     "client_output_tps": 149.69333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "wachtrij piekte op 1 verzoeken",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "engine_seqs_64",
@@ -300,10 +324,13 @@
     "server_prefill_tps": 25459.376666666667,
     "server_decode_tps": 163.07666666666665,
     "client_output_tps": 155.77333333333334,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "rampup",
@@ -334,10 +361,13 @@
     "server_prefill_tps": 20473.211486486485,
     "server_decode_tps": 227.24436936936937,
     "client_output_tps": 201.19436936936938,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": 40,
     "reasons": "",
     "warnings": "wachtrij piekte op 1 verzoeken",
-    "duration_s": 0.0
+    "duration_s": 4320.0
   },
   {
     "run_id": "scen_deadline",
@@ -368,10 +398,13 @@
     "server_prefill_tps": 41870.33,
     "server_decode_tps": 407.53333333333336,
     "client_output_tps": 384.4166666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "p90 doorlooptijd instructie 123s",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 402.0
   },
   {
     "run_id": "scen_koudestart_s20",
@@ -402,10 +435,13 @@
     "server_prefill_tps": 10816.845833333333,
     "server_decode_tps": 295.2583333333333,
     "client_output_tps": 274.875,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 246.0
   },
   {
     "run_id": "scen_koudestart_s30",
@@ -436,10 +472,13 @@
     "server_prefill_tps": 14771.833333333334,
     "server_decode_tps": 408.93333333333334,
     "client_output_tps": 376.3333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 249.0
   },
   {
     "run_id": "scen_lange_sessies",
@@ -470,10 +509,13 @@
     "server_prefill_tps": 21260.816666666666,
     "server_decode_tps": 74.44666666666667,
     "client_output_tps": 72.09333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 399.0
   },
   {
     "run_id": "scen_na_de_stilte",
@@ -504,10 +546,13 @@
     "server_prefill_tps": 29343.816666666666,
     "server_decode_tps": 339.55,
     "client_output_tps": 316.32916666666665,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 1088.0
   },
   {
     "run_id": "scen_worst_case",
@@ -538,10 +583,13 @@
     "server_prefill_tps": 46875.223333333335,
     "server_decode_tps": 201.77666666666667,
     "client_output_tps": 180.30333333333334,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "p90 doorlooptijd instructie 396s",
     "warnings": "wachtrij piekte op 9 verzoeken",
-    "duration_s": 0.0
+    "duration_s": 405.0
   },
   {
     "run_id": "shared_00_c32k",
@@ -572,10 +620,13 @@
     "server_prefill_tps": 15978.86,
     "server_decode_tps": 200.50333333333333,
     "client_output_tps": 193.37666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 397.0
   },
   {
     "run_id": "shared_00_c64k",
@@ -606,10 +657,13 @@
     "server_prefill_tps": 25289.67,
     "server_decode_tps": 163.49666666666667,
     "client_output_tps": 154.21,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "shared_50_c32k",
@@ -640,10 +694,13 @@
     "server_prefill_tps": 17281.27,
     "server_decode_tps": 198.96333333333334,
     "client_output_tps": 183.96666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 396.0
   },
   {
     "run_id": "shared_50_c64k",
@@ -674,10 +731,13 @@
     "server_prefill_tps": 25410.266666666666,
     "server_decode_tps": 162.65,
     "client_output_tps": 157.03,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "shared_90_c32k",
@@ -708,10 +768,13 @@
     "server_prefill_tps": 18399.32,
     "server_decode_tps": 199.88,
     "client_output_tps": 184.17333333333335,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "shared_90_c64k",
@@ -742,10 +805,13 @@
     "server_prefill_tps": 27674.64,
     "server_decode_tps": 173.42666666666668,
     "client_output_tps": 164.5,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 399.0
   },
   {
     "run_id": "sweep_s10_c100k",
@@ -776,10 +842,13 @@
     "server_prefill_tps": 23838.18,
     "server_decode_tps": 89.76666666666667,
     "client_output_tps": 89.27666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "sweep_s10_c32k",
@@ -810,10 +879,13 @@
     "server_prefill_tps": 12425.763333333334,
     "server_decode_tps": 131.32333333333332,
     "client_output_tps": 122.24666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 397.0
   },
   {
     "run_id": "sweep_s10_c64k",
@@ -844,10 +916,13 @@
     "server_prefill_tps": 20201.096666666668,
     "server_decode_tps": 112.60333333333334,
     "client_output_tps": 108.10666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "sweep_s10_c8k",
@@ -878,10 +953,13 @@
     "server_prefill_tps": 5251.956666666667,
     "server_decode_tps": 143.08666666666667,
     "client_output_tps": 134.89,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 396.0
   },
   {
     "run_id": "sweep_s20_c100k",
@@ -912,10 +990,13 @@
     "server_prefill_tps": 36881.176666666666,
     "server_decode_tps": 164.99666666666667,
     "client_output_tps": 150.79333333333332,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "sweep_s20_c32k",
@@ -946,10 +1027,13 @@
     "server_prefill_tps": 17397.386666666665,
     "server_decode_tps": 198.81666666666666,
     "client_output_tps": 180.85333333333332,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 397.0
   },
   {
     "run_id": "sweep_s20_c64k",
@@ -980,10 +1064,13 @@
     "server_prefill_tps": 25455.076666666668,
     "server_decode_tps": 162.97,
     "client_output_tps": 156.44666666666666,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 399.0
   },
   {
     "run_id": "sweep_s20_c8k",
@@ -1014,10 +1101,13 @@
     "server_prefill_tps": 7011.423333333333,
     "server_decode_tps": 220.75666666666666,
     "client_output_tps": 204.35,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 395.0
   },
   {
     "run_id": "sweep_s30_c100k",
@@ -1048,10 +1138,13 @@
     "server_prefill_tps": 50396.573333333334,
     "server_decode_tps": 218.81,
     "client_output_tps": 184.00666666666666,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "p90 doorlooptijd instructie 197s",
     "warnings": "wachtrij piekte op 8 verzoeken",
-    "duration_s": 0.0
+    "duration_s": 400.0
   },
   {
     "run_id": "sweep_s30_c32k",
@@ -1082,10 +1175,13 @@
     "server_prefill_tps": 25144.673333333332,
     "server_decode_tps": 265.8466666666667,
     "client_output_tps": 249.58666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 398.0
   },
   {
     "run_id": "sweep_s30_c64k",
@@ -1116,10 +1212,13 @@
     "server_prefill_tps": 42251.73,
     "server_decode_tps": 242.97,
     "client_output_tps": 234.27666666666667,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 402.0
   },
   {
     "run_id": "sweep_s30_c8k",
@@ -1150,10 +1249,13 @@
     "server_prefill_tps": 10802.51,
     "server_decode_tps": 300.67,
     "client_output_tps": 282.53333333333336,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 397.0
   },
   {
     "run_id": "sweep_s5_c100k",
@@ -1184,10 +1286,13 @@
     "server_prefill_tps": 14917.71,
     "server_decode_tps": 58.31,
     "client_output_tps": 54.28333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 395.0
   },
   {
     "run_id": "sweep_s5_c32k",
@@ -1218,10 +1323,13 @@
     "server_prefill_tps": 7040.06,
     "server_decode_tps": 73.05333333333333,
     "client_output_tps": 68.59333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 399.0
   },
   {
     "run_id": "sweep_s5_c64k",
@@ -1252,10 +1360,13 @@
     "server_prefill_tps": 11151.13,
     "server_decode_tps": 63.596666666666664,
     "client_output_tps": 60.916666666666664,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 397.0
   },
   {
     "run_id": "sweep_s5_c8k",
@@ -1286,9 +1397,12 @@
     "server_prefill_tps": 2842.786666666667,
     "server_decode_tps": 80.62,
     "client_output_tps": 72.80333333333333,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null,
     "max_students_ok": null,
     "reasons": "",
     "warnings": "",
-    "duration_s": 0.0
+    "duration_s": 396.0
   }
 ]

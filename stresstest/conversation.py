@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from .corpus import CodeCorpus, SourceFile
+from .personas import DEFAULT_WORK_PROFILES, WorkProfile
 from .tokens import MESSAGE_OVERHEAD_TOKENS, TokenCounter
 
 SYSTEM_PROMPT = """You are a coding assistant working inside a student's development environment.
@@ -220,6 +221,11 @@ class Session:
     shared_fraction: float
     rng: random.Random
     message_style: str = "tool_calls"        # or "text" for servers without tool support
+    # How heavy this student's agent steps are: how many files come back per
+    # read, how big the search and test output is, how much the model writes.
+    # Defaults to the lightest profile so callers that predate work profiles
+    # keep the behaviour they had.
+    work: WorkProfile = field(default_factory=lambda: DEFAULT_WORK_PROFILES[0])
     messages: list[dict] = field(default_factory=list)
     prompt_tokens_estimate: int = 0
     step_number: int = 0
@@ -247,12 +253,13 @@ class Session:
         initial_budget = int(self.target_tokens * 0.70)
         shared_budget = int(initial_budget * self.shared_fraction)
 
-        used = self._fill_from(self.corpus.shared_files, base, shared_budget)
+        group = self.corpus.group(self.work.group)
+        used = self._fill_from(group.shared_files, base, shared_budget)
         self.shared_prefix_tokens = used
         # Everything up to here is byte-identical across the class. Compaction
         # must never touch it, or the shared prefix stops being a prefix.
         self.shared_prefix_messages = len(self.messages)
-        own_files = self.corpus.student_files(self.student_index, 400)
+        own_files = group.student_files(self.student_index, 400)
         used = self._fill_from(own_files, used, initial_budget)
 
         self.prompt_tokens_estimate = used
@@ -395,10 +402,17 @@ class Session:
         return list(self.messages), max_tokens
 
     def _step_output_tokens(self) -> int:
-        """Tool-calling steps are short, the closing summary is long."""
+        """Tool-calling steps are short, the closing summary is long.
+
+        Both ranges come from the work profile. This is the number that decides
+        how much decode work one instruction costs, so it is the last place
+        that should carry a hard-coded guess.
+        """
         if self.rng.random() < 0.25:
-            return self.rng.randint(220, 700)     # explanation / final answer
-        return self.rng.randint(60, 260)          # a tool call with arguments
+            low, high = self.work.output_tokens_final   # explanation / final answer
+        else:
+            low, high = self.work.output_tokens_tool    # a tool call with arguments
+        return self.rng.randint(int(low), max(int(low), int(high)))
 
     def record_step(self, assistant_text: str) -> None:
         """Append the model's answer plus the tool result it triggered."""
@@ -428,30 +442,93 @@ class Session:
         self.prompt_tokens_estimate += self.counter.count_messages(self.messages[-2:])
 
     def _synthesise_tool_result(self) -> tuple[str, str, str]:
-        roll = self.rng.random()
-        if roll < 0.45:
-            source = self.corpus.student_files(self.student_index, 40)[
-                self.rng.randrange(0, 40)]
-            arguments = json.dumps({"path": source.path}, separators=(",", ":"))
-            return "read_file", arguments, f"# {source.path}\n{source.content}"
-        if roll < 0.70:
-            source = self.corpus.student_files(self.student_index, 40)[
-                self.rng.randrange(0, 40)]
+        """One tool call and its result, sized by this student's work profile.
+
+        The four tools are the ones a coding agent actually has. What differs
+        per profile is the weight of each call: a student tweaking a form gets
+        one small file back, a student having the agent grind through a Unity
+        project gets several large ones, a grep with context lines, and a test
+        run with a handful of failures.
+        """
+        group = self.corpus.group(self.work.group)
+        mix = self.work.tool_mix or {"read_file": 1.0}
+        names = list(mix)
+        tool = self.rng.choices(names, weights=[max(mix[n], 0.0) for n in names])[0]
+
+        if tool == "read_file":
+            return self._read_files(group)
+        if tool == "edit_file":
+            source = self._pick(group, 1)[0]
             snippet = source.content[:600]
             arguments = json.dumps(
                 {"path": source.path, "old_text": snippet[:120], "new_text": snippet[:120]},
                 separators=(",", ":"))
             return "edit_file", arguments, EDIT_ACK.format(
-                path=source.path, added=self.rng.randint(1, 30), removed=self.rng.randint(0, 12))
-        if roll < 0.90:
+                path=source.path, added=self.rng.randint(1, 30),
+                removed=self.rng.randint(0, 12))
+        if tool == "run_tests":
             return "run_tests", json.dumps({"target": ""}), self._test_output()
-        pattern = self.rng.choice(["password", "session", "validate", "login", "email"])
-        source = self.corpus.student_files(self.student_index, 12)
-        lines = "\n".join(
-            f"{f.path}:{self.rng.randint(3, 90)}:    # ... {pattern} ..." for f in source[:8])
-        return "search_code", json.dumps({"pattern": pattern}), f"8 matches:\n{lines}"
+        return self._search(group)
+
+    def _pick(self, group, count: int) -> list[SourceFile]:
+        """``count`` files from this student's pool, chosen per call."""
+        pool = group.student_files(self.student_index, 40)
+        return [pool[self.rng.randrange(0, len(pool))] for _ in range(max(1, count))]
+
+    def _read_files(self, group) -> tuple[str, str, str]:
+        low, high = self.work.files_per_read
+        count = self.rng.randint(int(low), max(int(low), int(high)))
+        sources = self._pick(group, count)
+        budget_low, budget_high = self.work.read_line_budget
+        parts, paths = [], []
+        for source in sources:
+            paths.append(source.path)
+            if budget_high and budget_high > 0:
+                # A real agent often reads a window rather than a whole file.
+                lines = source.content.splitlines()
+                span = self.rng.randint(int(budget_low) or 1, int(budget_high))
+                start = self.rng.randrange(0, max(1, len(lines)))
+                body = "\n".join(lines[start:start + span])
+                parts.append(f"# {source.path}:{start + 1}\n{body}")
+            else:
+                parts.append(f"# {source.path}\n{source.content}")
+        arguments = json.dumps({"path": paths[0]} if len(paths) == 1
+                               else {"paths": paths}, separators=(",", ":"))
+        return "read_file", arguments, "\n\n".join(parts)
+
+    def _search(self, group) -> tuple[str, str, str]:
+        pattern = self.rng.choice(["password", "session", "validate", "login", "email",
+                                   "Update", "Awake", "Serialize", "collider"])
+        low, high = self.work.search_matches
+        wanted = self.rng.randint(int(low), max(int(low), int(high)))
+        pool = group.student_files(self.student_index, max(wanted, 12))
+        context_lines = max(0, int(self.work.search_context_lines))
+        blocks = []
+        for i in range(wanted):
+            source = pool[i % len(pool)]
+            lines = source.content.splitlines() or [""]
+            hit = self.rng.randrange(0, len(lines))
+            if context_lines:
+                lo = max(0, hit - context_lines)
+                hi = min(len(lines), hit + context_lines + 1)
+                body = "\n".join(f"{lo + n + 1}:{text}"
+                                  for n, text in enumerate(lines[lo:hi]))
+                blocks.append(f"{source.path}\n{body}")
+            else:
+                blocks.append(f"{source.path}:{hit + 1}:{lines[hit][:120]}")
+        joiner = "\n--\n" if context_lines else "\n"
+        return ("search_code", json.dumps({"pattern": pattern}),
+                f"{wanted} matches:\n" + joiner.join(blocks))
 
     def _test_output(self) -> str:
+        """A test run. A bigger project fails in more places at once, so the
+        profile decides how many failure blocks come back -- the difference
+        between a 70-token result and a 700-token one."""
+        low, high = self.work.test_output_blocks
+        blocks = self.rng.randint(int(low), max(int(low), int(high)))
+        return "\n".join(self._one_test_block() for _ in range(blocks))
+
+    def _one_test_block(self) -> str:
         template = self.rng.choice(TEST_OUTPUT_TEMPLATES)
         return template.format(
             dots="." * self.rng.randint(20, 60) + "F",

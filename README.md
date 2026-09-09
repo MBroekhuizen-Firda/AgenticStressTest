@@ -239,7 +239,87 @@ Doe dit meteen bij het aanmaken:
 
 ### De resultaten ophalen
 
-Doe dit vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
+`scripts/pod.sh all` pusht ze zelf naar de repo en stopt de pod pas als dat
+gelukt is. Daar zijn twee sleutels voor nodig, en het is makkelijk ze te
+verwarren: **GitHub** geeft de pod het recht om te pushen, **RunPod** geeft hem
+het recht om zichzelf uit te zetten.
+
+#### 1. Een GitHub-token om te kunnen pushen
+
+Een gehuurde pod heeft geen toegang tot je repo. Maak een *fine-grained*
+personal access token — die is per repo af te bakenen, in tegenstelling tot de
+klassieke:
+
+1. GitHub → *Settings* → *Developer settings* → *Personal access tokens* →
+   *Fine-grained tokens* → **Generate new token**.
+2. **Repository access**: *Only select repositories*, en kies alleen deze repo.
+3. **Permissions** → *Repository permissions* → **Contents: Read and write**.
+   Meer is niet nodig; laat de rest op *No access*.
+4. **Expiration**: kort. De meting duurt een dag, dus zet hem op zeven dagen.
+
+Zet hem op de pod als remote, zonder dat hij in je shell-geschiedenis komt:
+
+```bash
+read -rsp 'GitHub-token: ' GH_TOKEN && echo
+git remote set-url origin \
+  "https://x-access-token:$GH_TOKEN@github.com/<eigenaar>/<repo>.git"
+```
+
+Twee dingen om te weten. De token staat daarna in platte tekst in
+`.git/config` op de pod; dat is te overzien op een machine die je binnen een
+dag termineert, maar het is wel een reden om hem daarna in te trekken in plaats
+van te bewaren. En een token met schrijfrechten op één repo is het minimum dat
+werkt — geef hem geen organisatiebrede rechten omdat het sneller klikt.
+
+Liever geen token in een URL? Een **deploy key** doet hetzelfde met SSH: maak op
+de pod een sleutel (`ssh-keygen -t ed25519`), plak de publieke helft onder
+*Settings* → *Deploy keys* van de repo met *Allow write access* aan, en gebruik
+de `git@github.com:` remote. Die sleutel geldt per definitie voor één repo.
+
+Controleer voor je begint of het werkt — een mislukte push merk je liever nu
+dan na zeven uur meten:
+
+```bash
+git ls-remote origin >/dev/null && echo "push-toegang in orde"
+```
+
+#### 2. Een RunPod-API-sleutel om de pod te stoppen
+
+`pod.sh` stopt de pod met `runpodctl stop pod $RUNPOD_POD_ID`. Lukt dat niet,
+dan valt hij terug op `poweroff` — en dat stopt de *container*, niet
+noodzakelijk de pod: de opslag tikt dan door. Voor de doodsklok en het
+automatisch afsluiten wil je dus dat `runpodctl` werkt.
+
+1. RunPod → *Settings* → *API Keys* → **Create API Key**, met schrijfrechten op
+   pods.
+2. Op de pod:
+
+```bash
+read -rsp 'RunPod API key: ' RUNPOD_KEY && echo
+runpodctl config --apiKey "$RUNPOD_KEY"
+```
+
+`RUNPOD_POD_ID` zet RunPod zelf al in de omgeving van de pod; controleer met
+`echo $RUNPOD_POD_ID`. Is die leeg, dan kan `pod.sh` de pod niet bij naam
+stoppen en moet je het zelf doen in het dashboard.
+
+Sla beide sleutels op als *Secret* in je RunPod-template als je vaker meet; dan
+staan ze bij de start al in de omgeving en hoef je ze niet per pod te plakken.
+Trek ze in zodra de meetreeks klaar is.
+
+#### Waar de resultaten belanden
+
+De resultaten belanden op een eigen branch, `resultaten/<kaart>-<tijdstempel>`,
+of op de branch die je met `--branch` meegeeft. `results/` staat in
+`.gitignore` — dat is voor lokale proefdraaien; deze meting wordt bewust met
+`git add -f` toegevoegd.
+
+Mislukt de push, dan blijft de pod draaien en blijft de doodsklok staan: de
+meting bestaat dan nog maar op één plek en de machine mag niet zomaar
+verdwijnen. Wil je helemaal niet pushen, gebruik dan `--no-push` — en haal ze
+dan zelf op, want dan stopt de pod ook niet uit zichzelf.
+
+Handmatig ophalen kan altijd nog. Doe dat vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
 ruwe verzoekregels zijn het waardevolst, want daarmee kun je later andere
 vragen beantwoorden zonder opnieuw te huren. `scripts/pod.sh all` pakt aan het
 eind alles in als `/workspace/stresstest-results-<datum>.tar.gz`; dat ene
@@ -543,8 +623,14 @@ python3 -m stresstest plan --price-per-hour 3.36
 ```
 
 Dit toont alle runs, hoe lang ze duren en wat de huur ongeveer kost. Fase 1 is
-38 runs en ongeveer **5 uur 40**, waarvan de klifzoeker het grootste blok is
+38 runs en ongeveer **4 uur 45**, waarvan de klifzoeker het grootste blok is
 (die stopt zodra de drempels breken, meestal ruim eerder dan het maximum).
+
+De klifzoeker stapt standaard met twee studenten tegelijk
+(`matrix.rampup.step_students`). Dat halveert de duurste run van de matrix en
+maakt het antwoord op twee studenten na nauwkeurig; zet hem op 1 als je de
+grens precies wilt weten, en begin dan met `start_students` vlak onder de
+verwachte grens.
 
 ### 5.4 Fase 1: de matrix
 
@@ -615,6 +701,18 @@ Grafieken en conclusie opnieuw maken van bestaande metingen, zonder GPU:
 ```bash
 python3 -m stresstest report results/20260420-101422_matrix
 ```
+
+Fase 1 en fase 2 landen in aparte mappen, dus geen van beide bevat het hele
+antwoord. Eén rapport over allebei, zonder de meetmappen zelf aan te raken:
+
+```bash
+python3 -m stresstest report results/20260420-101422_matrix \
+  --also results/20260420-183012_les --out RESULTATEN.md
+```
+
+De kaart moet in beide mappen dezelfde zijn; anders weigert het commando, want
+een rapport dat stilletjes twee kaarten mengt is slechter dan twee rapporten
+die er ieder de helft van dekken.
 
 ---
 
@@ -782,12 +880,12 @@ Bij $ 2,31 tot $ 3,36 per uur voor een RTX PRO 6000 Blackwell:
 | Fase 1 — gedeelde projectbasis (6 runs) | ~42 min | $ 1,60 – $ 2,35 |
 | Fase 1 — benoemde scenario's (6 runs) | ~50 min | $ 1,90 – $ 2,80 |
 | Fase 1 — vLLM-varianten (5 runs + herstarts) | ~45 min | $ 1,75 – $ 2,50 |
-| Fase 1 — klifzoeker (1 run) | 30 – 75 min | $ 1,15 – $ 4,20 |
-| **Fase 1 totaal** | **~5 u 40** | **$ 13 – $ 19** |
+| Fase 1 — klifzoeker (1 run, stappen van 2) | 20 – 40 min | $ 0,75 – $ 2,25 |
+| **Fase 1 totaal** | **~4 u 45** | **$ 11 – $ 16** |
 | Fase 2 — lesvalidatie van 90 minuten | ~1 u 40 | $ 3,85 – $ 5,60 |
-| **Alles bij elkaar** | **~7 u 15** | **$ 17 – $ 25** |
+| **Alles bij elkaar** | **~6 u 25** | **$ 15 – $ 22** |
 
-Ongeveer € 16 tot € 23. Ruim een tiende procent van de aanvraag.
+Ongeveer € 14 tot € 20. Ruim een tiende procent van de aanvraag.
 
 Wil je het op twee of drie kaarten doen om ze te kunnen vergelijken,
 vermenigvuldig dan met twee of drie: nog steeds onder de honderd euro.
@@ -868,8 +966,8 @@ er halverwege tegenaan.
 
 ### Het gedragsmodel
 
-Een klas bestaat uit vier soorten studenten. De verdeling en het gedrag staan in
-`config/default.json` en zijn aan te passen.
+Een klas bestaat uit vier soorten studenten, elk met een eigen werkprofiel. De
+verdeling en het gedrag staan in `config/default.json` en zijn aan te passen.
 
 | Persona | Aandeel | Denktijd tussen instructies | Stappen per burst | Contextgedrag |
 |---|---|---|---|---|
@@ -886,6 +984,37 @@ samenloop wegpoetsen die de pieken maakt.
 De activiteitsniveaus *rustig* en *intensief* verschuiven deze verdeling —
 rustig heeft meer worstelaars en afhakers, intensief meer doorpakkers — en
 comprimeren of rekken de denktijd. Het gedrag per persona blijft gelijk.
+
+#### Werkprofielen: de tweede as
+
+Een persona is een *tempo*. Daarnaast heeft elke student een **werkprofiel**:
+een *gewicht*. Hoe groot is de codebase, hoeveel bestanden leest de agent per
+keer, hoeveel schrijft het model per stap. Die twee zijn los van elkaar
+geloot, want de ene student maakt kleine aanpassingen aan een formulier en de
+andere laat de agent een Unity-project doorspitten — en allebei kunnen ze een
+"gemiddelde" persona zijn.
+
+| Werkprofiel | Aandeel | Opdracht | Bestanden per lees | Toolresultaat (p50/p90) | Model-output (p50/p90) |
+|---|---|---|---|---|---|
+| klein | 50 % | webapp | 1 | 137 / 629 tok | 193 / 518 tok |
+| middel | 30 % | webapp | 1 – 3 | 315 / 1.396 tok | 376 / 894 tok |
+| doorspitten | 20 % | Unity | 2 – 5 | 1.780 / 4.967 tok | 671 / 1.821 tok |
+
+Dit is de gevoeligste aanname van het hele harnas. De doorlooptijd van een
+instructie — het getal dat de kleuren bepaalt — schaalt vrijwel recht evenredig
+mee met de model-output per stap, en hoe snel een contextvenster volloopt hangt
+volledig af van wat er per stap bij komt.
+
+> **Deze getallen zijn beredeneerd, niet gemeten.** Ze komen uit een
+> vergelijking van het oude gedragsmodel met echte agentsessies, niet uit een
+> opname van studenten aan het werk. Neem een handvol echte sessies op en leid
+> ze daaruit af zodra dat kan. Tot die tijd is de waarde vooral dat je de
+> matrix op meerdere profielen kunt draaien en kunt zien *hoeveel* het antwoord
+> verschuift — een bandbreedte is eerlijker dan één puntschatting op een
+> verborgen aanname.
+
+De profielen staan in `behaviour.work_profiles` in `config/default.json` en
+worden meegeschreven in `environment.json` naast elke meting.
 
 ### De berichten
 
@@ -948,7 +1077,7 @@ python3 -m stresstest calibrate              # ijk de tokenschatting op dit corp
 python3 -m stresstest plan --price-per-hour 3.36
 python3 -m stresstest corpus                 # haal de voorbeeldprojecten binnen
 python3 -m stresstest matrix                 # fase 1, ~5u40
-python3 -m stresstest matrix --only rampup   # alleen de klifzoeker, ~30 min
+python3 -m stresstest matrix --only rampup   # alleen de klifzoeker, ~40 min
 python3 -m stresstest lesson                 # fase 2, ~1u40
 python3 -m stresstest run --students 24 --context 48000
 python3 -m stresstest report results/<map>   # grafieken en conclusie opnieuw

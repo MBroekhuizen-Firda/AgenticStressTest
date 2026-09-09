@@ -18,7 +18,8 @@ from .conversation import TOOLS, Session
 from .corpus import CodeCorpus
 from .grading import Grade, grade_run, grade_run_brief_definition
 from .metrics import BurstRecord, Collector, RequestRecord
-from .personas import StudentProfile, build_class, class_composition, personas_from_config
+from .personas import (StudentProfile, build_class, class_composition,
+                       personas_from_config, work_composition, work_profiles_from_config)
 from .runspec import Phase, RunSpec
 from .tokens import TokenCounter
 from .util import human_duration, log, now, percentile, wall
@@ -70,6 +71,9 @@ class RunResult:
             "server_prefill_tps": server.get("server_prefill_tokens_per_s"),
             "server_decode_tps": server.get("server_decode_tokens_per_s"),
             "client_output_tps": aggregate.get("client_output_tokens_per_s"),
+            "compactions": aggregate.get("compactions"),
+            "compactions_per_100_steps": aggregate.get("compactions_per_100_steps"),
+            "context_tokens_peak": aggregate.get("context_tokens_peak"),
             "max_students_ok": (self.ramp or {}).get("max_students_ok"),
             "reasons": "; ".join(self.grade.reasons),
             "warnings": "; ".join(self.grade.warnings),
@@ -128,10 +132,13 @@ class RunEngine:
     async def run(self, spec: RunSpec, sampler: MetricsSampler,
                   progress: bool = True) -> RunResult:
         seed = int(self.config.get("seed", 20250908))
-        personas = personas_from_config(self.config.get("behaviour", {}).get("personas"))
+        behaviour = self.config.get("behaviour", {})
+        personas = personas_from_config(behaviour.get("personas"))
+        work_profiles = work_profiles_from_config(behaviour.get("work_profiles"))
         activity_mix = self.config.get("behaviour", {}).get("activity_levels")
         profiles = build_class(spec.students, personas, spec.activity,
-                               spec.context_tokens, seed, activity_mix)
+                               spec.context_tokens, seed, activity_mix,
+                               work_profiles=work_profiles)
 
         collector = Collector(spec.run_id)
         clock = _Clock(spec.phases)
@@ -179,7 +186,9 @@ class RunEngine:
         return RunResult(
             spec=spec, started_wall=started_wall, finished_wall=finished_wall,
             aggregate=aggregate, server=server, grade=grade, grade_brief=grade_brief,
-            composition=class_composition(profiles), collector=collector,
+            composition={**class_composition(profiles),
+                         "werk": work_composition(profiles)},
+            collector=collector,
             metric_rows=sampler.rows(clock.origin),
             ramp=state.ramp_result if spec.ramp else None,
         )
@@ -197,6 +206,7 @@ class RunEngine:
             shared_fraction=spec.shared_fraction,
             rng=rng,
             message_style="tool_calls" if self.client.supports_tool_messages else "text",
+            work=profile.work,
         )
         # The class does not arrive in one instant, except in the cold-start
         # scenario where a narrow arrival window is the whole point.
@@ -215,6 +225,7 @@ class RunEngine:
         # the run -- exactly where we are trying to measure a cold start.
         session.reset()
 
+        restarted_next = False
         while not state.stop.is_set():
             phase = clock.current()
             if phase.active_fraction <= 0.0:
@@ -232,20 +243,28 @@ class RunEngine:
                     return
                 continue
 
-            await self._burst(profile, session, state, phase)
+            await self._burst(profile, session, state, phase, restarted_next)
+            restarted_next = False
             if state.stop.is_set():
                 return
             if profile.wants_restart():
                 session.restarts += 1
                 session.reset()
+                # The next instruction starts from a cold session. That drops
+                # the context too, but for a different reason than compaction,
+                # and the two must not be confused in the results.
+                restarted_next = True
             think = profile.next_think_time(phase.intensity)
             if not await _sleep_until(think, state.stop):
                 return
 
     async def _burst(self, profile: StudentProfile, session: Session,
-                     state: "_RunState", phase: Phase) -> None:
+                     state: "_RunState", phase: Phase,
+                     after_restart: bool = False) -> None:
         clock, collector, spec = state.clock, state.collector, state.spec
+        compactions_before = session.compactions
         session.start_burst(phase.intensity)
+        compacted = session.compactions > compactions_before
         steps = profile.next_burst_length(phase.intensity)
         burst_start = clock.elapsed
         burst_phase = phase.name
@@ -308,6 +327,7 @@ class RunEngine:
             # measurement window is most of them.
             phase=_phase_label(clock.phase_at((burst_start + burst_end) / 2)),
             prompt_tokens_at_end=session.prompt_tokens_estimate,
+            compacted=compacted, restarted=after_restart,
         ))
 
     def _extra_body(self) -> dict[str, Any]:
@@ -327,15 +347,22 @@ class RunEngine:
 
     async def _ramp_controller(self, state: "_RunState",
                                profiles: Sequence[StudentProfile]) -> None:
-        """Add one student every ``step_interval_s`` until the thresholds break.
+        """Add ``step_students`` students every ``step_interval_s`` until the
+        thresholds break.
 
         One run that answers 'how many students fit' directly, and it is
         reusable against any hardware configuration without changing anything.
+
+        A bigger step trades resolution for wall-clock time: the answer is then
+        accurate to within ``step_students``, which is the right trade when the
+        cliff is far from the starting point. ``max_students_ok`` stays the last
+        step that held, so a coarse run never claims more than it measured.
         """
         ramp = state.spec.ramp or {}
         start_students = int(ramp.get("start_students", 5))
         interval = float(ramp.get("step_interval_s", 120))
         max_students = int(ramp.get("max_students", len(profiles)))
+        step_students = max(int(ramp.get("step_students", 1)), 1)
         thresholds = dict(self.config.get("grading", {}).get("thresholds") or {})
         ttft_limit = float(ramp.get("ttft_p90_limit_s")
                            or thresholds.get("ttft_p90_amber_s") or 45.0)
@@ -344,8 +371,8 @@ class RunEngine:
         error_limit = float(ramp.get("error_rate_limit") or 0.02)
 
         state.activate_through(start_students)
-        log(f"klifzoeker: start met {start_students} studenten, +1 per {interval:.0f}s",
-            color="bold")
+        log(f"klifzoeker: start met {start_students} studenten, "
+            f"+{step_students} per {interval:.0f}s tot {max_students}", color="bold")
         steps: list[dict] = []
         last_ok = start_students
         active = start_students
@@ -391,17 +418,22 @@ class RunEngine:
                 f"{'GEBROKEN: ' + ', '.join(broke) if broke else 'ok'}", color=colour)
             if broke:
                 state.ramp_result = {"max_students_ok": last_ok, "broke_at": active,
-                                     "reasons": broke, "steps": steps}
+                                     "reasons": broke, "steps": steps,
+                                     "step_students": step_students}
                 state.stop.set()
                 return
             last_ok = active
             if active >= max_students:
                 break
-            active += 1
+            # Never overshoot the ceiling: a last step of one student is a
+            # smaller step than asked for, not a run past the configured
+            # maximum.
+            active = min(active + step_students, max_students)
             state.activate_through(active)
 
         state.ramp_result = {"max_students_ok": last_ok, "broke_at": None,
-                             "reasons": [], "steps": steps}
+                             "reasons": [], "steps": steps,
+                             "step_students": step_students}
         state.stop.set()
 
     # -------------------------------------------------------------- display

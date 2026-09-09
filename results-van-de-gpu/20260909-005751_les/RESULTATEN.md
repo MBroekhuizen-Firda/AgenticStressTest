@@ -7,6 +7,8 @@ Uitgevoerd op 2026-09-09, 1 runs, seed 20250908.
 
 ## De korte versie
 
+- Hoogste piek over alle runs: **8.5 GB** (15%), in `les_90min`. Dat is het getal waartegen een kleinere kaart hieronder wordt afgemeten.
+- Goedkoopste geteste kaart die de zwaarste gemeten run nog aankan: **RTX PRO 5000 (72 GB)** (7602 euro) — op geheugen alleen; over de rekenkracht van die kaart zegt deze meting niets.
 
 ## 1. Past een klas van 20 op 96 GB, en met hoeveel marge?
 
@@ -23,7 +25,15 @@ De contextgrootte is hier de belangrijkere as: een grotere context kost per stud
 
 ## 3. Zou minder videogeheugen ook volstaan?
 
-_Zonder gemeten KV-cachebezetting is deze vraag niet te beantwoorden. Controleer of `/metrics` bereikbaar was tijdens de runs._
+Er zijn twee getallen in omloop, en ze geven een ander antwoord. Een klas van 20 in de sweep kwam niet hoger dan **niet gemeten**. De zwaarste run uit de hele meting — `les_90min`, Lesvalidatie 90 minuten, 20 studenten — vroeg **8.5 GB**. De kolom **Past?** hieronder oordeelt op dat tweede getal: een kaart die de zwaarste gemeten belasting niet aankan, kun je niet aanbevelen omdat het gemiddelde er wel op past.
+
+| Kaart | Videogeheugen | Cachepool | Nodig (klas) | Nodig (zwaarste run) | Marge | Past? | Prijs |
+|---|---|---|---|---|---|---|---|
+| RTX PRO 5000 (72 GB) | 72 GB | 33.7 GB | niet gemeten | 8.5 GB | 25.2 GB | ja | 7602 euro |
+| 2x RTX 5090 (64 GB) | 64 GB | 26.5 GB | niet gemeten | 8.5 GB | 18.0 GB | ja | 10000 euro |
+| RTX PRO 6000 (96 GB) | 96 GB | 55.3 GB | niet gemeten | 8.5 GB | 46.8 GB | ja | 37400 euro |
+
+Deze vergelijking rekent alleen met geheugen. Een kaart met minder geheugen heeft doorgaans ook minder rekenkracht en geheugenbandbreedte, wat de doorlooptijd van een instructie raakt ook als het geheugen past. Meet daarom de gekozen alternatieven na met dezelfde matrix voordat je bestelt; het harnas draait ongewijzigd tegen elk endpoint.
 
 ## 4. Welke vLLM-instellingen zijn bepalend?
 
@@ -33,7 +43,7 @@ _Er zijn geen vLLM-variantruns in deze resultatenmap. Die vereisen een herstart 
 
 Oordeel over het volledige lesuur: **groen**. p90 TTFT 0.3 s, p90 doorlooptijd van een instructie 69 s, 0 preempties, prefix cache hit rate 96%, KV-piek 15%.
 
-De grafiek `charts/04_cache_en_kv_over_tijd.svg` laat zien wat er tijdens de tien minuten klassikale uitleg met de cache gebeurt, en hoe duur de eerste stap daarna is.
+De grafiek `04_cache_en_kv_over_tijd.svg`, in de `charts`-map van de resultatenmap van de lesvalidatie, laat zien wat er tijdens de tien minuten klassikale uitleg met de cache gebeurt, en hoe duur de eerste stap daarna is.
 
 ## Hoe de kleuren zijn bepaald
 

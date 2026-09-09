@@ -76,6 +76,12 @@ SHUTDOWN_WHEN_DONE=0
 DEADMAN_HOURS=""
 SKIP_LESSON=0
 SKIP_ENGINE=0
+# Push the results to the repository when 'all' finishes, and stop the pod once
+# that push succeeded. Results that only exist on a rented machine are one
+# forgotten terminate away from being gone, so this is on by default.
+PUSH_RESULTS=1
+RESULTS_BRANCH="${RESULTS_BRANCH:-}"
+PUSH_RETRIES="${PUSH_RETRIES:-4}"
 EXTRA_SETS=()      # as the harness CLI wants them: --set k=v
 EXTRA_KV=()        # the same overrides as bare k=v, for the helpers below
 LESSON_FLAGS=""
@@ -123,7 +129,14 @@ detect_gpu() {
       # is the first question anyone asks of these results.
       GPU_WATTS="$(nvidia-smi --query-gpu=power.default_limit --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc '0-9.' || true)"
       if [ -n "$GPU_WATTS" ]; then
-        GPU_NAME="$GPU_NAME (${GPU_WATTS%.*}W)"
+        # GPU_NAME survives between invocations (see the persisted-state list),
+        # so appending unconditionally gives you "... (600W) (600W)" on the
+        # second phase -- and two results directories that disagree about which
+        # card they were measured on.
+        case "$GPU_NAME" in
+          *"(${GPU_WATTS%.*}W)") : ;;
+          *) GPU_NAME="$GPU_NAME (${GPU_WATTS%.*}W)" ;;
+        esac
         if awk -v w="$GPU_WATTS" 'BEGIN{exit !(w < 400)}'; then
           warn "deze kaart staat op ${GPU_WATTS%.*}W. Dat wijst op een Max-Q-variant, die trager is afgeregeld dan de gewone uitvoering."
           warn "Meten kan prima, maar noteer het: de uitkomst geldt dan voor die variant, niet voor de kaart in de aanvraag."
@@ -135,6 +148,23 @@ detect_gpu() {
 }
 
 model_dir() { echo "$HF_HOME/hub/models--${MODEL//\//--}"; }
+
+# Where the tokenizer lives. The harness falls back to the served name when it
+# has nothing better, and "qwen3-coder" is not a HuggingFace repo -- so it
+# silently estimates context sizes instead of counting them, on a run that is
+# entirely about context size. Point it at the snapshot that was downloaded
+# anyway; the repo id is the fallback for when the layout surprises us.
+tokenizer_source() {
+  local snapshot
+  # `|| true`: under `set -e` with pipefail a missing snapshots directory would
+  # otherwise abort the whole script before the model has been downloaded.
+  snapshot="$(find "$(model_dir)/snapshots" -maxdepth 2 -name tokenizer.json -print 2>/dev/null | head -1 || true)"
+  if [ -n "$snapshot" ]; then
+    dirname "$snapshot"
+  else
+    echo "$MODEL"
+  fi
+}
 
 model_size_gb() {
   local dir; dir="$(model_dir)"
@@ -159,6 +189,8 @@ harness_sets() {
   [ "${GPU_NAME:-onbekend}" != "onbekend" ] && SETS+=(--set "hardware.gpu_name=$GPU_NAME")
   local w; w="$(weights_gb)"
   [ -n "$w" ] && SETS+=(--set "hardware.model_weights_gb=$w")
+  local tok; tok="$(tokenizer_source)"
+  [ -n "$tok" ] && SETS+=(--set "tokenizer.path=$tok")
   local backend; backend="$(cat "$STATE_DIR/current_backend" 2>/dev/null || true)"
   [ -n "$backend" ] && SETS+=(--set "hardware.attention_backend=$backend")
   local kv; kv="$(cat "$STATE_DIR/current_kv_dtype" 2>/dev/null || true)"
@@ -747,6 +779,69 @@ disarm_deadman() {
   fi
 }
 
+# results/ is in .gitignore on purpose: local rehearsals should not end up in
+# the repository. A measurement that cost real money should, so this adds it
+# with -f -- exactly as the comment in .gitignore prescribes.
+push_results() {
+  head_ "Resultaten naar de repo pushen"
+  command -v git >/dev/null 2>&1 || { warn "git ontbreekt op deze pod; niets gepusht."; return 1; }
+  cd "$REPO_DIR"
+  git rev-parse --git-dir >/dev/null 2>&1 \
+    || { warn "$REPO_DIR is geen git-repo; niets gepusht."; return 1; }
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    warn "geen remote 'origin'. Zet er een met een token dat mag pushen:"
+    warn "    git remote add origin https://<token>@github.com/<eigenaar>/<repo>.git"
+    return 1
+  fi
+
+  # A rented pod has no git identity, and a commit without one fails.
+  git config user.email >/dev/null 2>&1 || git config user.email "pod@stresstest.local"
+  git config user.name  >/dev/null 2>&1 || git config user.name  "stresstest pod"
+
+  local slug branch
+  slug="$(printf '%s' "${GPU_NAME:-gpu}" | tr -c '[:alnum:]' '-' | tr -s '-' | sed 's/^-//;s/-$//')"
+  branch="${RESULTS_BRANCH:-resultaten/${slug:-gpu}-$(date +%Y%m%d-%H%M%S)}"
+  git checkout -B "$branch" >/dev/null 2>&1 || { warn "kon branch $branch niet maken"; return 1; }
+
+  local staged=0 d
+  for d in "$@"; do
+    [ -n "$d" ] && [ -d "$d" ] || continue
+    git add -f "$d" && staged=1
+  done
+  # The combined report over both phases, if it was written.
+  [ -f RESULTATEN.md ] && git add -f RESULTATEN.md
+  if [ "$staged" = 0 ]; then
+    warn "geen resultatenmappen gevonden om te pushen."
+    return 1
+  fi
+  if git diff --cached --quiet; then
+    say "niets nieuws om te committen -- alles stond er al in."
+  else
+    git commit -q -m "Meetresultaten van ${GPU_NAME:-onbekende kaart}
+
+Gedraaid door scripts/pod.sh op $(date -u '+%Y-%m-%dT%H:%M:%SZ').
+Mappen: $*" || { warn "commit mislukt"; return 1; }
+  fi
+
+  # Network on a rented pod is not always immediately willing; a few tries with
+  # a growing pause costs nothing and saves the whole run.
+  local try=1 wait=2
+  while :; do
+    if git push -u origin "$branch" >&2; then
+      say "gepusht naar branch $branch"
+      return 0
+    fi
+    if [ "$try" -ge "$PUSH_RETRIES" ]; then
+      warn "push mislukt na $try pogingen. De resultaten staan wel in de commit"
+      warn "op branch $branch; push hem handmatig, of haal hem op met scp."
+      return 1
+    fi
+    warn "push mislukt (poging $try van $PUSH_RETRIES), opnieuw over ${wait}s"
+    sleep "$wait"
+    try=$((try + 1)); wait=$((wait * 2))
+  done
+}
+
 archive_results() {
   local stamp; stamp="$(date +%Y%m%d-%H%M%S)"
   local tarball="$WORKSPACE/stresstest-results-$stamp.tar.gz"
@@ -819,6 +914,12 @@ cmd_all() {
     lesson_dir="$(cat "$STATE_DIR/last_lesson_dir" 2>/dev/null || true)"
   fi
 
+  # One report covering both phases, next to the per-phase ones.
+  if [ -n "$lesson_dir" ]; then
+    "$PY" -m stresstest report "$dir" --also "$lesson_dir" --out RESULTATEN.md \
+      || warn "gecombineerd rapport mislukt; de losse rapporten staan er wel"
+  fi
+
   head_ "Klaar in $(awk -v s=$((SECONDS - started)) 'BEGIN{printf "%du%02dm", s/3600, (s%3600)/60}')"
   say "fase 1: $dir/RESULTATEN.md"
   [ -n "$lesson_dir" ] && say "fase 2: $lesson_dir/RESULTATEN.md"
@@ -831,9 +932,29 @@ cmd_all() {
   echo >&2
   warn "ZET DE INSTANCE UIT als je klaar bent. Terminate, niet Stop -- bij Stop tikt de opslag door."
 
-  if [ "$SHUTDOWN_WHEN_DONE" = 1 ]; then
-    warn "de pod wordt over 10 minuten gestopt (--shutdown). Afbreken: scripts/pod.sh disarm"
+  local pushed=0
+  if [ "$PUSH_RESULTS" = 1 ]; then
+    push_results "$dir" "$lesson_dir" && pushed=1
+  fi
+
+  if [ "$pushed" = 1 ] || [ "$SHUTDOWN_WHEN_DONE" = 1 ]; then
+    if [ "$pushed" = 1 ]; then
+      say "de resultaten staan in de repo; de pod wordt over 10 minuten gestopt."
+    else
+      warn "de pod wordt over 10 minuten gestopt (--shutdown)."
+    fi
+    warn "Afbreken: scripts/pod.sh disarm"
     arm_deadman 0.17
+  elif [ "$PUSH_RESULTS" = 1 ]; then
+    # The push is what makes the results safe. Without it the pod must not stop
+    # -- but it must not run forever either, so whatever deadman was armed at
+    # the start stays armed.
+    warn "de resultaten zijn NIET gepusht; de pod blijft draaien zodat je ze kunt ophalen."
+    if [ -f "$DEADMAN_PID_FILE" ]; then
+      warn "de doodsklok blijft staan ($(cat "$STATE_DIR/deadman_at" 2>/dev/null || echo '?'))."
+    else
+      warn "er staat geen doodsklok. Zet er een:  scripts/pod.sh deadman 2"
+    fi
   else
     disarm_deadman
   fi
@@ -868,7 +989,12 @@ Opties
   --mock             generale repetitie op je laptop tegen de ingebouwde
                      nep-vLLM: geen GPU, geen model, geen kosten
   --deadman <uren>   doodsklok zetten bij 'all'; 'auto' = geschatte duur + 1,5u
-  --shutdown         de pod stoppen zodra alles klaar is
+  --shutdown         de pod stoppen zodra alles klaar is, ook zonder push
+  --no-push          de resultaten niet naar de repo pushen. Dan stopt de pod
+                     ook niet vanzelf: de meting staat dan alleen op deze
+                     machine, en die mag je niet kwijtraken
+  --branch <naam>    branch om de resultaten heen te pushen
+                     (standaard resultaten/<kaart>-<tijdstempel>)
   --skip-lesson      fase 2 overslaan
   --skip-engine      de engine-varianten overslaan (die herstarten vLLM)
   --flags "<vlaggen>"  afwijkende vLLM-vlaggen voor 'lesson'
@@ -880,6 +1006,7 @@ Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
   MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
+  RESULTS_BRANCH PUSH_RETRIES
 
 Voorbeelden
   scripts/pod.sh all --deadman auto
@@ -900,6 +1027,8 @@ main() {
       --force) FORCE=1; shift ;;
       --mock) MOCK=1; SERVED_NAME="${SERVED_NAME_OVERRIDE:-mock-model}"; shift ;;
       --shutdown) SHUTDOWN_WHEN_DONE=1; shift ;;
+      --no-push) PUSH_RESULTS=0; shift ;;
+      --branch) RESULTS_BRANCH="$2"; shift 2 ;;
       --skip-lesson) SKIP_LESSON=1; shift ;;
       --skip-engine) SKIP_ENGINE=1; shift ;;
       --deadman) DEADMAN_HOURS="$2"; shift 2 ;;
