@@ -366,37 +366,26 @@ class TestOnlyOneRunAtATime(unittest.TestCase):
                           f"{command} starts a server without taking the lock")
 
 
-class TestFlashInferFallback(unittest.TestCase):
-    """vLLM 0.28 reaches for FlashInfer for top-k/top-p sampling whatever the
-    attention backend is. On this card its JIT compiler cannot build, and with
-    the package removed vLLM's own import of it fails instead -- both end the
-    run. Sampling without it changes nothing here: the harness runs at
-    temperature 0."""
-
-    def test_a_missing_flashinfer_module_triggers_the_retry(self):
-        text = script_text()
-        retry = re.search(r"NO_FLASHINFER_SAMPLER\" != 1.*?grep -qEi (\"[^\"]+\")",
-                          text, re.S)
-        self.assertIsNotNone(retry, "the FlashInfer retry is gone")
-        pattern = retry.group(1)
-        self.assertIn("No module named", pattern,
-                      "an absent flashinfer is the other way this fails")
-
-    def test_the_flag_survives_the_next_server_start(self):
-        """Every engine variant restarts the server. Learning this once per
-        start would cost a failed start-up each time."""
-        text = script_text()
-        self.assertNotIn("local no_flashinfer_sampler", text,
-                         "the flag must outlive a single start_server call")
-        self.assertIn("NO_FLASHINFER_SAMPLER=0\n", text,
-                      "the flag needs a default outside start_server")
+THROTTLED_VLLM = """\
+#!/usr/bin/env bash
+# A repo id goes to the Hub and is throttled; a path does not.
+case "$2" in
+  # exec, so the pid the script records is the one to kill.
+  /*) echo "Application startup complete."; exec sleep 5 ;;
+  *)  echo "ERROR [repo_utils.py:117] 429 Too Many Requests for url:"
+      echo "  https://huggingface.co/api/models/$2/tree/main"
+      exit 1 ;;
+esac
+"""
 
 
-class TestHubRateLimit(unittest.TestCase):
-    """vLLM asks huggingface.co for the repo's file list on every start, also
-    when all 31 GB are already on disk. The Hub throttles anonymous calls per
-    IP, and on a rented pod that IP is shared with the neighbours -- so a 429
-    ends a start-up that needs nothing from the network at all."""
+class StartServerHarness(unittest.TestCase):
+    """Drives the script's real start_server against a fake `vllm` on PATH.
+
+    Stubbed: stop_server (nothing to stop) and wait_ready (the fake server
+    announces itself in the log instead of on a port). Everything the tests
+    are about -- the fallbacks, the retries, the diagnosis -- is the script's.
+    """
 
     def setUp(self):
         if not shutil.which("bash"):
@@ -440,6 +429,272 @@ class TestHubRateLimit(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         return done.stdout.strip()
 
+    def _drive_start_server(self, fake_vllm: str, model_on_disk: bool = True,
+                            attempts: int = 4,
+                            backend: str = "") -> subprocess.CompletedProcess:
+        """Run start_server with `fake_vllm` (a bash script) as vllm.
+        `backend` is what an operator would export as ATTENTION_BACKEND."""
+        home = os.path.join(self.tmp, "hf")
+        if model_on_disk:
+            self._snapshot(26)
+        bin_dir = os.path.join(self.tmp, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        vllm = os.path.join(bin_dir, "vllm")
+        with open(vllm, "w", encoding="utf-8") as handle:
+            handle.write(fake_vllm)
+        os.chmod(vllm, os.stat(vllm).st_mode | stat.S_IEXEC)
+
+        text = script_text()
+        bodies = []
+        for name in ("model_dir", "model_size_gb", "model_is_complete",
+                     "model_snapshot_dir", "show_server_error",
+                     "die_server_start", "start_server"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
+        # Every pattern constant, so a new one cannot be missed here and read
+        # as an unbound variable under set -u.
+        consts = [line for line in text.splitlines()
+                  if re.match(r"^[A-Z_]+_PATTERNS=", line)]
+        state = os.path.join(self.tmp, "state")
+        os.makedirs(state, exist_ok=True)
+        script = "\n".join([
+            "set -Eeuo pipefail",
+            'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
+            "SERVED_NAME=qwen3-coder; HOST_BIND=127.0.0.1; PORT=8000",
+            "GPU_UTIL=0.90; TENSOR_PARALLEL=1; MOCK=0",
+            "KV_CACHE_DTYPE=fp8; MAX_NUM_SEQS=32; MAX_MODEL_LEN=131072",
+            f'ATTENTION_BACKEND="{backend}"; NO_FLASHINFER_SAMPLER=0',
+            f"HF_OFFLINE=0; SERVER_START_ATTEMPTS={attempts}",
+            "HF_RATE_LIMIT_WAIT_S=1; HF_RATE_LIMIT_MAX_WAIT_S=1",
+            "SERVER_START_TIMEOUT_S=900",
+            f'HF_HOME="{home}"',
+            f'STATE_DIR="{state}"',
+            'SERVER_LOG="$STATE_DIR/vllm.log"',
+            'SERVER_PID_FILE="$STATE_DIR/vllm.pid"',
+            *consts,
+            'say()  { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die()  { echo "[die] $*" >&2; exit 1; }',
+            "stop_server() { :; }",
+            "wait_ready() {",
+            "  sleep 0.3",
+            '  grep -q "Application startup complete" "$SERVER_LOG" 2>/dev/null && return 0',
+            "  return 2",
+            "}",
+            *bodies,
+            "start_server",
+            'echo "[ok] HF_OFFLINE=$HF_OFFLINE"',
+            'echo "[ok] ATTENTION_BACKEND=$ATTENTION_BACKEND"',
+            'echo "[ok] NO_FLASHINFER_SAMPLER=$NO_FLASHINFER_SAMPLER"',
+            'echo "[ok] current_backend=$(cat "$STATE_DIR/current_backend" 2>/dev/null)"',
+        ])
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"])
+        done = subprocess.run(["bash", "-c", script], env=env,
+                              capture_output=True, text=True, timeout=180)
+        # A start that succeeded left the fake server running, exactly as the
+        # real one does. Nothing here waits for it, so take it down.
+        self.addCleanup(self._kill, os.path.join(state, "vllm.pid"))
+        return done
+
+    @staticmethod
+    def _kill(pid_file: str) -> None:
+        try:
+            with open(pid_file, encoding="utf-8") as handle:
+                pid = int(handle.read().strip())
+        except (OSError, ValueError):
+            return
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+    @staticmethod
+    def starts(done: subprocess.CompletedProcess) -> list:
+        """The vllm command lines the script tried, in order."""
+        return [line.split("start: ", 1)[1] for line in done.stderr.splitlines()
+                if "[say] start: " in line]
+
+
+# vLLM's start-up log echoes every non-default argument. That line is in every
+# log, including one of a server that died on something else entirely.
+ARGS_ECHO = ("INFO [utils.py:253] non-default args: {'enable_auto_tool_choice': True,"
+             " 'tool_call_parser': 'qwen3_coder', 'kv_cache_dtype': 'fp8'}")
+
+# The two ways FlashInfer's JIT compiler ends a start on this card. Same root
+# cause -- "SM 12.x requires CUDA >= 12.9", after which check_cuda_arch()
+# reports the misleading sm75 message -- reached through two different
+# callers: the attention backend building its prefill module, or the sampler.
+ATTENTION_JIT_FAILURE = """\
+echo "$ARGS_ECHO"
+echo "INFO [flashinfer.py:190] Using FlashInfer backend on V1 engine."
+echo "ERROR [core.py:1374]   File \\"/dist-packages/vllm/v1/attention/backends/flashinfer.py\\", line 900, in _plan"
+echo "ERROR [core.py:1374]   File \\"/dist-packages/flashinfer/jit/attention/modules.py\\", line 1735, in gen_customize_batch_prefill_module"
+echo "ERROR [core.py:1374]   File \\"/dist-packages/flashinfer/jit/core.py\\", line 109, in check_cuda_arch"
+echo "ERROR [core.py:1374] RuntimeError: FlashInfer requires GPUs with sm75 or higher"
+echo "RuntimeError: Engine core initialization failed. See root cause above."
+exit 1
+"""
+SAMPLER_JIT_FAILURE = """\
+echo "$ARGS_ECHO"
+echo "INFO [topk_topp_sampler.py:62] Using FlashInfer for top-p and top-k sampling."
+echo "ERROR [core.py:1374]   File \\"/dist-packages/vllm/v1/attention/backends/flashinfer.py\\", line 20, in <module>"
+echo "ERROR [core.py:1374]   File \\"/dist-packages/flashinfer/sampling.py\\", line 70, in get_sampling_module"
+echo "ERROR [core.py:1374]   File \\"/dist-packages/flashinfer/jit/core.py\\", line 109, in check_cuda_arch"
+echo "ERROR [core.py:1374] RuntimeError: FlashInfer requires GPUs with sm75 or higher"
+exit 1
+"""
+STARTED = 'echo "Application startup complete."; exec sleep 5'
+
+
+def shell_quote(text: str) -> str:
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def fake_vllm(body: str) -> str:
+    """A `vllm` that runs `body` with the arguments in $* and the sampler
+    variable in $SAMPLER; `$ARGS_ECHO` is vLLM's argument echo."""
+    return ("#!/usr/bin/env bash\n"
+            f"ARGS_ECHO={shell_quote(ARGS_ECHO)}\n"
+            'SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-}"\n'
+            + textwrap.dedent(body))
+
+
+# A vLLM that only starts on TRITON_ATTN, and dies in FlashInfer's attention
+# JIT otherwise: the pod as it was on the day the fallback was written.
+NEEDS_TRITON = fake_vllm(f"""
+    case " $* " in
+      *" --attention-backend TRITON_ATTN "*) {STARTED} ;;
+    esac
+    {ATTENTION_JIT_FAILURE}""")
+
+
+class TestFlashInferFallback(StartServerHarness):
+    """FlashInfer's JIT compiler cannot build for this card with the toolkit
+    on the image, and vLLM 0.28 reaches for FlashInfer in two places: the
+    top-k/top-p sampler, whatever the attention backend, and the attention
+    backend itself once --kv-cache-dtype fp8 rules FLASH_ATTN out. The
+    script has to steer around both, without dropping anything else on the
+    way -- the tool-call flags in particular -- and has to say what it did."""
+
+    def test_the_attention_backend_is_switched_when_the_log_blames_it(self):
+        """The case from the field: the sampler was already off and the
+        engine still died building FlashInfer's prefill module. That start-up
+        cannot be rescued by the sampler; only another backend helps."""
+        done = self._drive_start_server(NEEDS_TRITON)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        starts = self.starts(done)
+        self.assertEqual(len(starts), 2,
+                         "the sampler and the backend should be switched in one go:\n"
+                         + done.stderr)
+        self.assertIn("--attention-backend TRITON_ATTN", starts[-1])
+        self.assertIn("[ok] current_backend=TRITON_ATTN", done.stdout,
+                      "the backend must reach the results as hardware.attention_backend")
+        self.assertIn("[ok] ATTENTION_BACKEND=TRITON_ATTN", done.stdout,
+                      "the next engine variant would otherwise burn a start-up on it again")
+        self.assertIn("VLLM_USE_FLASHINFER_SAMPLER=0", done.stderr)
+
+    def test_the_tool_call_flags_survive_a_flashinfer_failure(self):
+        """What actually happened on the pod: the second FlashInfer failure
+        fell through to the tool-parser fallback, because vLLM's argument echo
+        contains 'tool_call_parser'. The engine died again in the same way,
+        and had it started, the harness would have measured without tool
+        calling."""
+        done = self._drive_start_server(NEEDS_TRITON)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("tool-call-parser wordt niet geaccepteerd", done.stderr)
+        for command in self.starts(done):
+            self.assertIn("--tool-call-parser qwen3_coder", command)
+
+    def test_a_sampler_only_failure_leaves_the_backend_alone(self):
+        """Another backend changes the numbers; the sampler does not. When
+        the log only blames the sampler, that is all that should change."""
+        done = self._drive_start_server(fake_vllm(f"""
+            [ "$SAMPLER" = 0 ] && {{ {STARTED}; }}
+            {SAMPLER_JIT_FAILURE}"""))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        starts = self.starts(done)
+        self.assertEqual(len(starts), 2, done.stderr)
+        self.assertNotIn("--attention-backend", starts[-1])
+        self.assertIn("[ok] current_backend=\n", done.stdout)
+
+    def test_a_backend_the_operator_chose_is_not_substituted(self):
+        """ATTENTION_BACKEND=FLASHINFER from the outside is a decision, not a
+        default. The sampler may still be switched off; the backend may not."""
+        done = self._drive_start_server(NEEDS_TRITON, backend="FLASHINFER")
+        self.assertNotEqual(done.returncode, 0)
+        for command in self.starts(done):
+            self.assertIn("--attention-backend FLASHINFER", command)
+        self.assertIn("VLLM_USE_FLASHINFER_SAMPLER=0", done.stderr)
+
+    def test_a_card_that_cannot_be_helped_gets_the_toolkit_diagnosis(self):
+        """Sampler off, TRITON_ATTN, and still FlashInfer: nothing left to
+        try. Then say so -- and do not blame the KV cache, which is where the
+        generic message sends people."""
+        done = self._drive_start_server(fake_vllm(ATTENTION_JIT_FAILURE))
+        self.assertNotEqual(done.returncode, 0, "start_server reported success without a server")
+        self.assertLessEqual(len(self.starts(done)), 2,
+                             "a hopeless start-up should not be repeated:\n" + done.stderr)
+        self.assertIn("12.9", done.stderr)
+        self.assertNotIn("te weinig geheugen voor de KV-cache", done.stderr)
+        self.assertNotIn("tool-call-parser wordt niet geaccepteerd", done.stderr)
+
+    def test_an_old_vllm_without_the_flag_is_named(self):
+        done = self._drive_start_server(fake_vllm(f"""
+            case " $* " in
+              *" --attention-backend "*)
+                echo "vllm serve: error: unrecognized arguments: --attention-backend TRITON_ATTN"
+                exit 2 ;;
+            esac
+            {ATTENTION_JIT_FAILURE}"""))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("--attention-backend niet", done.stderr)
+        self.assertNotIn("tool-call-parser wordt niet geaccepteerd", done.stderr)
+
+    def test_the_tool_parser_fallback_still_fires_on_a_real_refusal(self):
+        done = self._drive_start_server(fake_vllm(f"""
+            case " $* " in
+              *" --tool-call-parser "*)
+                echo "$ARGS_ECHO"
+                echo "ValueError: invalid tool call parser: qwen3_coder (chose from {{hermes}})"
+                exit 1 ;;
+            esac
+            {STARTED}"""))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("tool-call-parser wordt niet geaccepteerd", done.stderr)
+        self.assertNotIn("--tool-call-parser", self.starts(done)[-1])
+
+    def test_a_missing_flashinfer_module_triggers_the_retry(self):
+        text = script_text()
+        pattern = re.search(r"^FLASHINFER_PATTERNS='([^']+)'", text, re.M)
+        self.assertIsNotNone(pattern, "the FlashInfer pattern is gone")
+        self.assertRegex("ModuleNotFoundError: No module named 'flashinfer'",
+                         f"(?i){pattern.group(1)}")
+
+    def test_the_backend_is_a_server_argument_not_the_dead_variable(self):
+        """vLLM 0.28 no longer reads VLLM_ATTENTION_BACKEND: it warns about an
+        unknown variable and picks FlashInfer anyway."""
+        text = script_text()
+        self.assertNotIn('VLLM_ATTENTION_BACKEND="$backend"', text)
+        self.assertIn('--attention-backend $backend', text)
+
+    def test_the_flags_survive_the_next_server_start(self):
+        """Every engine variant restarts the server. Learning this once per
+        start would cost a failed start-up each time."""
+        text = script_text()
+        self.assertNotIn("local no_flashinfer_sampler", text,
+                         "the flag must outlive a single start_server call")
+        self.assertIn("NO_FLASHINFER_SAMPLER=0\n", text,
+                      "the flag needs a default outside start_server")
+        self.assertNotIn("local ATTENTION_BACKEND", text)
+
+
+class TestHubRateLimit(StartServerHarness):
+    """vLLM asks huggingface.co for the repo's file list on every start, also
+    when all 31 GB are already on disk. The Hub throttles anonymous calls per
+    IP, and on a rented pod that IP is shared with the neighbours -- so a 429
+    ends a start-up that needs nothing from the network at all."""
+
     def test_a_complete_download_is_offered_as_the_local_fallback(self):
         snapshot = self._snapshot(26)
         self.assertEqual(self._ask("model_snapshot_dir"), snapshot)
@@ -479,95 +734,8 @@ class TestHubRateLimit(unittest.TestCase):
         self.assertIn("HF_OFFLINE=0\n", text,
                       "the flag needs a default outside start_server")
 
-    def _drive_start_server(self, model_on_disk: bool) -> subprocess.CompletedProcess:
-        """Run the real start_server against a vLLM that only ever gets a 429.
-
-        Stubbed: stop_server (nothing to stop) and wait_ready (the fake server
-        announces itself in the log instead of on a port). Everything the test
-        is about -- the fallback, the retry, the diagnosis -- is the script's.
-        """
-        home = os.path.join(self.tmp, "hf")
-        if model_on_disk:
-            self._snapshot(26)
-        bin_dir = os.path.join(self.tmp, "bin")
-        os.makedirs(bin_dir, exist_ok=True)
-        vllm = os.path.join(bin_dir, "vllm")
-        with open(vllm, "w", encoding="utf-8") as handle:
-            handle.write(textwrap.dedent("""\
-                #!/usr/bin/env bash
-                # A repo id goes to the Hub and is throttled; a path does not.
-                case "$2" in
-                  # exec, so the pid the script records is the one to kill.
-                  /*) echo "Application startup complete."; exec sleep 5 ;;
-                  *)  echo "ERROR [repo_utils.py:117] 429 Too Many Requests for url:"
-                      echo "  https://huggingface.co/api/models/$2/tree/main"
-                      exit 1 ;;
-                esac
-                """))
-        os.chmod(vllm, os.stat(vllm).st_mode | stat.S_IEXEC)
-
-        text = script_text()
-        bodies = []
-        for name in ("model_dir", "model_size_gb", "model_is_complete",
-                     "model_snapshot_dir", "show_server_error",
-                     "die_server_start", "start_server"):
-            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
-            self.assertIsNotNone(found, f"{name} is gone")
-            bodies.append(found.group(0))
-        consts = [line for line in text.splitlines()
-                  if line.startswith(("SERVER_ERROR_PATTERNS=", "HF_RATE_LIMIT_PATTERNS="))]
-        state = os.path.join(self.tmp, "state")
-        os.makedirs(state, exist_ok=True)
-        script = "\n".join([
-            "set -Eeuo pipefail",
-            'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
-            "SERVED_NAME=qwen3-coder; HOST_BIND=127.0.0.1; PORT=8000",
-            "GPU_UTIL=0.90; TENSOR_PARALLEL=1; MOCK=0",
-            "KV_CACHE_DTYPE=fp8; MAX_NUM_SEQS=32; MAX_MODEL_LEN=131072",
-            'ATTENTION_BACKEND=""; NO_FLASHINFER_SAMPLER=0',
-            "HF_OFFLINE=0; SERVER_START_ATTEMPTS=2",
-            "HF_RATE_LIMIT_WAIT_S=1; HF_RATE_LIMIT_MAX_WAIT_S=1",
-            "SERVER_START_TIMEOUT_S=900",
-            f'HF_HOME="{home}"',
-            f'STATE_DIR="{state}"',
-            'SERVER_LOG="$STATE_DIR/vllm.log"',
-            'SERVER_PID_FILE="$STATE_DIR/vllm.pid"',
-            *consts,
-            'say()  { echo "[say] $*" >&2; }',
-            'warn() { echo "[warn] $*" >&2; }',
-            'die()  { echo "[die] $*" >&2; exit 1; }',
-            "stop_server() { :; }",
-            "wait_ready() {",
-            "  sleep 0.3",
-            '  grep -q "Application startup complete" "$SERVER_LOG" 2>/dev/null && return 0',
-            "  return 2",
-            "}",
-            *bodies,
-            "start_server",
-            'echo "[ok] HF_OFFLINE=$HF_OFFLINE"',
-        ])
-        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"])
-        done = subprocess.run(["bash", "-c", script], env=env,
-                              capture_output=True, text=True, timeout=180)
-        # A start that succeeded left the fake server running, exactly as the
-        # real one does. Nothing here waits for it, so take it down.
-        self.addCleanup(self._kill, os.path.join(state, "vllm.pid"))
-        return done
-
-    @staticmethod
-    def _kill(pid_file: str) -> None:
-        try:
-            with open(pid_file, encoding="utf-8") as handle:
-                pid = int(handle.read().strip())
-        except (OSError, ValueError):
-            return
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except OSError:
-            pass
-
     def test_a_throttled_hub_falls_back_to_the_weights_on_disk(self):
-        done = self._drive_start_server(model_on_disk=True)
+        done = self._drive_start_server(THROTTLED_VLLM, model_on_disk=True, attempts=2)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("[ok] HF_OFFLINE=1", done.stdout)
         self.assertIn("snapshots/deadbeef --served-model-name", done.stderr,
@@ -578,7 +746,7 @@ class TestHubRateLimit(unittest.TestCase):
         up, and blaming the KV cache for the neighbours' traffic. The first
         would send the harness at a dead port; the second would send the
         operator to lower --max-model-len, which changes nothing."""
-        done = self._drive_start_server(model_on_disk=False)
+        done = self._drive_start_server(THROTTLED_VLLM, model_on_disk=False, attempts=2)
         self.assertNotEqual(done.returncode, 0,
                             "start_server reported success without a server")
         self.assertIn("429", done.stderr)

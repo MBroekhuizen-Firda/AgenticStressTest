@@ -38,9 +38,12 @@ MAX_NUM_SEQS="${MAX_NUM_SEQS:-32}"
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8}"
 
 GPU_UTIL="${GPU_UTIL:-0.90}"
-# Which attention backend vLLM uses. Empty means "let vLLM choose", which is
-# right until its choice does not work on this card -- see the fallback in
-# start_server. Recorded with the results, because it changes the numbers.
+# Which attention backend vLLM uses, passed as --attention-backend. Empty means
+# "let vLLM choose", which is right until its choice does not build on this
+# card -- see the FlashInfer fallback in start_server, which then sets this to
+# TRITON_ATTN for the rest of the run. Recorded with the results, because it
+# changes the numbers. (VLLM_ATTENTION_BACKEND is accepted for operators who
+# still export it; vLLM 0.28 itself no longer reads that variable.)
 ATTENTION_BACKEND="${ATTENTION_BACKEND:-${VLLM_ATTENTION_BACKEND:-}}"
 TENSOR_PARALLEL="${TENSOR_PARALLEL:-1}"
 CONFIG="${CONFIG:-config/default.json}"
@@ -80,9 +83,9 @@ HF_OFFLINE=0
 HF_RATE_LIMIT_WAIT_S="${HF_RATE_LIMIT_WAIT_S:-60}"
 HF_RATE_LIMIT_MAX_WAIT_S="${HF_RATE_LIMIT_MAX_WAIT_S:-240}"
 HF_DOWNLOAD_RETRIES="${HF_DOWNLOAD_RETRIES:-4}"
-# How many times start_server may try. Six, not one: the FlashInfer and
-# tool-parser fallbacks each cost an attempt, and waiting out a rate limit
-# costs the rest.
+# How many times start_server may try. Six, not one: the two FlashInfer
+# fallbacks (sampler, then attention backend) and the tool-parser fallback each
+# cost an attempt, and waiting out a rate limit costs the rest.
 SERVER_START_ATTEMPTS="${SERVER_START_ATTEMPTS:-6}"
 
 PY="${PY:-python3}"
@@ -484,6 +487,28 @@ SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|comp
 # quarter of an hour of GPU rent for nothing.
 HF_RATE_LIMIT_PATTERNS='Too Many Requests|429 Client Error|RateLimitExceeded'
 
+# What it looks like when FlashInfer's JIT compiler cannot build for this card.
+# The message about sm75 is the symptom: the card is sm_120, and the real reason
+# sits a few lines higher ("SM 12.x requires CUDA >= 12.9") -- the toolkit on
+# the image is older than what this flashinfer needs for Blackwell. A missing
+# module is the other way the same import chain ends.
+FLASHINFER_PATTERNS='FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA|No module named .flashinfer'
+
+# What says the attention backend is involved, not just the sampler: vLLM
+# announcing that it chose FlashInfer, or the traceback frames in which it
+# builds FlashInfer's prefill and decode modules (flashinfer/jit/attention/...).
+# The sampler goes through flashinfer/sampling.py instead. Not the frame in
+# vllm/v1/attention/backends/flashinfer.py: the sampler imports that module
+# too, so it shows up in a sampler-only failure as well.
+FLASHINFER_ATTENTION_PATTERNS='Using FlashInfer backend|flashinfer/jit/attention|gen_customize_batch_(prefill|decode)_module|gen_batch_(prefill|decode)_module'
+
+# The one way the tool-call flags themselves are refused. Not a bare
+# "tool.call.parser": vLLM echoes every non-default argument at start-up
+# ("non-default args: {... 'tool_call_parser': 'qwen3_coder' ...}"), so that
+# would match every log, and a server that died on something else would be
+# restarted without tool calling -- and measured that way.
+TOOL_PARSER_ERROR_PATTERNS='invalid tool call parser|tool-call-parser: invalid choice|tool.call.parser.*not (found|supported|registered)|unrecognized arguments:.*(--tool-call-parser|--enable-auto-tool-choice)|enable-auto-tool-choice requires'
+
 show_server_error() {
   local log="$1" hits
   [ -f "$log" ] || return 0
@@ -509,11 +534,14 @@ die_server_start() {
     die "huggingface.co blijft vLLM met 429 (te veel verzoeken) afwijzen. Dit is geen geheugen- of kernelprobleem: vLLM vraagt bij elke start de bestandslijst op bij de Hub, ook als het model al op schijf staat, en die limiet per IP-adres deel je met alle andere containers op deze machine. Uitwegen: haal het model eerst compleet binnen ('scripts/pod.sh setup'), want dan dient dit script de map zelf aan vLLM aan in plaats van de repo-naam; of zet HF_HUB_OFFLINE=1; of zet een HF_TOKEN in de omgeving en probeer het over een kwartier opnieuw."
   fi
   if [ "$status" = 2 ]; then
-    if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
-      die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 zodat de JIT-compiler er niet aan te pas komt."
+    if grep -qE 'unrecognized arguments:.*--attention-backend' "$SERVER_LOG" 2>/dev/null; then
+      die "deze vLLM kent --attention-backend niet (een oudere vLLM dan de 0.28 waar dit script op is afgestemd), en zonder die vlag is er geen weg om FlashInfer heen. Werk vLLM bij, of kies een image met een recente vLLM en een CUDA-toolkit van 12.9 of nieuwer."
     fi
-    if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch' "$SERVER_LOG" 2>/dev/null; then
-      die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler. De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Een image met een nieuwere toolkit is dan de uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
+    if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
+      die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 en --attention-backend TRITON_ATTN zodat de JIT-compiler er niet aan te pas komt."
+    fi
+    if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' "$SERVER_LOG" 2>/dev/null; then
+      die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler en met --attention-backend TRITON_ATTN (zie hierboven welke van de twee dit script al geprobeerd heeft). De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Kijk in de traceback welk onderdeel van vLLM hem nu nog aanroept. Een image met een toolkit van 12.9 of nieuwer is de zekere uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
     fi
     die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
   fi
@@ -564,6 +592,9 @@ start_server() {
     local cmd="vllm serve $model_arg --served-model-name $SERVED_NAME --host $HOST_BIND --port $PORT"
     cmd="$cmd --gpu-memory-utilization $GPU_UTIL --enable-prefix-caching $tunable"
     [ "$TENSOR_PARALLEL" -gt 1 ] && cmd="$cmd --tensor-parallel-size $TENSOR_PARALLEL"
+    # As a server argument, not VLLM_ATTENTION_BACKEND: vLLM 0.28 no longer
+    # reads that variable and only warns about it.
+    [ -n "$backend" ] && cmd="$cmd --attention-backend $backend"
     cmd="$cmd $tool_flags"
 
     say "start: $cmd"
@@ -571,10 +602,6 @@ start_server() {
     if [ "$HF_OFFLINE" = 1 ]; then
       server_env+=(HF_HUB_OFFLINE=1)
       say "       HF_HUB_OFFLINE=1 (alles komt van schijf, niets van huggingface.co)"
-    fi
-    if [ -n "$backend" ]; then
-      server_env+=(VLLM_ATTENTION_BACKEND="$backend")
-      say "       VLLM_ATTENTION_BACKEND=$backend"
     fi
     if [ "$NO_FLASHINFER_SAMPLER" = 1 ]; then
       server_env+=(VLLM_USE_FLASHINFER_SAMPLER=0)
@@ -622,23 +649,56 @@ start_server() {
       fi
     fi
 
-    # FlashInfer is used for top-k/top-p sampling regardless of the attention
-    # backend, and its JIT compiler refuses to build here: the log says
-    # "Failed to get device capability: SM 12.x requires CUDA >= 12.9", after
-    # which check_cuda_arch() reports the misleading "FlashInfer requires GPUs
-    # with sm75 or higher" -- the card is sm_120. The toolkit on the image is
-    # simply older than what this flashinfer needs for Blackwell.
+    # FlashInfer's JIT compiler refuses to build here: the log says "Failed to
+    # get device capability: SM 12.x requires CUDA >= 12.9", after which
+    # check_cuda_arch() reports the misleading "FlashInfer requires GPUs with
+    # sm75 or higher" -- the card is sm_120. The toolkit on the image is simply
+    # older than what this flashinfer needs for Blackwell.
     #
-    # vLLM can sample without it, so try that. This changes nothing about what
-    # is measured -- the harness runs at temperature 0 -- so it is safe to do
-    # for the engine variants too.
-    if [ "$status" = 2 ] && [ "$NO_FLASHINFER_SAMPLER" != 1 ] \
-       && grep -qEi "FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA|No module named .flashinfer" \
-                    "$SERVER_LOG" 2>/dev/null; then
-      warn "vLLM struikelt over FlashInfer; opnieuw zonder de FlashInfer-sampler."
-      warn "Dat raakt de meting niet: het harnas draait op temperatuur 0."
-      NO_FLASHINFER_SAMPLER=1
-      continue
+    # vLLM reaches for FlashInfer in two places, and both have to be steered
+    # around it. The top-k/top-p sampler uses it whatever the attention
+    # backend is; vLLM can sample without it, and that changes nothing about
+    # what is measured -- the harness runs at temperature 0 -- so it is safe
+    # for the engine variants too. And with --kv-cache-dtype fp8 vLLM picks
+    # FLASHINFER as the attention backend, because FLASH_ATTN cannot serve an
+    # FP8 cache on this card; the JIT then dies building the prefill module
+    # (flashinfer/jit/attention/...) before the sampler is even reached. Only
+    # TRITON_ATTN remains, and that one vLLM names itself: "out of potential
+    # backends: ['FLASHINFER', 'TRITON_ATTN']". A different backend does
+    # change the numbers, so it is announced, made sticky for the rest of the
+    # run, and recorded with the results as hardware.attention_backend.
+    #
+    # Which of the two the log blames decides the order: a traceback through
+    # the attention modules means the sampler alone will not help, so both
+    # are switched at once rather than spending a start-up on each. A backend
+    # the operator chose is never substituted; then only the sampler is tried.
+    if [ "$status" = 2 ] && grep -qEi "$FLASHINFER_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      if [ -z "$backend" ] \
+         && grep -qEi "$FLASHINFER_ATTENTION_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+        warn "vLLM koos FlashInfer als attention-backend en de JIT-compiler kan die niet bouwen voor deze kaart;"
+        warn "opnieuw met --attention-backend TRITON_ATTN (en zonder de FlashInfer-sampler)."
+        warn "Dat is een andere backend en dus andere getallen: dit wordt bij de resultaten vastgelegd."
+        ATTENTION_BACKEND="TRITON_ATTN"
+        backend="$ATTENTION_BACKEND"
+        NO_FLASHINFER_SAMPLER=1
+        continue
+      fi
+      if [ "$NO_FLASHINFER_SAMPLER" != 1 ]; then
+        warn "vLLM struikelt over FlashInfer; opnieuw zonder de FlashInfer-sampler."
+        warn "Dat raakt de meting niet: het harnas draait op temperatuur 0."
+        NO_FLASHINFER_SAMPLER=1
+        continue
+      fi
+      if [ -z "$backend" ]; then
+        warn "vLLM struikelt ook zonder de FlashInfer-sampler nog over FlashInfer;"
+        warn "opnieuw met --attention-backend TRITON_ATTN. Dat is een andere backend en dus"
+        warn "andere getallen: dit wordt bij de resultaten vastgelegd."
+        ATTENTION_BACKEND="TRITON_ATTN"
+        backend="$ATTENTION_BACKEND"
+        continue
+      fi
+      # Sampler off and a non-FlashInfer backend, and still FlashInfer: this
+      # is nothing the script can steer around. die_server_start says so.
     fi
 
     # The README's documented fallback, but only when the log actually blames
@@ -646,8 +706,7 @@ start_server() {
     # points the operator at the wrong thing: an engine that dies on memory or
     # on missing kernels dies again in exactly the same way.
     if [ "$status" = 2 ] && [ -n "$tool_flags" ] \
-       && grep -qEi 'tool.call.parser|enable-auto-tool-choice|unrecognized arguments|invalid choice' \
-                    "$SERVER_LOG" 2>/dev/null; then
+       && grep -qEi "$TOOL_PARSER_ERROR_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
       warn "de tool-call-parser wordt niet geaccepteerd; opnieuw zonder die twee vlaggen"
       warn "(het harnas schakelt dan zelf over op een tekstvariant met dezelfde berichtstructuur)"
       tool_flags=""
