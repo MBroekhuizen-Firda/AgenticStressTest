@@ -75,7 +75,10 @@
     "burst_p90_s": 69.02997560533697,
     "preemptions": 0.0,
     "prefix_cache_hit_rate": 0.9647770656752006,
-    "kv_peak": 0.1544031049250535
+    "kv_peak": 0.1544031049250535,
+    "compactions": null,
+    "compactions_per_100_steps": null,
+    "context_tokens_peak": null
   },
   "grading_disagreements": []
 }

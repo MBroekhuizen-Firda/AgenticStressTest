@@ -25,7 +25,8 @@ SUMMARY_COLUMNS = [
     "requests_failed", "error_rate", "bursts", "prefix_cache_hit_rate",
     "preemptions", "kv_cache_usage_avg", "kv_cache_usage_peak",
     "queue_depth_avg", "queue_depth_peak", "server_prefill_tps",
-    "server_decode_tps", "client_output_tps", "max_students_ok",
+    "server_decode_tps", "client_output_tps", "compactions",
+    "compactions_per_100_steps", "context_tokens_peak", "max_students_ok",
     "reasons", "warnings", "duration_s",
 ]
 
@@ -479,6 +480,28 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
         "reasons": r.grade.reasons,
     } for r in scenarios]
 
+    # How often sessions hit their context ceiling, per context size. This is
+    # the empirical half of "is this context big enough": the memory and
+    # latency cost of a bigger window is in the sweep, and this is what you buy
+    # with it.
+    context = []
+    for size in sorted({r.spec.context_tokens for r in sweep}):
+        subset = [r for r in sweep if r.spec.context_tokens == size]
+        rates = [r.aggregate.get("compactions_per_100_steps") for r in subset]
+        rates = [x for x in rates if x is not None and x == x]
+        peaks = [r.aggregate.get("context_tokens_peak") or 0 for r in subset]
+        if not rates:
+            continue
+        context.append({
+            "context_tokens": size,
+            "compactions_per_100_steps": sum(rates) / len(rates),
+            "compactions": sum(r.aggregate.get("compactions") or 0 for r in subset),
+            "context_tokens_peak": max(peaks) if peaks else 0,
+            "fill_fraction": (max(peaks) / size) if peaks and size else None,
+        })
+    if context:
+        findings["context_pressure"] = context
+
     lesson = next((r for r in results if r.spec.kind == "lesson"), None)
     if lesson:
         findings["lesson"] = {
@@ -488,6 +511,9 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
             "preemptions": lesson.server.get("preemptions"),
             "prefix_cache_hit_rate": lesson.server.get("prefix_cache_hit_rate"),
             "kv_peak": lesson.server.get("kv_cache_usage_peak"),
+            "compactions": lesson.aggregate.get("compactions"),
+            "compactions_per_100_steps": lesson.aggregate.get("compactions_per_100_steps"),
+            "context_tokens_peak": lesson.aggregate.get("context_tokens_peak"),
         }
 
     disagreements = [r.spec.run_id for r in results

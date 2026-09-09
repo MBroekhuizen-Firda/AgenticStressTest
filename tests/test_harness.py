@@ -125,6 +125,41 @@ class TestConversation(unittest.TestCase):
             self.assertGreater(measured[0.5], measured[0.0], f"target {target}")
             self.assertAlmostEqual(measured[0.9], 0.9, delta=0.12, msg=f"target {target}")
 
+    def test_compaction_is_counted_so_the_results_can_report_it(self):
+        """How often a session hits its context ceiling is the empirical
+        answer to 'is this context size big enough'. The agent already had to
+        compact; if the count never leaves the Session, every run has to
+        reconstruct it from prompt-token traces afterwards."""
+        session = self._session(0, 0.5, target=8000)
+        self.assertEqual(session.compactions, 0)
+        # Drive it well past its target: several instructions of a dozen steps.
+        for _ in range(12):
+            session.start_burst()
+            for _ in range(12):
+                session.next_step()
+                session.record_step("ok")
+        self.assertGreater(session.compactions, 0,
+                           "a session driven past its target must compact")
+        self.assertLessEqual(session.prompt_tokens_estimate, session.target_tokens * 1.6,
+                             "compaction has to actually bring the context back down")
+
+    def test_a_roomy_context_compacts_far_less_often(self):
+        """The other side of the same measurement. A big window does not
+        abolish compaction -- run long enough and every window fills -- but it
+        pushes it out, and that ratio is what the context axis is asking
+        about."""
+        counts = {}
+        for target in (8000, 100000):
+            session = self._session(0, 0.5, target=target)
+            for _ in range(12):
+                session.start_burst()
+                for _ in range(12):
+                    session.next_step()
+                    session.record_step("ok")
+            counts[target] = session.compactions
+        self.assertGreater(counts[8000], 3 * counts[100000],
+                           f"compactions per target: {counts}")
+
     def test_context_reaches_the_target_without_overshooting(self):
         """The initial context fills to roughly 70 % of the target -- the rest
         is headroom for the live agent steps -- and never past the target

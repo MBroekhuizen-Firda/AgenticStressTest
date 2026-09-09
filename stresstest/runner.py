@@ -70,6 +70,9 @@ class RunResult:
             "server_prefill_tps": server.get("server_prefill_tokens_per_s"),
             "server_decode_tps": server.get("server_decode_tokens_per_s"),
             "client_output_tps": aggregate.get("client_output_tokens_per_s"),
+            "compactions": aggregate.get("compactions"),
+            "compactions_per_100_steps": aggregate.get("compactions_per_100_steps"),
+            "context_tokens_peak": aggregate.get("context_tokens_peak"),
             "max_students_ok": (self.ramp or {}).get("max_students_ok"),
             "reasons": "; ".join(self.grade.reasons),
             "warnings": "; ".join(self.grade.warnings),
@@ -215,6 +218,7 @@ class RunEngine:
         # the run -- exactly where we are trying to measure a cold start.
         session.reset()
 
+        restarted_next = False
         while not state.stop.is_set():
             phase = clock.current()
             if phase.active_fraction <= 0.0:
@@ -232,20 +236,28 @@ class RunEngine:
                     return
                 continue
 
-            await self._burst(profile, session, state, phase)
+            await self._burst(profile, session, state, phase, restarted_next)
+            restarted_next = False
             if state.stop.is_set():
                 return
             if profile.wants_restart():
                 session.restarts += 1
                 session.reset()
+                # The next instruction starts from a cold session. That drops
+                # the context too, but for a different reason than compaction,
+                # and the two must not be confused in the results.
+                restarted_next = True
             think = profile.next_think_time(phase.intensity)
             if not await _sleep_until(think, state.stop):
                 return
 
     async def _burst(self, profile: StudentProfile, session: Session,
-                     state: "_RunState", phase: Phase) -> None:
+                     state: "_RunState", phase: Phase,
+                     after_restart: bool = False) -> None:
         clock, collector, spec = state.clock, state.collector, state.spec
+        compactions_before = session.compactions
         session.start_burst(phase.intensity)
+        compacted = session.compactions > compactions_before
         steps = profile.next_burst_length(phase.intensity)
         burst_start = clock.elapsed
         burst_phase = phase.name
@@ -308,6 +320,7 @@ class RunEngine:
             # measurement window is most of them.
             phase=_phase_label(clock.phase_at((burst_start + burst_end) / 2)),
             prompt_tokens_at_end=session.prompt_tokens_estimate,
+            compacted=compacted, restarted=after_restart,
         ))
 
     def _extra_body(self) -> dict[str, Any]:

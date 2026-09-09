@@ -309,6 +309,39 @@ def render(results: Sequence[RunResult], config: dict, environment: dict,
                 f"| {_pct(entry.get('kv_peak'))} | {entry['grade']} |")
         add("")
 
+    # -------------------------------------------------------- contextdruk
+    if findings.get("context_pressure"):
+        add("## Is de context groot genoeg?")
+        add("")
+        add("Een sessie die vol raakt moet ruimte maken: het oudste deel van de "
+            "werkhistorie gaat eruit, en de volgende agentstap moet dat deel "
+            "opnieuw laten voorrekenen. Hoe vaak dat gebeurde, per contextgrootte:")
+        add("")
+        add("| Contextgrootte | Compacties per 100 stappen | Compacties totaal | Hoogste context bereikt |")
+        add("|---|---|---|---|")
+        for entry in findings["context_pressure"]:
+            fill = entry.get("fill_fraction")
+            peak = (f"{entry['context_tokens_peak']} "
+                    f"({fill * 100:.0f}% van het doel)" if fill else
+                    str(entry["context_tokens_peak"]))
+            add(f"| {entry['context_tokens'] // 1000}k "
+                f"| {_n(entry.get('compactions_per_100_steps'), '', 1)} "
+                f"| {_n(entry.get('compactions'), '', 0)} | {peak} |")
+        add("")
+        add("Niet de broncode vult het venster maar de gesprekshistorie: gelezen "
+            "bestanden, diffs, testuitvoer. Een grotere context koopt dus minder "
+            "compacties, en betaalt daarvoor in cachegeheugen en doorlooptijd — "
+            "beide staan in vraag 1 en vraag 2.")
+        add("")
+        add("> Let op: hoe snel een venster vol loopt hangt volledig af van "
+            "hoeveel elke agentstap toevoegt. Het gedragsmodel van dit harnas "
+            "gaat uit van kleine stappen (een gelezen bestand uit dit corpus is "
+            "een paar honderd tokens). Een agent die complete testlogs of grote "
+            "bestanden in de context kiepert, vult hetzelfde venster een orde "
+            "van grootte sneller. Deze tabel geldt dus voor dit gedragsmodel, "
+            "niet voor agentic coding in het algemeen.")
+        add("")
+
     # ------------------------------------------------------------ scenario
     if findings.get("scenarios"):
         add("## De benoemde momenten")
@@ -336,6 +369,13 @@ def render(results: Sequence[RunResult], config: dict, environment: dict,
             f"{_n(lesson.get('preemptions'), '', 0)} preempties, prefix cache hit rate "
             f"{_pct(lesson.get('prefix_cache_hit_rate'))}, KV-piek "
             f"{_pct(lesson.get('kv_peak'))}.")
+        if lesson.get("compactions") is not None:
+            add("")
+            add(f"Contextdruk over het hele lesuur: "
+                f"{_n(lesson.get('compactions'), '', 0)} compacties, "
+                f"{_n(lesson.get('compactions_per_100_steps'), ' per 100 agentstappen')}, "
+                f"hoogste bereikte context {_n(lesson.get('context_tokens_peak'), '', 0)} "
+                f"tokens.")
         add("")
         add("De grafiek `04_cache_en_kv_over_tijd.svg`, in de `charts`-map van de "
             "resultatenmap van de lesvalidatie, laat zien wat er tijdens de tien "

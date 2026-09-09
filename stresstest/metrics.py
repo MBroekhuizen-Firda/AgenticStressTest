@@ -77,6 +77,13 @@ class BurstRecord:
     failed_steps: int
     phase: str
     prompt_tokens_at_end: int
+    # Whether this instruction had to make room before it could start: the
+    # session had grown past its context target and the oldest part of the
+    # working history was dropped. This is the empirical answer to "is this
+    # context size big enough", so it belongs with the measurements rather
+    # than only in the agent's own head.
+    compacted: bool = False
+    restarted: bool = False
 
     @property
     def duration_s(self) -> float:
@@ -93,6 +100,8 @@ class BurstRecord:
             "steps": self.steps,
             "failed_steps": self.failed_steps,
             "context_tokens": self.prompt_tokens_at_end,
+            "compacted": int(self.compacted),
+            "restarted": int(self.restarted),
             "phase": self.phase,
         }
 
@@ -142,7 +151,17 @@ class Collector:
             "client_output_tokens_per_s": (sum(r.output_tokens for r in good) / window_s)
             if window_s > 0 else float("nan"),
             "requests_per_minute": (len(requests) / window_s * 60.0) if window_s > 0 else float("nan"),
+            "compactions": sum(1 for b in bursts if b.compacted),
+            "restarts": sum(1 for b in bursts if b.restarted),
+            "context_tokens_peak": max((b.prompt_tokens_at_end for b in bursts), default=0),
         }
+        # How often a session hit its context ceiling, per instruction and per
+        # agent step. The rate is what compares across runs; the raw count
+        # scales with how many instructions happened to fit in the window.
+        steps_done = sum(b.steps for b in bursts)
+        out["compactions_per_burst"] = (out["compactions"] / len(bursts)) if bursts else float("nan")
+        out["compactions_per_100_steps"] = ((out["compactions"] / steps_done * 100.0)
+                                            if steps_done else float("nan"))
 
         cached = [(r.cached_prompt_tokens, r.reported_prompt_tokens) for r in good
                   if r.cached_prompt_tokens is not None and r.reported_prompt_tokens]
