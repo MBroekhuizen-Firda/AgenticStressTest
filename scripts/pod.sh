@@ -779,6 +779,47 @@ disarm_deadman() {
   fi
 }
 
+# Can we actually push? Asked before the measurement, not after it.
+#
+# The pod only stops once the results are pushed, so broken push access means
+# discovering after six hours that the machine is still running and the results
+# are still on it. `git ls-remote` costs a second and answers the question.
+check_push_access() {
+  [ "$PUSH_RESULTS" = 1 ] || return 0
+  [ "$MOCK" = 1 ] && return 0
+  head_ "Controle: mag deze pod pushen?"
+  cd "$REPO_DIR"
+  local remote
+  if ! remote="$(git remote get-url origin 2>/dev/null)"; then
+    warn "geen remote 'origin'."
+    _push_access_hint
+    return 1
+  fi
+  setup_git_credentials "$remote" || return 1
+  if git ls-remote origin >/dev/null 2>&1; then
+    say "push-toegang in orde ($remote)"
+    return 0
+  fi
+  warn "kan niet bij $remote."
+  _push_access_hint
+  return 1
+}
+
+_push_access_hint() {
+  warn "De pod stopt pas als de resultaten gepusht zijn, dus dit is nu een"
+  warn "probleem en niet over zes uur. Drie manieren om het op te lossen:"
+  warn "  1. Token via een RunPod-secret. Maak het secret aan, en zet in je"
+  warn "     Pod-template een omgevingsvariabele:"
+  warn "         GITHUB_TOKEN = {{ RUNPOD_SECRET_<naam-van-je-secret> }}"
+  warn "     De variabele MOET GITHUB_TOKEN of GH_TOKEN heten; de naam van het"
+  warn "     secret zelf maakt niet uit. Een secret komt niet vanzelf in de"
+  warn "     omgeving -- die verwijzing in de template is wat hem er zet."
+  warn "  2. Eenmalig in deze shell:  export GITHUB_TOKEN=..."
+  warn "  3. Niet pushen:             scripts/pod.sh all --no-push"
+  warn "     (dan stopt de pod ook niet vanzelf, en haal je de resultaten"
+  warn "      zelf op met scp)"
+}
+
 # Where the push credential comes from. A token in the remote URL ends up in
 # .git/config in plain text and in every `git remote -v`; a token in argv ends
 # up in the process list. GIT_ASKPASS keeps it in neither: git asks the helper
@@ -940,6 +981,11 @@ cmd_all() {
   if ! cmd_doctor; then
     [ "$FORCE" = 1 ] || die "doctor meldt problemen -- los die eerst op. Een uur meten met een kapotte opstelling is een verloren uur. Gebruik --force om toch door te gaan."
     warn "doctor meldt problemen, doorgaan vanwege --force"
+  fi
+
+  if ! check_push_access; then
+    [ "$FORCE" = 1 ] || die "geen push-toegang. Zie de aanwijzingen hierboven, of draai met --no-push."
+    warn "geen push-toegang, doorgaan vanwege --force"
   fi
 
   # rampup first: it is the cheapest useful number and it doubles as a canary

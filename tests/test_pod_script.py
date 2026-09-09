@@ -420,6 +420,24 @@ class TestPushingResults(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("askpass=geen", done.stdout)
 
+    def test_push_access_is_checked_before_the_measurement_not_after(self):
+        """Six hours of GPU rental followed by 'kan niet pushen' is the failure
+        this check exists to prevent, and the hint has to name the RunPod
+        template variable because that is the step people miss."""
+        text = script_text()
+        body = re.search(r'^cmd_all\(\) \{.*?^\}', text, re.M | re.S)
+        self.assertIsNotNone(body, "cmd_all is gone")
+        tail = body.group(0)
+        self.assertIn("check_push_access", tail)
+        # Before any measurement group runs.
+        self.assertLess(tail.index("check_push_access"), tail.index("run_group rampup"),
+                        "the push check must come before the first run")
+        hint = re.search(r'^_push_access_hint\(\) \{.*?^\}', text, re.M | re.S)
+        self.assertIsNotNone(hint, "_push_access_hint is gone")
+        self.assertIn("GITHUB_TOKEN = {{ RUNPOD_SECRET_", hint.group(0),
+                      "the hint must show the template reference verbatim")
+        self.assertIn("--no-push", hint.group(0))
+
     def test_the_pod_only_stops_after_a_successful_push(self):
         text = script_text()
         body = re.search(r'^cmd_all\(\) \{.*?^\}', text, re.M | re.S)

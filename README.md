@@ -30,6 +30,70 @@ uitvoeren, zonder ervaring met GPU-verhuur of vLLM.
 
 ---
 
+## Snelstart: de hele test in één commando
+
+De rest van dit document legt elke stap los uit. Dat hoeft niet: `scripts/pod.sh`
+doet de hele meting onbewaakt — installeren, het model ophalen, vLLM starten,
+fase 1, de engine-varianten mét hun herstarts, fase 2, het rapport, de push naar
+de repo, en de pod uitzetten.
+
+**Vooraf, op de pod:**
+
+In je **RunPod-template**, onder *Environment variables*, één regel:
+
+```
+GITHUB_TOKEN = {{ RUNPOD_SECRET_<naam-van-je-secret> }}
+```
+
+Die verwijzing is wat het secret in de omgeving van de pod zet; een secret komt
+er niet vanzelf in. De variabele moet `GITHUB_TOKEN` of `GH_TOKEN` heten — dat is
+wat `pod.sh` leest. Hoe je het secret en de token maakt staat in
+[hoofdstuk 3](#1-een-github-token-om-te-kunnen-pushen).
+
+Daarna op de pod:
+
+```bash
+git clone <deze repository> /workspace/AgenticStressTest
+cd /workspace/AgenticStressTest
+
+# De remote draagt zelf geen token; die komt uit de omgeving.
+git remote set-url origin https://github.com/<eigenaar>/<repo>.git
+```
+
+`scripts/pod.sh` controleert de push-toegang vóór de meting en weigert te
+starten als die er niet is — dat wil je nu weten, niet over zes uur.
+
+**Dan de test:**
+
+```bash
+tmux new -s test                    # zodat een wegvallende SSH-verbinding niets breekt
+scripts/pod.sh all --deadman auto
+```
+
+Ongeveer zes en een half uur, en daarna zet de pod zichzelf uit — maar pas als de
+resultaten gepusht zijn. Meekijken kan met `scripts/pod.sh log -f`.
+
+**Op andere hardware** verandert er één regel:
+
+```bash
+TENSOR_PARALLEL=2 VRAM_GB=64 scripts/pod.sh all --deadman auto   # twee RTX 5090's
+```
+
+**Achteraf controleren** in `environment.json` van de resultatenmap:
+
+| Wat | Verwacht |
+|---|---|
+| `tokenizer_exact` | `true` — anders zijn de contextgroottes geschat |
+| `corpus.groups.web.files` | 187 |
+| `corpus.groups.unity.files` | 372 |
+| `hardware.gpu_name` | de kaart waarop je dacht te meten |
+
+Meer over wat het script uit handen neemt en wanneer je het wél met de hand
+wilt doen: [hoofdstuk 4.1](#41-alles-in-een-commando). Eerst gratis oefenen op
+je laptop: [hoofdstuk 2](#2-eerst-gratis-uitproberen).
+
+---
+
 ## 1. Wat deze test beantwoordt en waarom
 
 Agentic coding is iets anders dan een chatbot. Een student typt één instructie
@@ -382,138 +446,15 @@ find ./results-van-de-gpu -type f | wc -l
 ## 4. Opzetten: van kale instance naar draaiende vLLM
 
 De hele opzet duurt ongeveer 45 minuten, waarvan het grootste deel de download
-van het model is.
+van het model is. **De aanbevolen route is 4.1 hieronder: één commando.** De
+paragrafen daarna beschrijven dezelfde stappen met de hand, voor wie wil
+begrijpen wat er gebeurt of wie iets wil afwijken.
 
-### 4.1 Verbinden en controleren
+### 4.1 Alles in één commando
 
-```bash
-ssh root@<ip>            # of het commando dat de aanbieder toont; bij RunPod
-                         # hoort daar -p <poort> en -i <private-sleutel> bij
-
-nvidia-smi
-```
-
-`nvidia-smi` moet de kaart tonen met 97.887 MiB geheugen en een driverversie van
-**570 of hoger**. Zie je de kaart niet, of is de driver ouder, kies dan een
-andere image; drivers zelf installeren op een gehuurde instance is zelden de
-moeite waard.
-
-### 4.2 vLLM installeren
-
-Als de image vLLM al bevat (`vllm --version` werkt), sla deze stap over.
-
-```bash
-python3 -m venv /opt/vllm-env
-source /opt/vllm-env/bin/activate
-pip install --upgrade pip
-
-# Een recente vLLM: eerdere versies hebben geen Blackwell-kernels.
-pip install "vllm>=0.10.0"
-
-vllm --version
-```
-
-### 4.3 Het model binnenhalen
-
-Ongeveer **31 GB**. Op een snelle verbinding tien minuten, op een trage een uur.
-Doe dit apart en niet impliciet bij het starten van de server, zodat je een
-mislukte download niet met een mislukte serverstart verwart.
-
-```bash
-pip install "huggingface_hub[cli]"
-
-# Een Hugging Face-token is voor dit model niet nodig, maar wel als je
-# later een model met toegangsvoorwaarden gebruikt:
-# huggingface-cli login
-
-hf download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
-
-# Bij een oudere huggingface_hub heet het commando nog:
-# huggingface-cli download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
-```
-
-Controleer daarna dat de bestanden er echt staan:
-
-```bash
-du -sh ~/.cache/huggingface/hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8
-```
-
-Zit je op ongeveer 31 GB, dan is het goed. Zit je op 2 GB, dan zijn alleen de
-metadata gedownload en is de download afgebroken.
-
-### 4.4 vLLM starten
-
-```bash
-vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8 \
-  --served-model-name qwen3-coder \
-  --host 0.0.0.0 --port 8000 \
-  --max-model-len 131072 \
-  --max-num-seqs 32 \
-  --gpu-memory-utilization 0.90 \
-  --kv-cache-dtype fp8 \
-  --enable-prefix-caching \
-  --enable-auto-tool-choice --tool-call-parser qwen3_coder
-```
-
-De eerste start duurt enkele minuten (het model wordt in het geheugen geladen en
-CUDA-graphs worden opgebouwd). De server is klaar als er
-`Application startup complete` staat.
-
-> **Waarom hier 131072 en niet 65536?** De matrix bevat een kolom van 100k
-> tokens en een scenario van 110k, en een verzoek dat boven `--max-model-len`
-> uitkomt wordt door vLLM geweigerd. Voor de *meting* moet het venster dus ruim
-> staan. Voor de uiteindelijke *opstelling in de les* wil je hem juist zo klein
-> mogelijk hebben — dat is precies wat de variant `engine_len_65k` uitzoekt.
-> `python3 -m stresstest doctor` vergelijkt het ingestelde venster met de
-> zwaarste run in je matrix en waarschuwt als het te klein staat.
-
-**De vlaggen die ertoe doen, en waarom:**
-
-| Vlag | Waarom |
-|---|---|
-| `--max-model-len` | Het contextvenster. Tijdens de meting ruim (131072), omdat de matrix tot 110k gaat. Daarna **bewust beperken**: een groter venster kost cachegeheugen en verlaagt het aantal sessies dat tegelijk past, dus je betaalt in aantal studenten voor contextlengte die niemand gebruikt. 64k is ruim voor een mbo-project. Zet het niet op het maximum "voor de zekerheid". |
-| `--max-num-seqs 32` | Hoeveel sequenties vLLM tegelijk in behandeling neemt. De standaard staat hoog (256 of 1024). Te hoog betekent dat vLLM meer sessies toelaat dan er geheugen is, waarna het gaat preempten — precies de faalmodus die we meten. Te laag betekent een lange wachtrij. Dit is een van de dingen die de test uitzoekt. |
-| `--gpu-memory-utilization 0.90` | Welk deel van het videogeheugen vLLM mag gebruiken. Hoger geeft meer cache maar minder speling; boven 0.95 loop je tegen out-of-memory aan zodra er iets anders op de kaart draait. Gebruik dezelfde waarde in `config/default.json` onder `hardware`, anders klopt de omrekening naar gigabytes niet. |
-| `--kv-cache-dtype fp8` | Slaat de cache op in 8 bits in plaats van 16. Ruwweg een halvering van het geheugen per token, dus ongeveer een verdubbeling van het aantal sessies dat past. De matrix meet of dat ten koste gaat van iets. |
-| `--enable-prefix-caching` | Hergebruik van het gedeelde begin van contexten. In vLLM V1 staat dit standaard aan; expliciet meegeven maakt duidelijk dat het bewust zo is. **Zonder dit is de hele meting zinloos.** |
-| `--enable-auto-tool-choice --tool-call-parser qwen3_coder` | Laat het model echte tool calls produceren, zoals een agent doet. Werkt de parser niet, laat beide vlaggen dan weg: het harnas schakelt zelf terug naar een tekstvariant met dezelfde berichtstructuur. |
-
-Controleer in een tweede terminal:
-
-```bash
-curl -s localhost:8000/v1/models
-curl -s localhost:8000/metrics | grep -c '^vllm:'
-```
-
-Het tweede commando moet een getal boven de twintig geven. Geeft het 0, dan
-staat de Prometheus-endpoint uit en kun je preempties, cache hit rate en
-KV-bezetting niet meten — dan meet je het verkeerde.
-
-### 4.5 Het harnas draaien: op de instance of ernaast?
-
-**Op de instance zelf** is het eenvoudigst en meet je zuiver de server, zonder
-netwerkvertraging ertussen. Aanbevolen.
-
-```bash
-git clone <deze repository> /workspace/AgenticStressTest
-cd /workspace/AgenticStressTest
-python3 -m stresstest corpus
-```
-
-**Vanaf je eigen machine** kan ook, via een SSH-tunnel. Alle gemeten tijden
-bevatten dan wel de reistijd naar de instance:
-
-```bash
-ssh -N -L 8000:localhost:8000 root@<ip>
-# en in config/default.json blijft base_url http://127.0.0.1:8000/v1
-```
-
-### 4.6 Alles in één commando
-
-Hoofdstuk 4 en 5 met de hand doorlopen kan, en als je wilt begrijpen wat er
-gebeurt is dat de beste manier. Wil je het gewoon laten draaien, dan doet
-`scripts/pod.sh` alles: installeren, het model ophalen, vLLM starten, fase 1,
-de engine-varianten mét de bijbehorende herstarts, fase 2, en de conclusie.
+`scripts/pod.sh` doet de hele meting: installeren, het model ophalen, vLLM
+starten, fase 1, de engine-varianten mét de bijbehorende herstarts, fase 2, het
+rapport, de resultaten naar de repo pushen en de pod uitzetten.
 
 ```bash
 git clone <deze repository> /workspace/AgenticStressTest
@@ -523,7 +464,7 @@ tmux new -s test                      # zodat een wegvallende SSH-verbinding nie
 scripts/pod.sh all --deadman auto
 ```
 
-Dat is de hele test, ongeveer zeven uur. Meekijken kan later met:
+Dat is de hele test, ongeveer zes en een half uur. Meekijken kan later met:
 
 ```bash
 scripts/pod.sh log        # de laatste regels van het nieuwste logbestand
@@ -543,6 +484,7 @@ run een tweede logbestand achterlaat, weigert `tail` die verkorte vorm
 | **Server en harnas gelijk houden** | `hardware.vram_gb`, `gpu_memory_utilization`, `model_weights_gb` en de modelnaam worden afgeleid uit `nvidia-smi` en uit het model op schijf, en meegegeven aan elke aanroep. Staat de omrekening naar gigabytes scheef, dan is het antwoord op vraag 3 scheef. |
 | **Hervatten** | Runs die al op schijf staan worden overgeslagen. Valt je verbinding weg of loopt de pod vast, dan draai je hetzelfde commando opnieuw en gaat het verder waar het was. |
 | **De controle vooraf** | Schijfruimte, driverversie, `tokenizers`, en of `/metrics` de drie reeksen levert waar de hoofdvraag op hangt: preempties, prefix-cache en KV-bezetting. Ontbreekt er een, dan stopt het script in plaats van zes uur het verkeerde te meten. |
+| **De resultaten veiligstellen** | Aan het eind schrijft het één rapport over beide fases, commit de meetmappen naar een eigen branch en pusht die. Pas als dat gelukt is, stopt het de pod. Mislukt de push, dan blijft de machine draaien en blijft de doodsklok staan: de meting bestaat dan nog maar op één plek. |
 | **De tool-call-parser** | Start vLLM niet op met `--tool-call-parser qwen3_coder`, dan probeert het script het nog één keer zonder, zoals hoofdstuk 4.4 beschrijft. |
 | **De vergeten instance** | `--deadman auto` zet een wekker op de geschatte duur plus anderhalf uur; daarna wordt de pod *gestopt* — niet getermineerd, dus `/workspace` en je resultaten blijven staan. Afzetten met `scripts/pod.sh disarm`. |
 
@@ -604,12 +546,135 @@ het GPU-tarief loopt dan niet meer, je resultaten blijven staan. Het echte
 opruimen doe je zelf, nadat je de resultaten hebt opgehaald — zie
 [hoofdstuk 3](#hoe-je-hem-weer-uitzet--lees-dit-nu-niet-straks).
 
----
+### 4.2 Verbinden en controleren
 
+```bash
+ssh root@<ip>            # of het commando dat de aanbieder toont; bij RunPod
+                         # hoort daar -p <poort> en -i <private-sleutel> bij
+
+nvidia-smi
+```
+
+`nvidia-smi` moet de kaart tonen met 97.887 MiB geheugen en een driverversie van
+**570 of hoger**. Zie je de kaart niet, of is de driver ouder, kies dan een
+andere image; drivers zelf installeren op een gehuurde instance is zelden de
+moeite waard.
+
+### 4.3 vLLM installeren
+
+Als de image vLLM al bevat (`vllm --version` werkt), sla deze stap over.
+
+```bash
+python3 -m venv /opt/vllm-env
+source /opt/vllm-env/bin/activate
+pip install --upgrade pip
+
+# Een recente vLLM: eerdere versies hebben geen Blackwell-kernels.
+pip install "vllm>=0.10.0"
+
+vllm --version
+```
+
+### 4.4 Het model binnenhalen
+
+Ongeveer **31 GB**. Op een snelle verbinding tien minuten, op een trage een uur.
+Doe dit apart en niet impliciet bij het starten van de server, zodat je een
+mislukte download niet met een mislukte serverstart verwart.
+
+```bash
+pip install "huggingface_hub[cli]"
+
+# Een Hugging Face-token is voor dit model niet nodig, maar wel als je
+# later een model met toegangsvoorwaarden gebruikt:
+# huggingface-cli login
+
+hf download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
+
+# Bij een oudere huggingface_hub heet het commando nog:
+# huggingface-cli download Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8
+```
+
+Controleer daarna dat de bestanden er echt staan:
+
+```bash
+du -sh ~/.cache/huggingface/hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8
+```
+
+Zit je op ongeveer 31 GB, dan is het goed. Zit je op 2 GB, dan zijn alleen de
+metadata gedownload en is de download afgebroken.
+
+### 4.5 vLLM starten
+
+```bash
+vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8 \
+  --served-model-name qwen3-coder \
+  --host 0.0.0.0 --port 8000 \
+  --max-model-len 131072 \
+  --max-num-seqs 32 \
+  --gpu-memory-utilization 0.90 \
+  --kv-cache-dtype fp8 \
+  --enable-prefix-caching \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder
+```
+
+De eerste start duurt enkele minuten (het model wordt in het geheugen geladen en
+CUDA-graphs worden opgebouwd). De server is klaar als er
+`Application startup complete` staat.
+
+> **Waarom hier 131072 en niet 65536?** De matrix bevat een kolom van 100k
+> tokens en een scenario van 110k, en een verzoek dat boven `--max-model-len`
+> uitkomt wordt door vLLM geweigerd. Voor de *meting* moet het venster dus ruim
+> staan. Voor de uiteindelijke *opstelling in de les* wil je hem juist zo klein
+> mogelijk hebben — dat is precies wat de variant `engine_len_65k` uitzoekt.
+> `python3 -m stresstest doctor` vergelijkt het ingestelde venster met de
+> zwaarste run in je matrix en waarschuwt als het te klein staat.
+
+**De vlaggen die ertoe doen, en waarom:**
+
+| Vlag | Waarom |
+|---|---|
+| `--max-model-len` | Het contextvenster. Tijdens de meting ruim (131072), omdat de matrix tot 110k gaat. Daarna **bewust beperken**: een groter venster kost cachegeheugen en verlaagt het aantal sessies dat tegelijk past, dus je betaalt in aantal studenten voor contextlengte die niemand gebruikt. 64k is ruim voor een mbo-project. Zet het niet op het maximum "voor de zekerheid". |
+| `--max-num-seqs 32` | Hoeveel sequenties vLLM tegelijk in behandeling neemt. De standaard staat hoog (256 of 1024). Te hoog betekent dat vLLM meer sessies toelaat dan er geheugen is, waarna het gaat preempten — precies de faalmodus die we meten. Te laag betekent een lange wachtrij. Dit is een van de dingen die de test uitzoekt. |
+| `--gpu-memory-utilization 0.90` | Welk deel van het videogeheugen vLLM mag gebruiken. Hoger geeft meer cache maar minder speling; boven 0.95 loop je tegen out-of-memory aan zodra er iets anders op de kaart draait. Gebruik dezelfde waarde in `config/default.json` onder `hardware`, anders klopt de omrekening naar gigabytes niet. |
+| `--kv-cache-dtype fp8` | Slaat de cache op in 8 bits in plaats van 16. Ruwweg een halvering van het geheugen per token, dus ongeveer een verdubbeling van het aantal sessies dat past. De matrix meet of dat ten koste gaat van iets. |
+| `--enable-prefix-caching` | Hergebruik van het gedeelde begin van contexten. In vLLM V1 staat dit standaard aan; expliciet meegeven maakt duidelijk dat het bewust zo is. **Zonder dit is de hele meting zinloos.** |
+| `--enable-auto-tool-choice --tool-call-parser qwen3_coder` | Laat het model echte tool calls produceren, zoals een agent doet. Werkt de parser niet, laat beide vlaggen dan weg: het harnas schakelt zelf terug naar een tekstvariant met dezelfde berichtstructuur. |
+
+Controleer in een tweede terminal:
+
+```bash
+curl -s localhost:8000/v1/models
+curl -s localhost:8000/metrics | grep -c '^vllm:'
+```
+
+Het tweede commando moet een getal boven de twintig geven. Geeft het 0, dan
+staat de Prometheus-endpoint uit en kun je preempties, cache hit rate en
+KV-bezetting niet meten — dan meet je het verkeerde.
+
+### 4.6 Het harnas draaien: op de instance of ernaast?
+
+**Op de instance zelf** is het eenvoudigst en meet je zuiver de server, zonder
+netwerkvertraging ertussen. Aanbevolen.
+
+```bash
+git clone <deze repository> /workspace/AgenticStressTest
+cd /workspace/AgenticStressTest
+python3 -m stresstest corpus
+```
+
+**Vanaf je eigen machine** kan ook, via een SSH-tunnel. Alle gemeten tijden
+bevatten dan wel de reistijd naar de instance:
+
+```bash
+ssh -N -L 8000:localhost:8000 root@<ip>
+# en in config/default.json blijft base_url http://127.0.0.1:8000/v1
+```
+
+---
 ## 5. De test draaien
 
 Dit hoofdstuk beschrijft de stappen los. Draai je `scripts/pod.sh all`, dan zijn
-ze allemaal al gedaan — zie [hoofdstuk 4.6](#46-alles-in-een-commando).
+ze allemaal al gedaan — zie [hoofdstuk 4.1](#41-alles-in-een-commando).
 
 ### 5.1 Configuratie klaarzetten
 
