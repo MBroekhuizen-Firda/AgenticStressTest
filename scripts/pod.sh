@@ -779,6 +779,50 @@ disarm_deadman() {
   fi
 }
 
+# Where the push credential comes from. A token in the remote URL ends up in
+# .git/config in plain text and in every `git remote -v`; a token in argv ends
+# up in the process list. GIT_ASKPASS keeps it in neither: git asks the helper
+# script, the script reads the environment, and nothing is written down.
+#
+# This is what makes a RunPod secret work end to end: store the token as a
+# secret, reference it in the template as
+#   GITHUB_TOKEN={{ RUNPOD_SECRET_<naam> }}
+# and the pod pushes without anyone typing it.
+setup_git_credentials() {
+  local remote="$1"
+  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+
+  case "$remote" in
+    *@*) return 0 ;;   # credentials already in the URL, or an ssh remote
+  esac
+  if [ -z "$token" ]; then
+    # No token anywhere. Not fatal: an ssh remote or a credential helper the
+    # operator set up themselves works fine, and the push will say so if not.
+    return 0
+  fi
+  case "$remote" in
+    https://*) : ;;
+    *) return 0 ;;     # a token is no use to a non-https remote
+  esac
+
+  local helper="$STATE_DIR/git-askpass.sh"
+  mkdir -p "$STATE_DIR"
+  # The token is never written to this file, only read from the environment
+  # when git calls it.
+  cat > "$helper" <<'ASKPASS'
+#!/usr/bin/env bash
+case "$1" in
+  Username*) echo "x-access-token" ;;
+  *)         echo "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ;;
+esac
+ASKPASS
+  chmod 700 "$helper"
+  export GIT_ASKPASS="$helper"
+  export GIT_TERMINAL_PROMPT=0
+  say "push-token uit de omgeving (GITHUB_TOKEN); niet opgeslagen in .git/config"
+  return 0
+}
+
 # results/ is in .gitignore on purpose: local rehearsals should not end up in
 # the repository. A measurement that cost real money should, so this adds it
 # with -f -- exactly as the comment in .gitignore prescribes.
@@ -788,15 +832,19 @@ push_results() {
   cd "$REPO_DIR"
   git rev-parse --git-dir >/dev/null 2>&1 \
     || { warn "$REPO_DIR is geen git-repo; niets gepusht."; return 1; }
-  if ! git remote get-url origin >/dev/null 2>&1; then
-    warn "geen remote 'origin'. Zet er een met een token dat mag pushen:"
-    warn "    git remote add origin https://<token>@github.com/<eigenaar>/<repo>.git"
+  local remote
+  if ! remote="$(git remote get-url origin 2>/dev/null)"; then
+    warn "geen remote 'origin'. Zet er een, of geef een token mee via de omgeving:"
+    warn "    git remote add origin https://github.com/<eigenaar>/<repo>.git"
+    warn "    GITHUB_TOKEN=...  (bij RunPod: Secrets, dan {{ RUNPOD_SECRET_<naam> }} in de template)"
     return 1
   fi
 
   # A rented pod has no git identity, and a commit without one fails.
   git config user.email >/dev/null 2>&1 || git config user.email "pod@stresstest.local"
   git config user.name  >/dev/null 2>&1 || git config user.name  "stresstest pod"
+
+  setup_git_credentials "$remote" || return 1
 
   local slug branch
   slug="$(printf '%s' "${GPU_NAME:-gpu}" | tr -c '[:alnum:]' '-' | tr -s '-' | sed 's/^-//;s/-$//')"

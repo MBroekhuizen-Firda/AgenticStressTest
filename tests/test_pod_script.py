@@ -334,17 +334,21 @@ class TestPushingResults(unittest.TestCase):
 
     def _harness(self, repo: str, tail: str) -> str:
         text = script_text()
-        found = re.search(r"^push_results\(\) \{.*?^\}", text, re.M | re.S)
-        self.assertIsNotNone(found, "push_results is gone")
+        bodies = []
+        for name in ("setup_git_credentials", "push_results"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
         return ("set -Eeuo pipefail\n"
                 f'REPO_DIR="{repo}"\n'
+                f'STATE_DIR="{self.tmp}/state"\n'
                 'GPU_NAME="NVIDIA RTX PRO 6000 Blackwell (600W)"\n'
                 'PUSH_RETRIES=1\n'
                 'RESULTS_BRANCH=""\n'
                 'say()   { echo "$*"; }\n'
                 'warn()  { echo "LET OP: $*" >&2; }\n'
                 'head_() { echo "$*"; }\n'
-                + found.group(0) + "\n" + tail)
+                + "\n".join(bodies) + "\n" + tail)
 
     def test_results_are_pushed_even_though_gitignore_excludes_them(self):
         repo, origin = self._repo(with_remote=True)
@@ -367,6 +371,54 @@ class TestPushingResults(unittest.TestCase):
             capture_output=True, text=True, timeout=120)
         self.assertNotEqual(done.returncode, 0, done.stdout)
         self.assertIn("origin", done.stderr)
+
+    def test_a_token_from_the_environment_is_enough_to_push(self):
+        """The RunPod-secret route: the operator stores the token as a secret,
+        the template puts it in GITHUB_TOKEN, and nobody types it anywhere. The
+        remote itself carries no credentials, and neither does anything on
+        disk."""
+        repo, _ = self._repo(with_remote=True)
+        subprocess.run(["git", "-C", repo, "remote", "set-url", "origin",
+                        "https://github.com/example/repo.git"], check=True)
+        done = subprocess.run(
+            ["bash", "-c", self._harness(
+                repo,
+                'setup_git_credentials "$(git -C "$REPO_DIR" remote get-url origin)"\n'
+                '"${GIT_ASKPASS}" "Username for https://github.com"\n'
+                '"${GIT_ASKPASS}" "Password for https://github.com"\n')],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "GITHUB_TOKEN": "ghp_niet_echt"})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("x-access-token", done.stdout)
+        self.assertIn("ghp_niet_echt", done.stdout,
+                      "the helper must hand git the token from the environment")
+
+        # And it must not have been written down anywhere.
+        config = subprocess.run(["git", "-C", repo, "config", "--list"],
+                                capture_output=True, text=True, check=True).stdout
+        self.assertNotIn("ghp_niet_echt", config, "the token ended up in .git/config")
+        remote = subprocess.run(["git", "-C", repo, "remote", "get-url", "origin"],
+                                capture_output=True, text=True, check=True).stdout
+        self.assertNotIn("ghp_niet_echt", remote, "the token ended up in the remote URL")
+        with open(os.path.join(self.tmp, "state", "git-askpass.sh"), encoding="utf-8") as h:
+            self.assertNotIn("ghp_niet_echt", h.read(),
+                             "the token was baked into the helper script")
+
+    def test_a_remote_that_already_has_credentials_is_left_alone(self):
+        """Someone who put the token in the URL themselves should not have
+        their setup quietly replaced."""
+        repo, _ = self._repo(with_remote=True)
+        subprocess.run(["git", "-C", repo, "remote", "set-url", "origin",
+                        "https://x-access-token:abc@example.invalid/x/y.git"], check=True)
+        done = subprocess.run(
+            ["bash", "-c", self._harness(
+                repo,
+                'setup_git_credentials "$(git -C "$REPO_DIR" remote get-url origin)"\n'
+                'echo "askpass=${GIT_ASKPASS:-geen}"\n')],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "GITHUB_TOKEN": "ghp_niet_echt"})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("askpass=geen", done.stdout)
 
     def test_the_pod_only_stops_after_a_successful_push(self):
         text = script_text()

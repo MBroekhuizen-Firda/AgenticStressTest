@@ -257,24 +257,49 @@ klassieke:
    Meer is niet nodig; laat de rest op *No access*.
 4. **Expiration**: kort. De meting duurt een dag, dus zet hem op zeven dagen.
 
-Zet hem op de pod als remote, zonder dat hij in je shell-geschiedenis komt:
+**Bewaar hem als RunPod-secret, dat is de nette route.** RunPod versleutelt
+secrets en zet ze bij het starten in de omgeving van de container; na het
+aanmaken is de waarde niet meer uitleesbaar in de interface.
+
+1. RunPod → *Settings* → *Secrets* → **Create Secret**. Naam bijvoorbeeld
+   `github_token`, waarde is de token.
+2. In je Pod-template, onder *Environment variables*, een variabele
+   `GITHUB_TOKEN` met als waarde:
+
+   ```
+   {{ RUNPOD_SECRET_github_token }}
+   ```
+
+   Of klik het sleutelicoontje in de template-editor en kies het secret; dan
+   vult RunPod die verwijzing zelf in.
+
+`pod.sh` pakt `GITHUB_TOKEN` (of `GH_TOKEN`) daarna vanzelf op. Je hoeft de
+remote alleen zonder token te zetten:
 
 ```bash
-read -rsp 'GitHub-token: ' GH_TOKEN && echo
-git remote set-url origin \
-  "https://x-access-token:$GH_TOKEN@github.com/<eigenaar>/<repo>.git"
+git remote set-url origin https://github.com/<eigenaar>/<repo>.git
 ```
 
-Twee dingen om te weten. De token staat daarna in platte tekst in
-`.git/config` op de pod; dat is te overzien op een machine die je binnen een
-dag termineert, maar het is wel een reden om hem daarna in te trekken in plaats
-van te bewaren. En een token met schrijfrechten op één repo is het minimum dat
-werkt — geef hem geen organisatiebrede rechten omdat het sneller klikt.
+De token komt via `GIT_ASKPASS` bij git terecht en wordt **nergens
+opgeschreven**: niet in `.git/config`, niet in de remote-URL, niet in de
+procestabel. Dat is het verschil met een token in de URL, die in `.git/config`
+blijft staan en in elke `git remote -v` opduikt.
 
-Liever geen token in een URL? Een **deploy key** doet hetzelfde met SSH: maak op
+Zonder RunPod-secret kan het ook per pod, zolang je hem uit je
+shell-geschiedenis houdt:
+
+```bash
+read -rsp 'GitHub-token: ' GITHUB_TOKEN && echo && export GITHUB_TOKEN
+```
+
+Een token met schrijfrechten op één repo is het minimum dat werkt — geef hem
+geen organisatiebrede rechten omdat het sneller klikt.
+
+Liever helemaal geen token? Een **deploy key** doet hetzelfde met SSH: maak op
 de pod een sleutel (`ssh-keygen -t ed25519`), plak de publieke helft onder
 *Settings* → *Deploy keys* van de repo met *Allow write access* aan, en gebruik
 de `git@github.com:` remote. Die sleutel geldt per definitie voor één repo.
+`pod.sh` laat een ssh-remote met rust.
 
 Controleer voor je begint of het werkt — een mislukte push merk je liever nu
 dan na zeven uur meten:
@@ -303,9 +328,9 @@ runpodctl config --apiKey "$RUNPOD_KEY"
 `echo $RUNPOD_POD_ID`. Is die leeg, dan kan `pod.sh` de pod niet bij naam
 stoppen en moet je het zelf doen in het dashboard.
 
-Sla beide sleutels op als *Secret* in je RunPod-template als je vaker meet; dan
-staan ze bij de start al in de omgeving en hoef je ze niet per pod te plakken.
-Trek ze in zodra de meetreeks klaar is.
+Ook deze sleutel kun je als RunPod-secret bewaren en in de template
+verwijzen. Trek beide in zodra de meetreeks klaar is: een secret dat niemand
+meer nodig heeft, is alleen nog een risico.
 
 #### Waar de resultaten belanden
 
