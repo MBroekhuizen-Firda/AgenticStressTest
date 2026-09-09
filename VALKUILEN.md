@@ -25,12 +25,39 @@ container. Is die ouder dan 12.9, dan kan hij de kaart niet uitlezen en valt
 hij terug op een onzinnige ondergrens. De torch-versie zegt hier niets over:
 torch kan `+cu130` zijn terwijl de toolkit ouder is.
 
-**Oplossing:** `export VLLM_USE_FLASHINFER_SAMPLER=0` voor je vLLM start.
+vLLM 0.28 grijpt op **twee** plekken naar FlashInfer, en je moet om allebei
+heen. Aan de traceback zie je welke van de twee het was:
 
-FlashInfer wordt gebruikt voor top-k/top-p **sampling**, los van de
-attention-backend — daarom helpt een andere backend kiezen niet. Voor deze
-meting maakt het niets uit: het harnas draait op temperatuur 0, dus welke
-implementatie de sampling doet verandert de uitkomst niet.
+1. **De sampler.** `topk_topp_sampler.py` → `flashinfer/sampling.py` →
+   `check_cuda_arch`. FlashInfer wordt gebruikt voor top-k/top-p sampling,
+   los van de attention-backend. Oplossing:
+   `export VLLM_USE_FLASHINFER_SAMPLER=0` voor je vLLM start. Voor deze
+   meting maakt het niets uit: het harnas draait op temperatuur 0, dus welke
+   implementatie de sampling doet verandert de uitkomst niet.
+2. **De attention-backend.** `Using FlashInfer backend` in het log, en een
+   traceback door `flashinfer/jit/attention/modules.py`
+   (`gen_customize_batch_prefill_module`) → `check_cuda_arch`. Met
+   `--kv-cache-dtype fp8` kiest vLLM FlashInfer als backend, omdat FLASH_ATTN
+   op deze kaart geen FP8-cache kan bedienen (dat vraagt FA3 op Hopper of FA4
+   op B200). De sampler uitzetten helpt dan niet: de engine sterft al bij het
+   bouwen van de prefill-kernel. Oplossing: `--attention-backend TRITON_ATTN`
+   als serverargument. Dat is de andere backend die vLLM zelf noemt
+   ("out of potential backends: ['FLASHINFER', 'TRITON_ATTN']") en die kan
+   wél met een FP8-cache overweg. Het is een andere backend en dus andere
+   getallen — noteer het bij de resultaten.
+
+`scripts/pod.sh` doet allebei zelf, op grond van wat het log zegt: wijst de
+traceback naar de attention-backend, dan start het in één keer opnieuw met
+`--attention-backend TRITON_ATTN` én zonder de FlashInfer-sampler; wijst hij
+alleen naar de sampler, dan verandert alleen die. De keuze blijft staan voor
+alle volgende enginevarianten en komt als `hardware.attention_backend` in
+`environment.json`. Een `ATTENTION_BACKEND` die je zelf hebt gezet wordt
+nooit vervangen.
+
+Blijft het daarna nog misgaan op FlashInfer, dan roept een derde onderdeel van
+vLLM hem aan (kijk in de traceback welk). Dan is een image met een toolkit van
+12.9 of nieuwer de zekere uitweg; `/workspace` blijft staan, dus het model
+hoeft niet opnieuw gedownload.
 
 ### `ModuleNotFoundError: No module named 'flashinfer'`
 
@@ -47,7 +74,9 @@ eerder in staat. Met die variabele op 0 wordt de import niet eens gedaan, en
 dan maakt het niet uit of het pakket er is.
 
 **Oplossing:** laat het pakket staan (of zet het terug met
-`pip install flashinfer-python`) en zet de variabele.
+`pip install flashinfer-python`) en zet de variabele. Zelfde verhaal voor de
+attention-backend: `--attention-backend TRITON_ATTN` betekent dat FlashInfer
+niet gebouwd wordt, niet dat het pakket weg kan.
 
 Zoek niet naar de "juiste" versie. vLLM 0.28 pint `flashinfer-python==0.6.16.post3`
 en pip klaagt over elke andere, maar ook de gepinde versie compileert hier niet:
@@ -96,16 +125,21 @@ export HF_TOKEN=hf_...        # op de pod zelf, niet in een chat
 ### `Unknown vLLM environment variable detected: VLLM_ATTENTION_BACKEND`
 
 Die variabele bestaat niet meer in vLLM 0.28. Zetten heeft geen effect en de
-waarschuwing is het enige dat je ervan merkt. Kies de backend via
-serverargumenten, of laat vLLM zelf kiezen.
+waarschuwing is het enige dat je ervan merkt: vLLM kiest gewoon zelf, en dat
+is dan FlashInfer. Kies de backend via het serverargument
+`--attention-backend`, of laat vLLM zelf kiezen. `scripts/pod.sh` geeft de
+vlag door; `ATTENTION_BACKEND=...` (of een nog geëxporteerde
+`VLLM_ATTENTION_BACKEND`) in de omgeving is genoeg.
 
 ### `--kv-cache-dtype fp8` verandert de backendkeuze
 
 Met `auto` koos vLLM hier FLASH_ATTN, met `fp8` de FlashInfer-backend — en
 die compileert dus niet. Faalt het alleen bij fp8, dan is dat het spoor.
-`KV_CACHE_DTYPE=auto` is de uitweg; dat kost KV-ruimte en dus gelijktijdige
-gebruikers, maar levert een eerlijke ondergrens. Noteer welke dtype je gebruikt
-hebt — de conclusie hangt eraan.
+Twee uitwegen. `--attention-backend TRITON_ATTN` houdt de FP8-cache en dus
+het aantal sessies dat erin past; dat is wat `scripts/pod.sh` doet.
+`KV_CACHE_DTYPE=auto` is de andere: dat kost KV-ruimte en dus gelijktijdige
+gebruikers, maar levert een eerlijke ondergrens. Noteer in beide gevallen wat
+je gebruikt hebt — de conclusie hangt eraan.
 
 ### De laatste regels van het log zijn niet de oorzaak
 
