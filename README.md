@@ -237,16 +237,40 @@ Doe dit meteen bij het aanmaken:
    verbruik niet meer oploopt.
 4. Stel bij de aanbieder een uitgavenlimiet of waarschuwing in als dat kan.
 
-Bewaar wat je wilt houden vóórdat je afsluit:
+### De resultaten ophalen
+
+Doe dit vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
+ruwe verzoekregels zijn het waardevolst, want daarmee kun je later andere
+vragen beantwoorden zonder opnieuw te huren. `scripts/pod.sh all` pakt aan het
+eind alles in als `/workspace/stresstest-results-<datum>.tar.gz`; dat ene
+bestand kopiëren is sneller dan de map recursief.
 
 ```bash
 # Op je eigen machine:
-scp -r root@<ip>:/workspace/AgenticStressTest/results ./results-van-de-gpu
+scp -P <poort> -i <private-sleutel> \
+    root@<ip>:/workspace/stresstest-results-*.tar.gz .
+
+# of de hele map:
+scp -P <poort> -i <private-sleutel> -r \
+    root@<ip>:/workspace/AgenticStressTest/results ./results-van-de-gpu
 ```
 
-De resultatenmap is klein (enkele megabytes); de ruwe verzoekregels zijn het
-waardevolst, want daarmee kun je later andere vragen beantwoorden zonder
-opnieuw te huren.
+Het poortnummer staat bij RunPod in het dashboard onder *Connect*, bij **SSH
+over exposed TCP**: een hoog nummer, nooit 22, en het verandert bij elke nieuwe
+pod. De SSH-regel daarboven loopt via de proxy en draagt geen scp of sftp.
+Vraagt hij om een wachtwoord, dan mist de pod je sleutel — RunPod installeert
+die alleen bij het opstarten. Beide valkuilen staan uitgewerkt in
+[VALKUILEN.md](VALKUILEN.md#de-resultaten-van-de-pod-halen), met twee uitwegen
+die geen scp nodig hebben.
+
+Controleer dat de kopie compleet is voordat je termineert; hetzelfde aantal
+bestanden aan beide kanten:
+
+```bash
+ssh -p <poort> -i <private-sleutel> root@<ip> \
+    "find /workspace/AgenticStressTest/results -type f | wc -l"
+find ./results-van-de-gpu -type f | wc -l
+```
 
 ---
 
@@ -258,7 +282,8 @@ van het model is.
 ### 4.1 Verbinden en controleren
 
 ```bash
-ssh root@<ip>            # of het commando dat de aanbieder toont
+ssh root@<ip>            # of het commando dat de aanbieder toont; bij RunPod
+                         # hoort daar -p <poort> en -i <private-sleutel> bij
 
 nvidia-smi
 ```
