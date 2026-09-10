@@ -1,4 +1,4 @@
-<title>Meting RTX PRO 6000</title>
+<title>Meting RTX PRO 6000 &mdash; 96 GB en 48 GB</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Roboto+Condensed:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
@@ -515,6 +515,18 @@ figcaption {
 }
 .num.red { color: var(--s-red); }
 
+/* ------------------------------------------------- kop boven een cijferrij */
+
+.rowlead {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 2.5rem 0 -2.25rem;
+}
+.rowlead + .verdict-row { margin-block-start: 2.75rem; }
+
 </style>
 
 <div class="page">
@@ -524,20 +536,28 @@ figcaption {
       <div class="kicker">
         <span>Stresstest agentic coding</span>
         <span>NVIDIA RTX PRO 6000 Blackwell SE (600W)</span>
+        <span>96 GB en 48 GB</span>
         <span>9 &ndash; 10 september 2026</span>
       </div>
       <h1>Niet hoeveel studenten, maar hoe hard ze duwen</h1>
       <p class="standfirst">
-        Eén meetsessie, negenendertig runs, één gedragsmodel: een lesuur van
-        negentig minuten plus de volledige matrix met sweep, klifzoeker,
-        engine-varianten en de benoemde momenten. Het geheugen blijkt driekwart
-        leeg te blijven; het oordeel hangt aan de rekenkracht, en die hangt vooral
-        aan de intensiteit van de klas.
+        Twee meetsessies, twee keer negenendertig runs, één gedragsmodel: een lesuur
+        van negentig minuten plus de volledige matrix met sweep, klifzoeker,
+        engine-varianten en de benoemde momenten &mdash; eerst op de hele kaart van
+        96&nbsp;GB, daarna op een MIG-plak van 48&nbsp;GB. Op de hele kaart blijft het
+        geheugen driekwart leeg en hangt het oordeel aan de rekenkracht, en die aan de
+        intensiteit van de klas. Op de halve kaart klapt dat om: de cachepool is er
+        niet half maar bijna vijf keer zo klein, en dan wordt geheugen wél de
+        beperkende factor &mdash; met gevolgen tot in de tijd tot de eerste token.
       </p>
       <div class="byline">
-        Meetgegevens: <code>results-van-de-gpu/20260909-125855_les/</code> (3.891 verzoeken,
-        483 instructies) en <code>results-van-de-gpu/20260909-185135_matrix/</code>
+        Meetgegevens 96&nbsp;GB: <code>results-van-de-gpu/20260909-125855_les/</code>
+        (3.891 verzoeken, 483 instructies) en
+        <code>results-van-de-gpu/20260909-185135_matrix/</code>
         (38 runs, 8.361 verzoeken, 1.291 instructies).<br>
+        Meetgegevens 48&nbsp;GB: <code>results/20260910-165600_les/</code>
+        (2.254 verzoeken, 318 instructies) en <code>results/20260910-084827_matrix/</code>
+        (38 runs, 5.068 verzoeken, 994 instructies).<br>
         Model qwen3-coder via vLLM &middot; seed 20250908 &middot; corpus web+unity, 559 bestanden &middot;
         exacte tokenizer &middot; <code>--attention-backend TRITON_ATTN</code>.<br>
         Alles hieronder is terug te rekenen uit <code>summary.csv</code> en
@@ -547,6 +567,7 @@ figcaption {
     </div>
   </header>
 
+  <p class="rowlead">De hele kaart &mdash; 96&nbsp;GB, cachepool 54,9&nbsp;GB</p>
   <div class="verdict-row wide">
     <div class="vcell">
       <span class="lab">Lesuur, 20 studenten</span>
@@ -567,6 +588,30 @@ figcaption {
       <span class="lab">Fouten &middot; preempties</span>
       <span class="num green">0 &middot; 0</span>
       <span class="sub">12.252 verzoeken, alle geslaagd</span>
+    </div>
+  </div>
+
+  <p class="rowlead">Dezelfde meting op de halve kaart &mdash; 48&nbsp;GB, cachepool 11,6&nbsp;GB</p>
+  <div class="verdict-row wide">
+    <div class="vcell">
+      <span class="lab">Lesuur, 20 studenten</span>
+      <span class="num red">rood</span>
+      <span class="sub">p90 instructie 314 s &middot; ruim twee keer zo lang</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Rustige klas van 20</span>
+      <span class="num amber">114 <span style="font-size:.55em">s</span></span>
+      <span class="sub">oranje &middot; normaal 172 s &middot; deadline 408 s</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Piek KV-cache, 39 runs</span>
+      <span class="num red">11,6 <span style="font-size:.55em">GB</span></span>
+      <span class="sub">100 % van 11,6 GB &middot; 17 runs boven 95 % van de pool</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Fouten &middot; preempties</span>
+      <span class="num red">14 &middot; 9</span>
+      <span class="sub">7.322 verzoeken in dezelfde meettijd</span>
     </div>
   </div>
 
@@ -602,11 +647,26 @@ figcaption {
         brengt de cachebezetting terug tot minder dan de helft van wat
         <code>auto</code> vraagt: 10,5&nbsp;GB tegen 23,2&nbsp;GB bij dezelfde
         belasting.</li>
-      <li><strong>Time to first token zegt niets meer op deze schaal.</strong> In alle
-        39 runs blijft de p90 onder 1,1&nbsp;s, tegen een groen-grens van 20&nbsp;s.
-        Volgens de oorspronkelijke definitie uit de opdracht is elke run groen; volgens
-        de aangescherpte definitie is 18 keer oranje en 4 keer rood. Wie op TTFT stuurt,
-        meet niets.</li>
+      <li><strong>Time to first token zegt niets meer &mdash; zolang de cachepool
+        ruim is.</strong> In alle 39 runs op de hele kaart blijft de p90 onder
+        1,1&nbsp;s, tegen een groen-grens van 20&nbsp;s. Volgens de oorspronkelijke
+        definitie uit de opdracht is elke run groen; volgens de aangescherpte definitie
+        is 18 keer oranje en 4 keer rood. Wie op deze kaart op TTFT stuurt, meet niets.
+        Op de halve kaart is dat niet meer waar, en dat is het scherpste signaal van
+        sectie 07.</li>
+      <li><strong>Op de halve kaart is geheugen wél de beperkende factor, en het gaat
+        harder dan de helft.</strong> Dezelfde 39 runs op een MIG-plak van 48&nbsp;GB:
+        de cachepool is niet half maar 4,7 keer zo klein &mdash; 11,6 tegen
+        54,9&nbsp;GB &mdash; omdat de 31,1&nbsp;GB modelgewichten een vaste aftrek zijn.
+        Het oordeel gaat van 16 groen / 19 oranje / 4 rood naar 4 / 11 / 24. Het lesuur
+        gaat van oranje naar rood, en er is geen fase van dat lesuur meer groen.</li>
+      <li><strong>Een volle pool is niet het probleem; een pool die de werkset niet
+        meer bergt, is het.</strong> Zeventien van de 39 runs op de plak komen boven
+        95&nbsp;% van de pool, en elf daarvan houden dat gewoon vol. In de andere zes
+        past de onderscheiden werkset er niet meer in, en dan houdt de prefix cache op
+        cache te zijn: de hit rate zakt van 96&mdash;98&nbsp;% naar 50, 45 of
+        4&nbsp;%, de prefill moet elke stap opnieuw, en de p90-TTFT springt van onder de
+        seconde naar 70 tot 206&nbsp;seconden. Dat is een drempel, geen helling.</li>
     </ol>
   </section>
 
@@ -616,15 +676,22 @@ figcaption {
     <h2><span class="n">01</span>Wat er gemeten is</h2>
 
     <div class="callout">
-      <span class="tag">Waarom hier maar één meetsessie in staat</span>
+      <span class="tag">Welke sessies hier in staan, en welke niet</span>
       <p>
-        Er zijn eerdere metingen op deze kaart, en die staan hier niet in. Sinds die
+        Twee sessies, en ze verschillen in precies één ding. De <em>configuratie</em> is
+        letterlijk identiek &mdash; corpus, seed, tokenizer, gedragsmodel, matrixspec,
+        lesspec en de kleurgrenzen komen als gelijke blokken uit
+        <code>config.json</code>; alleen <code>hardware.vram_gb</code> verschilt,
+        95,6 tegen 47,4. Dat is de hele meetopzet: één variabele.
+      </p>
+      <p>
+        Er zijn óók eerdere metingen op deze kaart, en díé staan hier niet in. Sinds die
         runs is de belasting veranderd: het corpus ging van 187 naar 559 bestanden
         (332k naar 2,02M tekens), de contexttelling ging van een schatting naar de
         tokenizer van het model, en het gedragsmodel kreeg een tweede as. Dezelfde
         kaart met een andere belasting levert geen vergelijking op, alleen verwarring.
-        Alles hieronder komt uit één sessie met één gedragsmodel: de lesvalidatie van
-        9 september en de matrix van 9 op 10 september.
+        Sectie 00 tot en met 07 gaat over de hele kaart; sectie 07 zet de halve kaart
+        ernaast.
       </p>
     </div>
 
@@ -635,7 +702,8 @@ figcaption {
       --enable-prefix-caching</code> en <code>--attention-backend TRITON_ATTN</code>.
       Bij <code>--gpu-memory-utilization 0.9</code> en 31,1&nbsp;GB modelgewichten
       blijft er een KV-cachepool van 54,9&nbsp;GB over. Dat is het getal waartegen
-      alle geheugenpercentages hieronder gemeten zijn.
+      alle geheugenpercentages in sectie 02 tot en met 06 gemeten zijn; sectie 07 rekent
+      tegen de 11,6&nbsp;GB van de halve kaart en zegt dat er telkens bij.
     </p>
 
     <h3>Twee assen in het gedragsmodel</h3>
@@ -670,6 +738,9 @@ figcaption {
       veertig studenten oploopt, vijf engine-varianten, zes verdelingen van de
       gedeelde projectbasis, vier activiteitsniveaus en zes benoemde momenten.
       Samen 12.252 verzoeken en 1.774 instructies, in ruim zes uur rekentijd.
+      Op de halve kaart is exact hetzelfde programma nog een keer gedraaid, in
+      dezelfde meettijd; daar kwamen 7.322 verzoeken en 1.312 instructies uit, en dat
+      verschil is zelf een meting &mdash; zie sectie 07.
     </p>
   </section>
 
@@ -908,7 +979,9 @@ figcaption {
       Dat is geen prestatie van deze kaart maar een eigenschap van de belasting: de
       prompt is er al, de prefill is snel (17.795&nbsp;tok/s tijdens het lesuur) en de
       wachtrij is vrijwel altijd leeg. <strong>Op deze schaal is TTFT geen maat voor
-      iets.</strong>
+      iets.</strong> Dat geldt zolang de cachepool de werkset bergt; zodra dat niet meer
+      zo is, is het de eerste maat die omvalt. Sectie 07 laat dezelfde cellen zien op
+      een pool van 11,6&nbsp;GB, met p90-TTFT tot 206&nbsp;seconden.
     </p>
   </section>
 
@@ -987,6 +1060,9 @@ figcaption {
       Er is dus geen klif in de zin van een punt waarop het omvalt. Er is een helling,
       en de kaart glijdt er langzaam vanaf. Dat is voor een opleiding het gunstigere
       geval: een klas die te groot wordt levert langzaam ongemak op, geen storing.
+      Of dat een eigenschap is van de belasting of van deze kaart, is te zien in
+      sectie 07: op een kaart met een kleinere pool zit er in dezelfde helling wél een
+      rand, en hij ligt tussen de 27 en de 31 studenten.
     </p>
   </section>
 
@@ -1096,7 +1172,9 @@ figcaption {
     <p>
       Zevenendertig van de negenendertig runs blijven onder de helft van de cachepool.
       Dertig blijven onder een kwart. De enige run die er echt in bijt is de worst
-      case, en die is met opzet extreem.
+      case, en die is met opzet extreem. Deze sectie gaat over de kaart van 96&nbsp;GB;
+      op de 11,6&nbsp;GB van sectie 07 gaat elk getal hieronder een andere kant op, en
+      de kop van deze sectie ook.
     </p>
 
     <figure class="wide">
@@ -1141,7 +1219,10 @@ figcaption {
       <em>auto</em> ook 166&nbsp;s duurt in plaats van 99, is één meting en geen bewezen
       patroon &mdash; maar er is geen reden om fp8 níét te gebruiken.
       <strong>Op deze kaart is dat de enige vlag die er in het geheugen toe doet.</strong>
-      Op een kleinere kaart is hij het verschil tussen passen en niet passen.
+      Op een kleinere kaart is hij het verschil tussen passen en niet passen, en dat is
+      inmiddels ook gemeten: op de pool van 11,6&nbsp;GB in sectie 07 levert dezelfde
+      run met <code>auto</code> nog 28 van de 152 verzoeken, met een p90-TTFT van
+      95&nbsp;seconden.
     </p>
 
     <h3>De gedeelde projectbasis scheelt geheugen, geen tijd</h3>
@@ -1167,13 +1248,403 @@ figcaption {
       cachegeheugen, en op het oordeel niets. Dat is logisch: het oordeel valt op
       doorlooptijd, en de gedeelde prefix bespaart prefill, niet decode. Het is dus een
       argument bij het kiezen van een kaart, niet bij het inrichten van een les.
+      Op een kaart waar de pool wél knelt verandert dat: daar scheelt dezelfde stap het
+      verschil tussen 446 en 218&nbsp;seconden, omdat de cache dan niet alleen geheugen
+      bespaart maar ook overeind blijft. Sectie 07 heeft die tabel.
     </p>
   </section>
 
   <hr class="rule">
 
   <section>
-    <h2><span class="n">07</span>Contextdruk: wat een vol venster kost</h2>
+    <h2><span class="n">07</span>De halve kaart: dezelfde meting op 48 GB</h2>
+    <p>
+      Alles hierboven is één kaart. Dit is diezelfde meting nog een keer, op een
+      MIG-plak van dezelfde kaart met 47,4&nbsp;GB in plaats van 95,6. Zelfde
+      corpus, zelfde seed, zelfde gedragsmodel, zelfde matrix- en lesspec, zelfde
+      kleurgrenzen &mdash; in <code>config.json</code> verschilt letterlijk één veld.
+      Het is daarmee het tweede punt op de geheugenas, en het antwoord op de vraag
+      waar sectie 06 mee eindigde.
+    </p>
+
+    <div class="callout">
+      <span class="tag">Halve kaart, bijna een vijfde pool &mdash; en niet alleen geheugen</span>
+      <p>
+        De cachepool is <em>niet</em> half zo groot. Hij is
+        47,4&nbsp;&times;&nbsp;0,90&nbsp;&minus;&nbsp;31,1&nbsp;=&nbsp;<strong>11,6&nbsp;GB</strong>
+        tegen 54,9, een factor 4,7. Dat komt doordat de 31,1&nbsp;GB modelgewichten een
+        vaste aftrek zijn: op de hele kaart kosten ze een derde van het geheugen, op de
+        plak twee derde. Wie op de geheugenas rekent, moet met dat verband rekenen en
+        niet met een rechte lijn.
+      </p>
+      <p>
+        En het is geen zuiver geheugenexperiment. Een MIG-plak krijgt ook een deel van
+        de rekenkernen en van de geheugenbandbreedte. Dat is hier gemeten en niet
+        aangenomen: bij vijf studenten op 8k context, met de pool voor 14&nbsp;%
+        gevuld, decodeert een stream 99&nbsp;tok/s tegen 138 op de hele kaart &mdash;
+        72&nbsp;%, en daar speelt geheugendruk geen rol. Onderaan deze sectie staat wat
+        er van het verschil aan het geheugen toe te schrijven is en wat aan de
+        rekenkracht.
+      </p>
+    </div>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Dezelfde negenendertig runs, twee kaarten</caption>
+        <thead>
+          <tr><th>&nbsp;</th><th>96 GB &mdash; pool 54,9 GB</th><th>48 GB &mdash; pool 11,6 GB</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>Oordeel over 39 runs</td><td>16 groen &middot; 19 oranje &middot; 4 rood</td><td class="hi">4 groen &middot; 11 oranje &middot; 24 rood</td></tr>
+          <tr><td>Lesuur van negentig minuten</td><td><span class="pill oranje">oranje</span> 144 s</td><td><span class="pill rood">rood</span> 314 s</td></tr>
+          <tr><td>Verzoeken in dezelfde meettijd</td><td>12.252</td><td>7.322</td></tr>
+          <tr><td>Afgeronde instructies</td><td>1.774</td><td>1.312</td></tr>
+          <tr><td>Mislukte verzoeken</td><td>0</td><td class="hi">14</td></tr>
+          <tr><td>Preempties</td><td>0</td><td class="hi">9</td></tr>
+          <tr><td>Runs boven 95 % van de pool</td><td>0 <span class="dim">(hoogste 84 %)</span></td><td class="hi">17</td></tr>
+          <tr><td>Hoogste p90-TTFT over alle runs</td><td>1,09 s</td><td class="hi">206 s</td></tr>
+          <tr><td>Klifzoeker</td><td>haalde het plafond van 40</td><td>brak bij 39</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De laatste twee regels zijn de opvallendste. Op de hele kaart was time to first
+      token een dood getal: nergens boven 1,1&nbsp;seconde, tegen een groen-grens van
+      twintig. Op de plak loopt hij in vijf runs op tot boven de 45&nbsp;seconden en in
+      één tot 206. Datzelfde getal is ook waarop de klifzoeker afsloeg. <strong>De maat
+      die op de grote kaart niets meet, is op de kleine de maat die als eerste
+      omvalt.</strong>
+    </p>
+
+    <h3>Het lesuur, twee keer</h3>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Run <code>les_90min</code> &mdash; identieke opzet, andere pool</caption>
+        <thead>
+          <tr><th>&nbsp;</th><th>96 GB</th><th>48 GB</th><th>Grens</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>p90 doorlooptijd instructie</td><td><span class="pill oranje">oranje</span> 144,4 s</td><td class="hi"><span class="pill rood">rood</span> 314,1 s</td><td>groen &lt; 90 &middot; rood &gt; 180</td></tr>
+          <tr><td>p50 doorlooptijd instructie</td><td>51,0 s</td><td>102,1 s</td><td class="dim">&mdash;</td></tr>
+          <tr><td>p90 TTFT</td><td>0,75 s</td><td>4,77 s</td><td>groen &lt; 20 s</td></tr>
+          <tr><td>p99 TTFT</td><td>4,03 s</td><td>36,09 s</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Decodesnelheid per stream (p50)</td><td>41,0 tok/s</td><td>19,8 tok/s</td><td>groen &gt; 12 tok/s</td></tr>
+          <tr><td>Serverdoorvoer (decode)</td><td>256 tok/s</td><td>153 tok/s</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Afgeronde instructies</td><td>483</td><td>318</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Mislukte verzoeken</td><td>0 van 3.891</td><td>2 van 2.254</td><td>geen</td></tr>
+          <tr><td>Preempties</td><td>0</td><td>4</td><td>geen</td></tr>
+          <tr><td>Prefix cache hit rate</td><td>94,0 %</td><td>89,1 %</td><td class="dim">gerapporteerd</td></tr>
+          <tr><td>KV-piek</td><td>14,6 GB (26,6 %)</td><td class="hi">11,6 GB (100,0 %)</td><td class="dim">van de eigen pool</td></tr>
+          <tr><td>Wachtrijpiek</td><td>9 verzoeken</td><td>16 verzoeken</td><td class="dim">waarschuwing</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De regel om te lezen is die van de KV-piek. Dezelfde les vroeg op de hele kaart
+      14,6&nbsp;GB. Op de plak is 11,6&nbsp;GB alles wat er is, en dus staat daar
+      100&nbsp;%: niet omdat de les minder nodig had, maar omdat er niet meer te krijgen
+      was. Wat vLLM dan doet staat in de regels eronder &mdash; vier preempties, twee
+      verzoeken die aflopen, een wachtrij die naar zestien loopt, en instructies die
+      ruim twee keer zo lang duren.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>p90 doorlooptijd per lesfase, in seconden</caption>
+        <thead>
+          <tr><th>Fase</th><th>Intensiteit</th><th>96 GB</th><th>48 GB</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>opstartpiek <span class="dim">(8 min)</span></td><td>1,5</td><td><span class="pill oranje">oranje</span> 129</td><td><span class="pill rood">rood</span> 264</td></tr>
+          <tr><td>opbouw <span class="dim">(27 min)</span></td><td>1,0</td><td><span class="pill oranje">oranje</span> 96</td><td><span class="pill oranje">oranje</span> 173</td></tr>
+          <tr class="accented"><td>eindpiek <span class="dim">(35 min)</span></td><td>1,6</td><td><span class="pill oranje">oranje</span> 179</td><td class="hi"><span class="pill rood">rood</span> 533</td></tr>
+          <tr><td>afbouw <span class="dim">(10 min)</span></td><td>0,6</td><td><span class="pill groen">groen</span> 49</td><td><span class="pill oranje">oranje</span> 117</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Op de hele kaart was er nog één fase waarin deze klas ruim groen zat: de rustige
+      afbouw aan het eind. Op de plak is die er niet meer. En de eindpiek &mdash;
+      vijfendertig minuten waarin iedereen wil inleveren &mdash; gaat van 179 naar
+      533&nbsp;seconden: één op de tien instructies duurt daar bijna negen minuten.
+      Dat is geen traagheid meer, dat is een les die niet doorgaat.
+    </p>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">KV-cachebezetting over het lesuur, beide kaarten</span>
+        <span class="legend">
+          <span><i class="swatch line" style="background:var(--run-a)"></i>96 GB, pool 54,9 GB</span>
+          <span><i class="swatch line" style="background:var(--s-red)"></i>48 GB, pool 11,6 GB</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-kv2"></div>
+      <figcaption>
+        Bezetting in GB, hoogste waarde per halve minuut. De blauwe lijn is dezelfde
+        curve als in sectie 02, nu in absolute gigabytes in plaats van procenten: die
+        les komt nergens in de buurt van haar plafond, dat ruim drie keer boven de
+        bovenrand van dit kader ligt. De rode lijn heeft haar plafond wél in beeld, en
+        gaat er tijdens de eindpiek ruim een half uur niet meer vanaf &mdash; en juist
+        in dat stuk vallen alle vier de preempties (t&nbsp;=&nbsp;2830, 3542, 3760 en
+        3790&nbsp;s). Tot dat moment lopen de twee curves door elkaar heen: dezelfde
+        klas vraagt hetzelfde, tot de een het niet meer krijgt.
+        De tien minuten klassikale uitleg zijn op beide kaarten hetzelfde gat; het
+        opnieuw instappen daarna kost op de hele kaart hoogstens 9,98&nbsp;s aan eerste
+        token en op de plak 50,29&nbsp;s.
+      </figcaption>
+    </figure>
+
+    <h3>De sweep: het raster kantelt</h3>
+
+    <div class="tablewrap wide">
+      <table class="gridtable">
+        <caption>p90 doorlooptijd van een instructie, in seconden &mdash; sweep op 48 GB (tussen haakjes: dezelfde cel op 96 GB)</caption>
+        <thead>
+          <tr><th>Studenten</th><th>8k context</th><th>32k context</th><th>64k context</th><th>100k context</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>5</td>
+            <td class="g-groen">63<span class="g">groen &middot; was 41</span></td>
+            <td class="g-groen">69<span class="g">groen &middot; was 49</span></td>
+            <td class="g-groen">73<span class="g">groen &middot; was 60</span></td>
+            <td class="g-oranje">95<span class="g">oranje &middot; was 59</span></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td class="g-oranje">111<span class="g">oranje &middot; was 62</span></td>
+            <td class="g-oranje">109<span class="g">oranje &middot; was 76</span></td>
+            <td class="g-oranje">158<span class="g">oranje &middot; was 97</span></td>
+            <td class="g-rood">249<span class="g">rood &middot; was 105</span></td>
+          </tr>
+          <tr>
+            <td>20</td>
+            <td class="g-oranje">122<span class="g">oranje &middot; was 65</span></td>
+            <td class="g-oranje">172<span class="g">oranje &middot; was 76</span></td>
+            <td class="g-rood">246<span class="g">rood &middot; was 102</span></td>
+            <td class="g-rood">417<span class="g">rood &middot; was 164</span></td>
+          </tr>
+          <tr>
+            <td>30</td>
+            <td class="g-rood">186<span class="g">rood &middot; was 70</span></td>
+            <td class="g-rood">269<span class="g">rood &middot; was 131</span></td>
+            <td class="g-rood">425<span class="g">rood &middot; was 196</span></td>
+            <td class="g-rood">397<span class="g">rood &middot; was 321</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Dezelfde sweep op 48 GB, in cachegeheugen (GB) en decodesnelheid per stream (tok/s)</caption>
+        <thead>
+          <tr><th>Studenten</th><th>8k</th><th>32k</th><th>64k</th><th>100k</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5</td><td>1,7 &middot; 99</td><td>2,7 &middot; 72</td><td>5,1 &middot; 55</td><td>7,4 &middot; 61</td></tr>
+          <tr><td>10</td><td>3,6 &middot; 53</td><td>4,8 &middot; 49</td><td>7,9 &middot; 38</td><td class="hi">11,4 &middot; 23</td></tr>
+          <tr><td>20</td><td>5,5 &middot; 36</td><td>6,9 &middot; 30</td><td class="hi">11,5 &middot; 19</td><td class="hi">11,5 &middot; 4</td></tr>
+          <tr><td>30</td><td>5,9 &middot; 27</td><td>8,6 &middot; 20</td><td class="hi">11,6 &middot; 5</td><td class="hi">11,5 &middot; 4</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Het raster kantelt op de plek waar de cijfers 11,5 gaan lezen. Tot daar is het
+      beeld van sectie 03 gewoon verschoven: dezelfde vorm, alles een slag trager. Vanaf
+      daar gebeurt er iets anders &mdash; de decodesnelheid per stream valt van 19 naar
+      4&nbsp;tok/s, onder de groen-grens van 12, en de p90 loopt van 246 naar
+      417&nbsp;seconden. <strong>De twee assen van sectie 03 vermenigvuldigen niet
+      alleen meer, ze lopen tegen een muur.</strong>
+    </p>
+
+    <h3>De drempel: waar de cache ophoudt cache te zijn</h3>
+    <p>
+      Een volle pool is op zichzelf geen probleem. Zeventien van de 39 runs komen boven
+      95&nbsp;% van de pool, en elf daarvan houden dat gewoon vol: hit rate 85 tot
+      97&nbsp;%, p90-TTFT tussen 2 en 18&nbsp;seconden. En in de runs die ruim onder de
+      pool bleven &mdash; onder 70&nbsp;% &mdash; komt de p90-TTFT nergens boven
+      1,9&nbsp;seconde en ligt de hit rate gemiddeld op 92&nbsp;%. Het gaat mis in de
+      andere zes, en daar gaat het in één keer helemaal mis: als de
+      <em>onderscheiden</em> werkset niet meer in de pool past, verdringen de sequenties
+      elkaars blokken en houdt de prefix cache op te werken. Dan moet de prompt elke stap
+      opnieuw voorgerekend worden, en dát is wat de eerste token duur maakt.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>De zes runs waarin de cache instortte &mdash; 96 GB &rarr; 48 GB</caption>
+        <thead>
+          <tr><th>Run</th><th>KV-piek</th><th>Cache hit rate</th><th>p90 TTFT</th><th>Verzoeken bediend</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>20 studenten, 64k, 0 % gedeeld</td><td>100 %</td><td class="hi">96,0 &rarr; 4,1 %</td><td>0,70 &rarr; 70,1 s</td><td>178 &rarr; 37</td></tr>
+          <tr><td>Worst case, 20 studenten, 100k</td><td>98 %</td><td>94,6 &rarr; 2,2 %</td><td class="dim">0,96 s &rarr; niet gemeten</td><td>172 &rarr; 4</td></tr>
+          <tr><td>kv_auto <span class="dim">(cache in fp16)</span></td><td>99 %</td><td>97,0 &rarr; 45,5 %</td><td>0,68 &rarr; 95,1 s</td><td>152 &rarr; 28</td></tr>
+          <tr><td>30 studenten, 64k</td><td>100 %</td><td>97,9 &rarr; 49,6 %</td><td>0,62 &rarr; 74,2 s</td><td>252 &rarr; 50</td></tr>
+          <tr><td>20 studenten, 100k</td><td>99 %</td><td>98,3 &rarr; 50,0 %</td><td>0,93 &rarr; 114,9 s</td><td>170 &rarr; 18</td></tr>
+          <tr><td>30 studenten, 100k</td><td>100 %</td><td>97,7 &rarr; 50,1 %</td><td>0,85 &rarr; 206,3 s</td><td>210 &rarr; 10</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De laatste kolom is de prijs. In dezelfde meettijd, met dezelfde studenten en
+      dezelfde opdrachten, bedient de server nog een tiende tot een vijfde van het
+      aantal verzoeken. De worst case levert van 172 verzoeken er nog vier &mdash; en
+      alle vier lopen ze af. <strong>Dit is de enige uitkomst in beide metingen die
+      niet &ldquo;traag&rdquo; heet maar &ldquo;stuk&rdquo;.</strong>
+    </p>
+
+    <h3>Nu doet <code>--kv-cache-dtype fp8</code> er wel toe</h3>
+    <div class="tablewrap wide">
+      <table>
+        <caption>Engine-varianten op 48 GB, alle bij 20 studenten op 64k context</caption>
+        <thead>
+          <tr><th>Variant</th><th>Oordeel</th><th>p90 TTFT</th><th>p90 instructie</th><th>KV-piek</th><th>Cache hit</th><th>Verzoeken</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>kv_auto</td><td><span class="pill rood">rood</span></td><td class="hi">95,1 s</td><td class="hi">418 s</td><td>11,5 GB</td><td class="hi">45,5 %</td><td class="hi">28</td></tr>
+          <tr><td>kv_fp8</td><td><span class="pill rood">rood</span></td><td>2,1 s</td><td>223 s</td><td>11,5 GB</td><td>95,0 %</td><td>121</td></tr>
+          <tr><td>len_65k</td><td><span class="pill rood">rood</span></td><td>3,1 s</td><td>246 s</td><td>11,5 GB</td><td>94,0 %</td><td>118</td></tr>
+          <tr><td>seqs_16</td><td><span class="pill rood">rood</span></td><td>3,7 s</td><td>239 s</td><td>11,4 GB</td><td>94,0 %</td><td>117</td></tr>
+          <tr><td>seqs_64</td><td><span class="pill rood">rood</span></td><td>4,2 s</td><td>257 s</td><td>11,5 GB</td><td>93,1 %</td><td>117</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Sectie 06 sloot af met &ldquo;op een kleinere kaart is hij het verschil tussen
+      passen en niet passen&rdquo;. Dat is nu gemeten. Op de hele kaart kostte
+      <code>auto</code> 2,2 keer zoveel geheugen en verder weinig; hier valt hij aan de
+      verkeerde kant van de drempel hierboven en levert hij een vijfde van de verzoeken,
+      met een p90-TTFT van 95&nbsp;seconden. De andere drie vlaggen doen ook op deze
+      kaart niets van betekenis: 223 tegen 257&nbsp;seconden over vier varianten, met
+      alle vier de pool vol. <strong>Van de vier onderzochte vlaggen is er één die
+      ertoe doet, en hij doet er meer toe naarmate de kaart kleiner is.</strong>
+    </p>
+
+    <h3>En de gedeelde projectbasis scheelt nu wél tijd</h3>
+    <div class="tablewrap wide">
+      <table>
+        <caption>Twintig studenten op 48 GB, naar hoeveel van de projectbasis gedeeld is</caption>
+        <thead>
+          <tr><th>Gedeeld</th><th>Context</th><th>Cache hit rate</th><th>p90 TTFT</th><th>p90 instructie</th><th>KV-piek</th><th>Oordeel</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>0 %</td><td>32k</td><td>92,0 %</td><td>1,11 s</td><td>188 s</td><td>9,6 GB</td><td><span class="pill rood">rood</span></td></tr>
+          <tr><td>50 %</td><td>32k</td><td>94,3 %</td><td>0,78 s</td><td>171 s</td><td>6,9 GB</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>90 %</td><td>32k</td><td>95,3 %</td><td>1,68 s</td><td>154 s</td><td>5,7 GB</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr class="accented"><td>0 %</td><td>64k</td><td class="hi">4,1 %</td><td class="hi">70,13 s</td><td class="hi">446 s</td><td>11,5 GB</td><td><span class="pill rood">rood</span></td></tr>
+          <tr><td>50 %</td><td>64k</td><td>93,9 %</td><td>3,38 s</td><td>242 s</td><td>11,5 GB</td><td><span class="pill rood">rood</span></td></tr>
+          <tr><td>90 %</td><td>64k</td><td>98,3 %</td><td>1,16 s</td><td>218 s</td><td>8,3 GB</td><td><span class="pill rood">rood</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Op de hele kaart was dit een geheugenargument en geen tijdargument: van niets
+      delen naar bijna alles delen scheelde veertig procent cache en nul aan het
+      oordeel. Op de plak scheelt het op 64k het verschil tussen 446 en
+      218&nbsp;seconden, en op 32k tilt het de run van rood naar oranje. De verklaring
+      is dezelfde drempel: met 0&nbsp;% gedeeld bij 64k past de onderscheiden werkset
+      niet meer, met 50&nbsp;% wel. <strong>Hoe krapper de kaart, hoe meer het uitmaakt
+      dat een klas aan dezelfde opdracht werkt.</strong>
+    </p>
+
+    <h3>De helling van sectie 04 is hier een klif</h3>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">Klifzoeker op beide kaarten, p90 per stap</span>
+        <span class="legend">
+          <span><i class="swatch line" style="background:var(--run-a)"></i>96 GB</span>
+          <span><i class="swatch line" style="background:var(--s-red)"></i>48 GB</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-klif2"></div>
+      <figcaption>
+        Elke stap is een venster van twee minuten met een vast aantal studenten; geteld
+        is elke instructie die in dat venster begon, ook als hij pas later klaar was
+        &mdash; dezelfde nagerekende maat als in sectie 04, want de live-uitslag van de
+        klifzoeker onderschat systematisch. Op de hele kaart schommelt de lijn na de
+        twintig tussen 65 en 183&nbsp;s zonder ergens een kant op te lopen. Op de plak
+        schiet hij door: 73&nbsp;s
+        bij 21 studenten, 596&nbsp;s bij 31. Vanaf 33 studenten rondde er binnen een
+        venster van twee minuten geen enkele instructie meer af, en daar zag de
+        klifzoeker zelf alleen nog de TTFT oplopen &mdash; waarop hij bij 39 studenten
+        afsloeg.
+      </figcaption>
+    </figure>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Klifzoeker, gebundeld per groep van vier stappen &mdash; nagerekend over alle instructies</caption>
+        <thead>
+          <tr><th>Studenten</th><th colspan="2">96 GB</th><th colspan="3">48 GB</th></tr>
+          <tr><th>&nbsp;</th><th>p90</th><th>Oordeel</th><th>p90</th><th>Boven 90 s</th><th>Oordeel</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5 &ndash; 11</td><td>30,2 s</td><td><span class="pill groen">groen</span></td><td>46,5 s</td><td>0 %</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>13 &ndash; 19</td><td>34,4 s</td><td><span class="pill groen">groen</span></td><td>70,2 s</td><td>2 %</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>21 &ndash; 27</td><td>92,0 s</td><td><span class="pill oranje">oranje</span></td><td>151,0 s</td><td>28 %</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr class="accented"><td>29 &ndash; 35</td><td>125,2 s</td><td><span class="pill oranje">oranje</span></td><td class="hi">520,9 s</td><td class="hi">75 %</td><td><span class="pill rood">rood</span></td></tr>
+          <tr><td>37 &ndash; 40</td><td>114,3 s</td><td><span class="pill oranje">oranje</span></td><td>259,3 s</td><td>89 %</td><td><span class="pill rood">rood</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De omslag van groen naar oranje ligt op beide kaarten rond dezelfde twintig
+      studenten. Wat verschilt is wat er dáárna gebeurt. Op de hele kaart glijdt de
+      kaart langzaam van een helling af en wordt het nooit rood; op de plak zit er
+      tussen de 27 en de 31 studenten een rand. Voor een opleiding is dat het verschil
+      tussen een klas die te groot wordt en langzamer werkt, en een klas die te groot
+      wordt en stilvalt.
+    </p>
+
+    <h3>Hoeveel hiervan is het geheugen, en hoeveel de rekenkracht?</h3>
+    <p>
+      Eerlijk gescheiden kan het niet, want de plak levert allebei minder. Wat wel kan
+      is het verschil bekijken op de plaatsen waar het geheugen aantoonbaar niet knelde,
+      en dat afzetten tegen de plaatsen waar het wel knelde.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Vertraging op 48 GB ten opzichte van 96 GB, naar hoe vol de pool stond &mdash; over de 38 matrixruns, die op beide kaarten een tegenhanger hebben</caption>
+        <thead>
+          <tr><th>Runs</th><th>Aantal</th><th>p90 doorlooptijd</th><th>Decode per stream</th><th>p90 TTFT</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Pool bleef onder 70 % vol</td><td>17</td><td>&times; 1,6 <span class="dim">tot &times; 2,7</span></td><td>0,58 &times; <span class="dim">min 0,46</span></td><td>&le; 1,9 s</td></tr>
+          <tr class="accented"><td>Pool stond op 99 % of meer</td><td>13</td><td class="hi">&times; 2,4 <span class="dim">tot &times; 3,8</span></td><td class="hi">0,41 &times; <span class="dim">min 0,12</span></td><td class="hi">tot 206 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De ondergrens van de vertraging &mdash; wat de plak ook zonder één byte
+      geheugendruk al kost &mdash; is ongeveer anderhalf keer: bij vijf studenten,
+      waar de pool hoogstens tweederde vol raakt, ligt de factor tussen 1,2 en 1,6 en
+      houdt een stream 63 tot 95&nbsp;% van zijn tempo. Alles daarboven komt van de
+      pool. Dat betekent voor de aankoopvraag twee dingen tegelijk:
+      <strong>een kaart met minder geheugen kost eerst een vaste, bescheiden vertraging,
+      en daarna, zodra de werkset niet meer past, een veelvoud daarvan.</strong> De
+      eerste is te begroten; de tweede niet, want hij hangt af van wat de klas op dat
+      moment doet.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">08</span>Contextdruk: wat een vol venster kost</h2>
     <p>
       Een sessie die over zijn doelcontext heen groeit, gooit op de grens van een
       instructie het oudste stuk werkgeschiedenis weg en houdt de kop en de laatste
@@ -1224,25 +1695,38 @@ figcaption {
   <hr class="rule">
 
   <section>
-    <h2><span class="n">08</span>Wat dit met de aankoopvraag doet</h2>
+    <h2><span class="n">09</span>Wat dit met de aankoopvraag doet</h2>
     <p>
-      De aanvraag gaat over 96&nbsp;GB tegen 72&nbsp;GB of twee 5090's. Deze meting
-      verschuift daar één ding in, en het is niet het geheugen.
+      De aanvraag gaat over 96&nbsp;GB tegen 72&nbsp;GB of twee 5090's. De eerste meting
+      verschoof daar één ding in, en het was niet het geheugen. De tweede meting zet er
+      een ondergrens onder, en die staat er niet naast maar eronder: 11,6&nbsp;GB pool
+      is te weinig, en dat is nu gemeten in plaats van beredeneerd.
     </p>
 
     <div class="tablewrap wide">
       <table>
-        <caption>De kaarten uit de aanvraag, afgemeten op deze meting</caption>
+        <caption>De geheugenas, met twee gemeten punten en twee tussenliggende &mdash; nodig: lesuur 14,6 GB &middot; klas van 20 op 100k 19,1 GB &middot; worst case 46,2 GB</caption>
         <thead>
-          <tr><th>Kaart</th><th>Cachepool</th><th>Nodig (lesuur)</th><th>Nodig (klas van 20, 100k)</th><th>Nodig (worst case)</th><th>Past?</th><th>Prijs</th></tr>
+          <tr><th>Opstelling</th><th>Cachepool</th><th>Lesuur</th><th>20 op 100k</th><th>Worst case</th><th>Gemeten?</th><th>Prijs</th></tr>
         </thead>
         <tbody>
-          <tr><td>2&times; RTX 5090 (64 GB)</td><td>26,5 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td>2 runs niet</td><td>&euro; 10.000</td></tr>
-          <tr><td>RTX PRO 5000 (72 GB)</td><td>33,7 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td>1 run niet</td><td>&euro; 7.602</td></tr>
-          <tr class="accented"><td>RTX PRO 6000 (96 GB)</td><td>54,9 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td class="hi">alle 39</td><td>&euro; 37.400</td></tr>
+          <tr class="accented"><td>MIG-plak, 47,4 GB</td><td class="hi">11,6 GB</td><td class="hi">past niet</td><td class="hi">past niet</td><td class="hi">past niet</td><td class="hi">ja &mdash; 24/39 rood</td><td class="dim">&mdash;</td></tr>
+          <tr><td>2&times; RTX 5090, 64 GB</td><td>26,5 GB</td><td>past</td><td>past</td><td>past niet</td><td>nee</td><td>&euro; 10.000</td></tr>
+          <tr><td>RTX PRO 5000, 72 GB</td><td>33,7 GB</td><td>past</td><td>past</td><td>past niet</td><td>nee</td><td>&euro; 7.602</td></tr>
+          <tr><td>RTX PRO 6000, 96 GB</td><td>54,9 GB</td><td>past</td><td>past</td><td>past</td><td>ja &mdash; 4/39 rood</td><td>&euro; 37.400</td></tr>
         </tbody>
       </table>
     </div>
+
+    <p>
+      De tweede en derde kolom horen samen gelezen te worden, want ze lopen niet gelijk
+      op. De pool is
+      <code>videogeheugen &times; 0,90 &minus; 31,1&nbsp;GB</code>, en die 31,1 aan
+      modelgewichten is een vaste aftrek. Van 96 naar 48&nbsp;GB halveert de kaart en
+      krimpt de pool met een factor 4,7; van 96 naar 64 halveert de pool bijna, terwijl
+      het kaartgeheugen maar een derde inlevert. <strong>Elke gigabyte die je van de
+      bovenkant afhaalt, kost meer cache dan de vorige.</strong>
+    </p>
 
     <ul class="plain">
       <li><strong>Op geheugen is het verschil klein en het gaat om twee runs.</strong>
@@ -1252,18 +1736,36 @@ figcaption {
         horen te vallen is een keuze en geen meting &mdash; maar wie ze weglaat, koopt
         op geheugengronden een andere kaart. Voor het echte lesuur is 14,6&nbsp;GB
         genoeg, en dat past bijna twee keer in de kleinste pool.</li>
+      <li><strong>De ondergrens ligt nu vast, en het lesuur valt erbuiten.</strong>
+        Dat lesuur vroeg 14,6&nbsp;GB toen het mocht. Op een pool van 11,6&nbsp;GB
+        kreeg het dat niet, en het antwoord was rood: preempties, afgelopen verzoeken en
+        een p90 die van 144 naar 314&nbsp;seconden ging. Beide alternatieven uit de
+        aanvraag zitten daar ruim boven &mdash; 26,5 en 33,7&nbsp;GB, oftewel 1,8 en
+        2,3 keer de vraag van het lesuur. <strong>Op geheugen alleen zou geen van beide
+        op deze belasting stuklopen.</strong></li>
       <li><strong>Op rekenkracht wordt het argument sterker in plaats van zwakker.</strong>
         Het oranje van dit lesuur is gehaald op de snelste kaart uit de vergelijking,
         met de cachepool voor driekwart leeg. Een kaart met minder rekenkracht en
-        minder bandbreedte doet dit niet beter. Dat maakt de meting op twee 5090's niet
-        minder nodig maar méér: de kans dat die opstelling onder dit gedragsmodel rood
-        kleurt, is aanzienlijk.</li>
-      <li><strong>De eerlijke samenvatting.</strong> Deze meting weerlegt de
+        minder bandbreedte doet dit niet beter. De plak geeft daar een eerste maat voor:
+        in de runs waar het geheugen aantoonbaar niet knelde liep de doorlooptijd op met
+        een factor 1,2 tot 2,7, mediaan 1,6. Zelfs de laagste van die factoren tilt het
+        lesuur van 144&nbsp;s naar 173 &mdash; net onder de rood-grens van 180; de
+        mediaan brengt hem op 230, er ruim overheen. Dat maakt de meting op twee 5090's
+        niet minder nodig maar méér.</li>
+      <li><strong>Wat de plak níét zegt.</strong> Hij levert minder geheugen én minder
+        rekenkernen tegelijk, dus hij is geen bewijs dat een pool van 26,5&nbsp;GB
+        volstaat, en ook geen bewijs van het tegendeel. Hij zegt precies twee dingen:
+        de geheugenas is niet recht, en onder een bepaalde poolgrootte gaat het niet
+        geleidelijk maar plotseling mis. Waar die grens voor dit lesuur ligt, ligt
+        tussen 11,6 en 14,6&nbsp;GB, en dat is ver onder elk alternatief in de aanvraag.</li>
+      <li><strong>De eerlijke samenvatting.</strong> Deze metingen weerleggen de
         onderbouwing van &euro;&nbsp;37.400 op <em>geheugen</em>gronden, tenzij de
-        worst case meetelt. Ze onderbouwt hem niet op rekenkrachtgronden &mdash;
+        worst case meetelt. Ze onderbouwen hem niet op rekenkrachtgronden &mdash;
         daarvoor moet je weten wat het alternatief doet, en dat is nog steeds niet
-        gemeten. Wat ze wél laat zien is dat er op de rekenkracht-as veel minder marge
-        is dan op de geheugen-as, en dat de aanvraag over de verkeerde as gaat.</li>
+        gemeten. Wat ze wél laten zien is dat er op de rekenkracht-as veel minder marge
+        is dan op de geheugen-as, dat de aanvraag over de verkeerde as gaat, en dat het
+        goedkoopste denkbare alternatief &mdash; een halve kaart &mdash; er duidelijk
+        buiten valt.</li>
     </ul>
 
     <h3>Hoe de kleuren zijn bepaald</h3>
@@ -1294,12 +1796,17 @@ figcaption {
   <hr class="rule">
 
   <section>
-    <h2><span class="n">09</span>Wat deze meting niet zegt</h2>
+    <h2><span class="n">10</span>Wat deze metingen niet zeggen</h2>
     <ul class="plain">
-      <li><strong>Niets over andere hardware.</strong> Eén kaart. De kaartvergelijking
-        hierboven rekent alleen met geheugen; over de rekenkracht van de alternatieven
-        is niets gemeten. Dat is de eerstvolgende meting, en zonder die meting is de
-        aankoopvraag niet te beantwoorden.</li>
+      <li><strong>Niets over de kaarten uit de aanvraag.</strong> Twee opstellingen, en
+        het zijn allebei dezelfde kaart: de hele en een plak ervan. Geen van beide is
+        de RTX PRO 5000 of een paar 5090's. De kaartvergelijking hierboven rekent voor
+        die twee alleen met geheugen; over hun rekenkracht is nog steeds niets gemeten,
+        en zonder die meting is de aankoopvraag niet te beantwoorden.</li>
+      <li><strong>De plak scheidt geheugen en rekenkracht niet.</strong> Een MIG-partitie
+        levert allebei minder, en hoeveel van elk staat niet in de meting. Sectie 07
+        zet er een ondergrens onder door te kijken waar de pool aantoonbaar niet knelde,
+        maar dat is een schatting uit zeventien runs en geen scheiding.</li>
       <li><strong>Niets over de kwaliteit van de gegenereerde code.</strong> Gemeten zijn
         capaciteit en latentie.</li>
       <li><strong>Niets hards over de verdeling van de werkprofielen.</strong> 50/30/20
@@ -1325,15 +1832,25 @@ figcaption {
 
   <footer class="footer bleed">
     <div class="footer-inner">
-      <strong>Bronnen.</strong>
+      <strong>Bronnen &mdash; 96 GB.</strong>
       <code>results-van-de-gpu/20260909-125855_les/</code> &mdash; run <code>les_90min</code>,
       gestart 2026-09-09T12:58:59Z, geëindigd 14:29:06Z, duur 5.407 s.<br>
       <code>results-van-de-gpu/20260909-185135_matrix/</code> &mdash; 38 runs,
       gestart 2026-09-09T18:51:35Z, geëindigd 2026-09-10T00:08:58Z.<br>
       Cachepool 54,9 GB = 95,6 GB × 0,90 − 31,1 GB modelgewichten.
-      Alle percentages van de cache zijn van dat getal.<br>
+      In sectie 02 tot en met 06 zijn alle cachepercentages van dat getal.<br>
+      <strong>Bronnen &mdash; 48 GB.</strong>
+      <code>results/20260910-165600_les/</code> &mdash; run <code>les_90min</code>,
+      gestart 2026-09-10T16:56:02Z, duur 5.445 s.<br>
+      <code>results/20260910-084827_matrix/</code> &mdash; 38 runs,
+      gestart 2026-09-10T08:48:27Z, opstelling <code>d7954db50151</code>.<br>
+      Cachepool 11,6 GB = 47,4 GB × 0,90 − 31,1 GB modelgewichten. In sectie 07 zijn de
+      cachepercentages van dát getal. Het videogeheugen van een MIG-plak komt van torch:
+      <code>nvidia-smi</code> antwoordt er <code>[N/A]</code> op memory.total.<br>
       <strong>Machinaal gegenereerde samenvatting.</strong> <code>RESULTATEN.md</code> in
-      dezelfde repository, opnieuw gemaakt uit deze twee mappen.
+      dezelfde repository draagt de laatste meting, die van 48 GB; per meetmap staat er
+      ook een <code>RESULTATEN.md</code> naast de <code>summary.csv</code>. Dit rapport
+      is het enige stuk waarin de twee metingen naast elkaar staan.
     </div>
   </footer>
 
@@ -1353,6 +1870,91 @@ const KLIF = {
 };
 
 const KVRUNS = [["scen_worst_case", 46.2], ["sweep_s30_c100k", 28.2], ["engine_kv_auto", 23.2], ["sweep_s20_c100k", 19.1], ["rampup", 17.3], ["shared_00_c64k", 15.8], ["sweep_s30_c64k", 15.7], ["scen_deadline", 15.4], ["les_90min", 14.6], ["scen_lange_sessies", 12.0], ["sweep_s10_c100k", 11.7], ["scen_na_de_stilte", 10.9], ["engine_seqs_16", 10.8], ["engine_seqs_64", 10.7], ["engine_len_65k", 10.6], ["shared_50_c64k", 10.6], ["engine_kv_fp8", 10.5], ["sweep_s20_c64k", 10.4], ["act_intensief_s20", 9.9], ["shared_90_c64k", 9.3], ["sweep_s30_c32k", 9.3], ["scen_koudestart_s30", 9.1], ["shared_00_c32k", 9.1], ["sweep_s10_c64k", 8.9], ["shared_50_c32k", 8.0], ["sweep_s20_c32k", 8.0], ["shared_90_c32k", 6.9], ["sweep_s5_c100k", 6.6], ["act_intensief_s10", 6.0], ["sweep_s30_c8k", 5.8], ["act_rustig_s20", 5.2], ["scen_koudestart_s20", 4.6], ["sweep_s10_c32k", 4.5], ["sweep_s20_c8k", 4.4], ["sweep_s5_c64k", 4.3], ["sweep_s10_c8k", 3.5], ["sweep_s5_c32k", 2.9], ["act_rustig_s10", 2.5], ["sweep_s5_c8k", 1.5]];
+
+const KV_LES_MIG = [[15.0, 1.7], [45.0, 4.79], [75.0, 6.05], [105.0, 6.33], [135.0, 5.44], [165.0, 6.08], [195.0, 6.14], [225.0, 6.46], [255.0, 7.55], [285.0, 8.35], [315.0, 8.52], [345.0, 6.81], [375.0, 6.83], [405.0, 5.91], [435.0, 6.9], [465.0, 9.43], [495.0, 7.84], [525.0, 8.46], [555.0, 8.53], [585.0, 6.04], [615.0, 6.61], [645.0, 7.63], [675.0, 6.03], [705.0, 5.22], [735.0, 4.43], [765.0, 5.7], [795.0, 6.98], [825.0, 7.09], [855.0, 5.02], [885.0, 5.8], [915.0, 6.08], [945.0, 5.93], [975.0, 2.95], [1005.0, 4.31], [1035.0, 7.07], [1065.0, 7.98], [1095.0, 8.67], [1125.0, 8.69], [1155.0, 7.22], [1185.0, 5.59], [1215.0, 5.57], [1245.0, 4.01], [1275.0, 5.1], [1305.0, 5.81], [1335.0, 5.84], [1365.0, 4.03], [1395.0, 6.62], [1425.0, 5.73], [1455.0, 5.42], [1485.0, 5.51], [1515.0, 5.59], [1545.0, 7.01], [1575.0, 7.57], [1605.0, 7.14], [1635.0, 6.12], [1665.0, 6.03], [1695.0, 6.18], [1725.0, 4.73], [1755.0, 3.95], [1785.0, 5.09], [1815.0, 7.27], [1845.0, 7.06], [1875.0, 7.39], [1905.0, 6.19], [1935.0, 6.59], [1965.0, 6.78], [1995.0, 4.65], [2025.0, 5.85], [2055.0, 7.34], [2085.0, 8.73], [2115.0, 8.52], [2145.0, 6.96], [2175.0, 4.06], [2205.0, 3.36], [2235.0, 0.0], [2265.0, 0.0], [2295.0, 0.0], [2325.0, 0.0], [2355.0, 0.0], [2385.0, 0.0], [2415.0, 0.0], [2445.0, 0.0], [2475.0, 0.0], [2505.0, 0.0], [2535.0, 0.0], [2565.0, 0.0], [2595.0, 0.0], [2625.0, 0.0], [2655.0, 0.0], [2685.0, 0.0], [2715.0, 5.91], [2745.0, 10.04], [2775.0, 10.8], [2805.0, 11.15], [2835.0, 11.56], [2865.0, 11.29], [2895.0, 11.35], [2925.0, 11.41], [2955.0, 10.85], [2985.0, 10.9], [3015.0, 10.76], [3045.0, 10.96], [3075.0, 10.92], [3105.0, 11.06], [3135.0, 10.77], [3165.0, 11.38], [3195.0, 11.39], [3225.0, 11.51], [3255.0, 11.55], [3285.0, 11.31], [3315.0, 11.53], [3345.0, 11.37], [3375.0, 11.48], [3405.0, 11.51], [3435.0, 11.45], [3465.0, 11.56], [3495.0, 10.51], [3525.0, 11.42], [3555.0, 11.55], [3585.0, 11.1], [3615.0, 11.34], [3645.0, 10.26], [3675.0, 10.62], [3705.0, 11.49], [3735.0, 10.94], [3765.0, 11.56], [3795.0, 11.44], [3825.0, 11.45], [3855.0, 11.24], [3885.0, 11.41], [3915.0, 11.51], [3945.0, 9.23], [3975.0, 9.58], [4005.0, 10.32], [4035.0, 9.59], [4065.0, 10.86], [4095.0, 9.07], [4125.0, 9.78], [4155.0, 10.36], [4185.0, 10.75], [4215.0, 10.47], [4245.0, 10.05], [4275.0, 9.71], [4305.0, 9.97], [4335.0, 10.77], [4365.0, 10.63], [4395.0, 10.67], [4425.0, 10.8], [4455.0, 10.24], [4485.0, 9.92], [4515.0, 9.86], [4545.0, 11.14], [4575.0, 11.24], [4605.0, 11.54], [4635.0, 9.63], [4665.0, 10.6], [4695.0, 9.54], [4725.0, 10.86], [4755.0, 11.37], [4785.0, 11.53], [4815.0, 11.41], [4845.0, 11.47], [4875.0, 11.35], [4905.0, 11.38], [4935.0, 10.56], [4965.0, 9.67], [4995.0, 8.87], [5025.0, 7.95], [5055.0, 8.92], [5085.0, 9.47], [5115.0, 9.28], [5145.0, 7.37], [5175.0, 7.31], [5205.0, 8.71], [5235.0, 8.18], [5265.0, 7.31], [5295.0, 4.63], [5325.0, 2.73], [5355.0, 3.7], [5385.0, 3.79], [5400.0, 4.39]];
+
+const KLIF_MIG = {
+  studenten: [
+    5,
+    7,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    21,
+    23,
+    25,
+    27,
+    29,
+    31,
+    33,
+    35,
+    37,
+    39
+  ],
+  gemeten: [
+    38.9,
+    37.6,
+    36.8,
+    49.7,
+    36.5,
+    75.3,
+    56.7,
+    64.2,
+    72.6,
+    176.5,
+    190.7,
+    119.6,
+    325.0,
+    596.1,
+    417.0,
+    395.3,
+    268.6,
+    153.9
+  ],
+  nGemeten: [
+    7,
+    5,
+    7,
+    5,
+    12,
+    10,
+    13,
+    14,
+    13,
+    14,
+    11,
+    12,
+    17,
+    15,
+    8,
+    8,
+    10,
+    8
+  ],
+  ttft: [
+    1.4,
+    0.6,
+    0.4,
+    0.6,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.5,
+    2.9,
+    1.4,
+    1.6,
+    1.9,
+    6.0,
+    26.1,
+    25.2,
+    40.9,
+    50.7
+  ]
+};
 
 const NS = "http://www.w3.org/2000/svg";
 const tip = document.getElementById("tip");
@@ -1585,6 +2187,135 @@ function banden(s, x, yTop, yBot, max) {
   const iPk = KLIF.gemeten.indexOf(183.0);
   s.appendChild(el("text", { x: x(iPk), y: y(183.0) - 9, class: "vallab", "text-anchor": "middle" }, "183 s"));
   document.getElementById("plot-klif").appendChild(s);
+})();
+
+/* ------------------------------- 4b. KV-cache over het lesuur, beide kaarten */
+(function () {
+  const W = 760, L = 52, R = 26, T = 26, B = 46, H = 300;
+  const maxY = 16, maxX = 5400;
+  const x = v => L + (v / maxX) * (W - L - R);
+  const y = v => H - B - (Math.min(v, maxY) / maxY) * (H - T - B);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "KV-cachebezetting in GB over het lesuur, op 96 GB en op 48 GB"));
+
+  [["opstart", 0, 480, "var(--band)"], ["opbouw", 480, 2100, "transparent"],
+   ["uitleg", 2100, 2700, "var(--band-quiet)"], ["eindpiek", 2700, 4800, "var(--band)"],
+   ["afbouw", 4800, 5400, "transparent"]].forEach(([naam, a, b, fill]) => {
+    if (fill !== "transparent")
+      s.appendChild(el("rect", { x: x(a), y: T, width: x(b) - x(a), height: H - B - T, fill: fill }));
+    s.appendChild(el("text", { x: (x(a) + x(b)) / 2, y: T - 9, class: "tick", "text-anchor": "middle" }, naam));
+  });
+  [0, 4, 8, 12, 16].forEach(v => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--rule)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: L - 7, y: y(v) + 3.5, class: "tick", "text-anchor": "end" }, v + " GB"));
+  });
+  [0, 900, 1800, 2700, 3600, 4500, 5400].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - B + 17, class: "tick", "text-anchor": "middle" }, (v / 60) + " min"));
+  });
+  s.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, class: "axlab", "text-anchor": "middle" }, "tijd sinds start van de les"));
+
+  // Het plafond van de kleine pool ligt in beeld; dat van de grote ver erboven.
+  s.appendChild(el("line", { x1: L, x2: W - R, y1: y(11.56), y2: y(11.56), stroke: "var(--s-red)",
+                             "stroke-width": 1.5, "stroke-dasharray": "4 3", opacity: ".85" }));
+  s.appendChild(el("text", { x: W - R - 3, y: y(11.56) - 6, class: "tick", "text-anchor": "end",
+                             style: "fill:var(--s-red)" }, "pool 48 GB-plak — 11,6 GB"));
+  s.appendChild(el("text", { x: L + 5, y: T + 12, class: "tick", style: "fill:var(--run-a)" },
+                  "pool hele kaart — 54,9 GB, ruim drie keer boven de bovenrand"));
+
+  const series = [
+    ["96 GB", KV_LES.map(p => [p[0], p[1] * 0.549]), "var(--run-a)", null],
+    ["48 GB", KV_LES_MIG, "var(--s-red)", null]
+  ];
+  series.forEach(([lab, data, col, dash]) => {
+    const d = data.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
+    const path = el("path", { d: d, fill: "none", stroke: col, "stroke-width": 2,
+                              "stroke-linejoin": "round", "stroke-linecap": "round" });
+    if (dash) path.setAttribute("stroke-dasharray", dash);
+    s.appendChild(path);
+  });
+
+  // De vier preempties vielen alle vier in het stuk waar de plak tegen zijn plafond aan zit.
+  [2830, 3542, 3760, 3790].forEach(t => {
+    const m = el("path", { d: `M ${x(t).toFixed(1)} ${(y(11.56) - 9).toFixed(1)} l 4 -7 l -8 0 z`,
+                           fill: "var(--s-red)" });
+    hoverable(m, `preemptie op t = ${t} s\nde pool van de plak staat hier vol`);
+    s.appendChild(m);
+  });
+  s.appendChild(el("text", { x: x(3300), y: y(11.56) - 20, class: "tick", "text-anchor": "middle",
+                             style: "fill:var(--s-red)" }, "4 preempties"));
+
+  const hair = el("line", { x1: 0, x2: 0, y1: T, y2: H - B, stroke: "var(--rule-strong)", "stroke-width": 1, opacity: "0" });
+  s.appendChild(hair);
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - B - T, fill: "transparent" });
+  hit.style.cursor = "crosshair";
+  hit.addEventListener("pointermove", e => {
+    const box = s.getBoundingClientRect();
+    const px = (e.clientX - box.left) / box.width * W;
+    const t = Math.max(0, Math.min(maxX, (px - L) / (W - L - R) * maxX));
+    const i1 = Math.min(KV_LES.length - 1, Math.round(t / 30));
+    const i2 = Math.min(KV_LES_MIG.length - 1, Math.round(t / 30));
+    hair.setAttribute("x1", x(KV_LES[i1][0]));
+    hair.setAttribute("x2", x(KV_LES[i1][0]));
+    hair.setAttribute("opacity", "1");
+    showTip(e, `minuut ${Math.floor(KV_LES[i1][0] / 60)}\n96 GB  ${nl(KV_LES[i1][1] * 0.549)} GB van 54,9\n48 GB  ${nl(KV_LES_MIG[i2][1])} GB van 11,6`);
+  });
+  hit.addEventListener("pointerleave", () => { hair.setAttribute("opacity", "0"); hideTip(); });
+  s.appendChild(hit);
+  document.getElementById("plot-kv2").appendChild(s);
+})();
+
+/* ---------------------------- 4c. de klifzoeker op beide kaarten */
+(function () {
+  const W = 760, L = 50, R = 96, T = 26, B = 48, H = 330;
+  const maxY = 600;
+  const x = v => L + ((v - 5) / 35) * (W - L - R);
+  const y = v => H - B - (Math.min(v, maxY) / maxY) * (H - T - B);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "p90 doorlooptijd per stap van de klifzoeker, op 96 GB en op 48 GB"));
+
+  [[0, 90, "var(--s-green)", ".07"], [90, 180, "var(--s-amber)", ".07"],
+   [180, maxY, "var(--s-red)", ".13"]].forEach(([a, b, col, op]) => {
+    s.appendChild(el("rect", { x: L, y: y(b), width: W - L - R, height: y(a) - y(b), fill: col, opacity: op }));
+  });
+  [0, 150, 300, 450, 600].forEach(v => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--rule)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: L - 7, y: y(v) + 3.5, class: "tick", "text-anchor": "end" }, v));
+  });
+  [[90, "groen-grens 90 s", "var(--s-green)"], [180, "rood-grens 180 s", "var(--s-red)"]].forEach(([v, lab, col]) => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: col, "stroke-width": 1, "stroke-dasharray": "3 3", opacity: ".8" }));
+    s.appendChild(el("text", { x: L + 5, y: y(v) - 5, class: "tick", style: "fill:" + col }, lab));
+  });
+  [5, 10, 15, 20, 25, 30, 35, 40].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - B + 17, class: "tick", "text-anchor": "middle" }, v));
+  });
+  s.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, class: "axlab", "text-anchor": "middle" }, "actieve studenten in dat venster van twee minuten"));
+  s.appendChild(el("text", { x: L - 7, y: T - 10, class: "axlab", "text-anchor": "end" }, "s"));
+
+  [["96 GB", KLIF.studenten, KLIF.gemeten, KLIF.nGemeten, "var(--run-a)"],
+   ["48 GB", KLIF_MIG.studenten, KLIF_MIG.gemeten, KLIF_MIG.nGemeten, "var(--s-red)"]
+  ].forEach(([lab, xs, vals, ns, col]) => {
+    const d = vals.map((v, i) => (i ? "L" : "M") + x(xs[i]).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+    s.appendChild(el("path", { d: d, fill: "none", stroke: col, "stroke-width": 2, "stroke-linejoin": "round" }));
+    vals.forEach((v, i) => {
+      const c = el("circle", { cx: x(xs[i]), cy: y(v), r: 4, fill: col, stroke: "var(--surface)", "stroke-width": 2 });
+      hoverable(c, `${xs[i]} studenten — ${lab}\np90 ${nl(v)} s over ${ns[i]} instructies — ${oordeelVoor(v)}`);
+      s.appendChild(c);
+    });
+    // Directe labels rechts, zodat identiteit niet alleen aan de kleur hangt.
+    const last = vals.length - 1;
+    s.appendChild(el("text", { x: x(xs[last]) + 9, y: y(vals[last]) + 4, class: "vallab", style: "fill:" + col }, lab));
+  });
+
+  const iPk = KLIF_MIG.gemeten.indexOf(596.1);
+  s.appendChild(el("text", { x: x(KLIF_MIG.studenten[iPk]), y: y(596.1) - 9, class: "vallab", "text-anchor": "middle", style: "fill:var(--s-red)" }, "596 s"));
+  // Vanaf 33 studenten rondde er binnen een venster niets meer af; dat markeren we
+  // met een streep op de as in plaats van een label dwars door de blauwe lijn heen.
+  s.appendChild(el("line", { x1: x(32), x2: x(32), y1: T, y2: H - B, stroke: "var(--s-red)",
+                             "stroke-width": 1, "stroke-dasharray": "2 4", opacity: ".55" }));
+  s.appendChild(el("text", { x: x(32) - 5, y: T + 11, class: "tick", "text-anchor": "end",
+                             style: "fill:var(--s-red)" },
+                  "hierna rondde er binnen een venster niets meer af \u2192"));
+  document.getElementById("plot-klif2").appendChild(s);
 })();
 
 /* ------------------------------------------------- 5. de intensiteitsladder */
