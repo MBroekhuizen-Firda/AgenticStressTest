@@ -141,11 +141,65 @@ het aantal sessies dat erin past; dat is wat `scripts/pod.sh` doet.
 gebruikers, maar levert een eerlijke ondergrens. Noteer in beide gevallen wat
 je gebruikt hebt — de conclusie hangt eraan.
 
+### `WorkerProc initialization failed due to an exception in a background process`
+
+Alleen met `--tensor-parallel-size 2` of hoger. vLLM start dan een
+werkproces per kaart, en wat je onderaan het log ziet is de API-server die
+meldt dat er eentje is weggevallen:
+
+```
+Exception: WorkerProc initialization failed due to an exception in a
+  background process. See stack trace for root cause.
+RuntimeError: Engine core initialization failed. Failed core proc(s): {}
+```
+
+Die "stack trace for root cause" staat *niet* onderaan. Hij staat honderden
+regels hoger, in de regels van het werkproces zelf — de regels die met
+`(VllmWorker rank=1 pid=...)` beginnen. `tail` van het log laat precies het
+verkeerde deel zien.
+
+```bash
+grep -n '^(VllmWorker' /workspace/.stresstest/vllm.log | tail -30
+```
+
+Drie oorzaken, in volgorde van hoe vaak ze het zijn:
+
+1. **Te weinig gedeeld geheugen.** De workers praten met elkaar over
+   `/dev/shm`, en een container die zonder `--shm-size` is gestart krijgt
+   64 MB. In het log van de worker staat dan `OSError: [Errno 28] No space
+   left on device` met een `/psm_...`-naam erbij, of een `Bus error`.
+   Controleer met `df -h /dev/shm`; het moet gigabytes zijn, niet megabytes.
+   Op RunPod stel je dit in bij het aanmaken van de pod — achteraf kan het
+   niet, een draaiende container kan zijn eigen `/dev/shm` niet vergroten.
+2. **De kaarten bereiken elkaar niet.** NCCL wil de directe weg tussen de
+   kaarten (PCIe peer-to-peer), en twee consumentenkaarten in één pod (twee
+   5090's bijvoorbeeld) hebben die niet altijd. In het log staat
+   `ncclUnhandledCudaError`, `NCCL error` of `DistBackendError`. Oplossing:
+   `export NCCL_P2P_DISABLE=1`, dan gaat het verkeer via het werkgeheugen.
+   Dat is trager voor alles wat de kaarten uitwisselen, dus het hoort bij de
+   resultaten genoteerd te worden. Let op het verschil met `custom allreduce
+   is disabled because your platform lacks GPU P2P capability`: dat is een
+   `INFO`-regel op een start die verder helemaal goed gaat.
+3. **Er zijn minder kaarten dan processen.** `TENSOR_PARALLEL=2` op één
+   zichtbare kaart. Kijk wat `nvidia-smi -L` zegt en of
+   `CUDA_VISIBLE_DEVICES` de rest wegfiltert.
+
+`scripts/pod.sh` vangt alle drie af. Het derde geval wordt vóór de meting
+geweigerd (`--force` gaat er langs), een te kleine `/dev/shm` levert een
+waarschuwing op voordat het model geladen wordt, en noemt het log NCCL, dan
+start het script één keer opnieuw met `NCCL_P2P_DISABLE=1` en zegt erbij dat
+dat de getallen raakt. Komt de server ook dan niet omhoog, dan zet het de
+regels van de workers zelf onder de foutmelding — de regels waar de oorzaak
+in staat.
+
 ### De laatste regels van het log zijn niet de oorzaak
 
 vLLM print een Python-traceback; de reden staat erbóven, vaak 50 regels
 hoger. Zoek op `ValueError`, `RuntimeError`, `no available memory`,
-`unrecognized arguments`. `scripts/pod.sh` licht die regels zelf uit.
+`unrecognized arguments`. `scripts/pod.sh` licht die regels zelf uit — en
+sinds kort zonder de traceback zelf mee te nemen: elke frameregel van vLLM
+begint met `ERROR`, dus een zoektocht naar "Error" leverde twaalf regels
+`return func(*args, **kwargs)` op en niet de ene regel die iets zei.
 
 ### Het opstarten duurt minuten
 

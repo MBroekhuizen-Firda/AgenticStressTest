@@ -78,6 +78,15 @@ NO_FLASHINFER_SAMPLER=0
 # burning a doomed start-up first.
 HF_OFFLINE=0
 [ "${HF_HUB_OFFLINE:-}" = 1 ] && HF_OFFLINE=1
+
+# And again for the link between the cards. With --tensor-parallel-size above
+# 1 the workers exchange activations over NCCL, which prefers the direct
+# card-to-card path (PCIe peer-to-peer). Consumer Blackwell does not always
+# have it -- two 5090s in a rented pod is exactly the case -- and NCCL then
+# dies in the worker instead of routing around it. Sticky, like the rest: once
+# we know, every later engine variant starts that way.
+NCCL_P2P_OFF=0
+[ "${NCCL_P2P_DISABLE:-}" = 1 ] && NCCL_P2P_OFF=1
 # How long to wait out a 429 when there is no complete download to fall back
 # on. Doubles per attempt; the Hub's anonymous window resets in minutes.
 HF_RATE_LIMIT_WAIT_S="${HF_RATE_LIMIT_WAIT_S:-60}"
@@ -148,8 +157,15 @@ detect_gpu() {
       local mib per_card
       mib="$(echo "$line" | cut -d, -f2 | tr -d ' ')"
       per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')"
-      # With tensor parallelism the pool is the sum of the cards.
-      VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$TENSOR_PARALLEL" 'BEGIN{printf "%.1f", p*n}')}"
+      # With tensor parallelism the pool is the sum of the cards -- of the
+      # cards that are there. TENSOR_PARALLEL is what was asked for, and
+      # asking for more cards than the machine has (see check_tensor_parallel,
+      # which refuses it unless --force) would otherwise report a pool twice
+      # the size of the machine and put every KV-gigabyte in the report out by
+      # the same factor.
+      local cards="$TENSOR_PARALLEL"
+      [ "$cards" -gt "$GPU_COUNT" ] && cards="$GPU_COUNT"
+      VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
 
       # Which RTX PRO 6000 you got matters: the Max-Q variant carries the same
       # 96 GB but runs at half the power budget, so it is a different
@@ -174,6 +190,33 @@ detect_gpu() {
     fi
   fi
   VRAM_GB="${VRAM_GB:-96.0}"
+}
+
+# How much shared memory this container has, in megabytes, or empty when the
+# question cannot be answered here. vLLM's workers talk to each other over
+# /dev/shm, and a container started without --shm-size gets 64 MB.
+shm_size_mb() {
+  df -BM --output=size /dev/shm 2>/dev/null | tail -1 | tr -dc '0-9' || true
+}
+
+# --tensor-parallel-size is a promise about the machine: a worker process per
+# card, all of them talking over shared memory. Both ways that promise is
+# broken are visible here, in the second before the run starts, and invisible
+# afterwards -- vLLM reports either of them as "WorkerProc initialization
+# failed due to an exception in a background process", a quarter of an hour of
+# rent later and with the model already loaded.
+check_tensor_parallel() {
+  [ "$TENSOR_PARALLEL" -gt 1 ] || return 0
+  if [ "$TENSOR_PARALLEL" -gt "$GPU_COUNT" ]; then
+    [ "$FORCE" = 1 ] || die "TENSOR_PARALLEL=$TENSOR_PARALLEL, maar nvidia-smi ziet $GPU_COUNT kaart(en). vLLM start dan een worker per kaart die er niet is en valt tijdens het opstarten om. Zet TENSOR_PARALLEL=$GPU_COUNT, of kijk of CUDA_VISIBLE_DEVICES de andere kaarten wegfiltert. Gebruik --force om toch door te gaan."
+    warn "TENSOR_PARALLEL=$TENSOR_PARALLEL terwijl er $GPU_COUNT kaart(en) zijn; doorgaan op eigen risico (--force)"
+  fi
+  local shm; shm="$(shm_size_mb)"
+  if [ -n "$shm" ] && [ "$shm" -lt 1024 ]; then
+    warn "/dev/shm is ${shm} MB. De workers van vLLM praten daarover met elkaar en 64 MB (de"
+    warn "standaard van een container zonder --shm-size) is te weinig: het opstarten eindigt dan"
+    warn "in 'WorkerProc initialization failed'. Start de container met --shm-size 8g of meer."
+  fi
 }
 
 model_dir() { echo "$HF_HOME/hub/models--${MODEL//\//--}"; }
@@ -284,6 +327,7 @@ preflight() {
 
   detect_gpu
   say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB | HF_HOME=$HF_HOME"
+  check_tensor_parallel
 }
 
 # --------------------------------------------------------------------------
@@ -486,7 +530,37 @@ wait_ready() {
 # vLLM prints a Python traceback on failure, and its last lines are the least
 # informative part: the real reason sits further up. Surface that first, then
 # the tail, so the operator does not have to go spelunking in a 500-line log.
-SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|Too Many Requests|ValueError|RuntimeError|Error'
+SERVER_ERROR_PATTERNS='no available memory|out of memory|CUDA out of memory|compute capability|not supported|unrecognized arguments|invalid choice|does not exist|Too Many Requests|ValueError|RuntimeError|Exception:|Error'
+
+# What a vLLM log line carries in front of the message: the process that wrote
+# it ("(EngineCore pid=1281) ") and the level with its source location
+# ("ERROR 09-10 08:13:54 [core.py:1374] "). Both have to come off before the
+# patterns above are applied. SERVER_ERROR_PATTERNS ends in a bare "Error",
+# which otherwise matches the ERROR prefix of every traceback frame -- and a
+# "vermoedelijke oorzaak" of twelve frames ("return func(*args, **kwargs)",
+# "^^^^^^", "self._init_executor()") names no cause at all. sed keeps one line
+# per line, so grep -n afterwards still counts in the real log.
+LOG_PREFIX_STRIP='s/^\([^)]*\) //; s/^(INFO|DEBUG|WARNING|ERROR|CRITICAL)( +[0-9][0-9:.-]* +[0-9][0-9:.]*)? +\[[^]]*\] ?//'
+
+# The scaffolding of a Python traceback, which survives that strip: the frame
+# lines and the carets under them. They are the same in every failure.
+TRACEBACK_FRAME_PATTERNS='^[0-9]+: *(File "|raise [A-Za-z]|[~^]+ *$)'
+
+# Lines a worker process wrote itself: "(VllmWorker rank=1 pid=1300) ...",
+# "(Worker_TP0 pid=...) ...". With --tensor-parallel-size above 1 vLLM runs one
+# such process per card, and when one of them dies the API server passes on
+# only that it did -- the reason stays in the worker's own lines, hundreds of
+# lines above the tail of the log.
+WORKER_LOG_PATTERNS='^\([^)]*[Ww]orker[^)]*\)'
+
+# The API server saying exactly that, and nothing more useful than that.
+WORKER_FAILURE_PATTERNS='WorkerProc initialization failed|exception in a background process|Failed core proc'
+
+# NCCL failing, as opposed to NCCL saying something. Deliberately the error
+# names and not a bare "P2P": vLLM logs "custom allreduce is disabled because
+# your platform lacks GPU P2P capability" on a perfectly healthy start, and
+# spending a start-up on that would cost minutes and measure nothing new.
+NCCL_FAILURE_PATTERNS='ncclInternalError|ncclSystemError|ncclUnhandledCudaError|ncclRemoteError|ncclInvalidUsage|NCCL error|DistBackendError|NCCL communicator was aborted|peer access is not supported'
 
 # What the Hub looks like when it is throttling us. Deliberately narrow: not a
 # bare "429", which matches a port number or a byte count somewhere in a
@@ -517,13 +591,40 @@ FLASHINFER_ATTENTION_PATTERNS='Using FlashInfer backend|flashinfer/jit/attention
 # restarted without tool calling -- and measured that way.
 TOOL_PARSER_ERROR_PATTERNS='invalid tool call parser|tool-call-parser: invalid choice|tool.call.parser.*not (found|supported|registered)|unrecognized arguments:.*(--tool-call-parser|--enable-auto-tool-choice)|enable-auto-tool-choice requires'
 
+# The lines of the log that name a reason, with the log's own prefixes taken
+# off so that a traceback frame cannot pass for one.
+log_suspects() {
+  sed -E "$LOG_PREFIX_STRIP" "$1" 2>/dev/null \
+    | grep -nEi "$SERVER_ERROR_PATTERNS" \
+    | grep -vE "$TRACEBACK_FRAME_PATTERNS" \
+    | tail -"${2:-12}" || true
+}
+
+# What the workers said, minus the frames: their exception is the root cause
+# the API server refers to and does not repeat.
+worker_lines() {
+  grep -nE "$WORKER_LOG_PATTERNS" "$1" 2>/dev/null \
+    | grep -vE 'File "[^"]*", line [0-9]+|[~^]{3,} *$' \
+    | tail -"${2:-15}" || true
+}
+
 show_server_error() {
-  local log="$1" hits
+  local log="$1" hits workers
   [ -f "$log" ] || return 0
-  hits="$(grep -nEi "$SERVER_ERROR_PATTERNS" "$log" 2>/dev/null | grep -vE '^\s*[0-9]+:\s*File "' | tail -12 || true)"
+  hits="$(log_suspects "$log")"
   if [ -n "$hits" ]; then
     printf '%s\n' "--- vermoedelijke oorzaak, uit $log ---" >&2
     printf '%s\n' "$hits" >&2
+  fi
+  # "See stack trace for root cause" -- that stack trace is not below this
+  # point in the log, it is in another process's lines further up, so neither
+  # the summary above nor the tail below reaches it.
+  if grep -qE "$WORKER_FAILURE_PATTERNS" "$log" 2>/dev/null; then
+    workers="$(worker_lines "$log")"
+    if [ -n "$workers" ]; then
+      printf '%s\n' "--- wat de workers zelf zeiden (de oorzaak waar de API-server naar verwijst) ---" >&2
+      printf '%s\n' "$workers" >&2
+    fi
   fi
   printf '%s\n' "--- laatste 25 regels van $log ---" >&2
   tail -n 25 "$log" >&2 || true
@@ -550,6 +651,19 @@ die_server_start() {
     fi
     if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' "$SERVER_LOG" 2>/dev/null; then
       die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler en met --attention-backend TRITON_ATTN (zie hierboven welke van de twee dit script al geprobeerd heeft). De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Kijk in de traceback welk onderdeel van vLLM hem nu nog aanroept. Een image met een toolkit van 12.9 of nieuwer is de zekere uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
+    fi
+    # More than one card means one worker process per card, and the API
+    # server's own traceback is then about the death of a process it was
+    # waiting for -- never about the reason. Naming the three things that
+    # actually break here saves the operator a spelunk through the log, and
+    # /dev/shm in particular is invisible unless you go and look: the default
+    # of 64 MB in a container is far too little for vLLM's worker channels.
+    if [ "${TENSOR_PARALLEL:-1}" -gt 1 ] \
+       && grep -qE "$WORKER_FAILURE_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      local shm nccl_tried; shm="$(shm_size_mb)"
+      nccl_tried=""
+      [ "${NCCL_P2P_OFF:-0}" = 1 ] && nccl_tried=", en heeft dat hier al gedaan"
+      die "vLLM's workers kwamen niet omhoog. Met --tensor-parallel-size ${TENSOR_PARALLEL} draait er een proces per kaart, en de API-server meldt alleen dat er een is omgevallen; de reden staat hierboven onder 'wat de workers zelf zeiden'. Dit zijn de drie die het meestal zijn: (1) te weinig gedeeld geheugen -- /dev/shm is hier ${shm:-onbekend} MB en daar praten de workers met elkaar; start de container met --shm-size 8g of meer. (2) de kaarten bereiken elkaar niet (NCCL); NCCL_P2P_DISABLE=1 zet de directe kaart-tot-kaart-weg uit en is vaak genoeg -- dit script probeert dat zelf zodra het log NCCL noemt${nccl_tried}. (3) er zijn ${GPU_COUNT:-?} kaarten zichtbaar voor ${TENSOR_PARALLEL} processen; kijk wat nvidia-smi en CUDA_VISIBLE_DEVICES zeggen. TENSOR_PARALLEL=1 komt wel omhoog, maar meet een andere opstelling: leg het vast als je dat doet."
     fi
     die "vLLM is tijdens het opstarten gestopt. Zie hierboven en $SERVER_LOG. Vaakst voorkomend: te weinig geheugen voor de KV-cache (verlaag --max-model-len of GPU_UTIL), of een vLLM zonder kernels voor deze kaart."
   fi
@@ -615,6 +729,10 @@ start_server() {
       server_env+=(VLLM_USE_FLASHINFER_SAMPLER=0)
       say "       VLLM_USE_FLASHINFER_SAMPLER=0"
     fi
+    if [ "$NCCL_P2P_OFF" = 1 ]; then
+      server_env+=(NCCL_P2P_DISABLE=1)
+      say "       NCCL_P2P_DISABLE=1 (de kaarten praten via het werkgeheugen, niet rechtstreeks)"
+    fi
     [ -f "$SERVER_LOG" ] && mv -f "$SERVER_LOG" "$SERVER_LOG.vorige"
     : > "$SERVER_LOG"
     nohup env "${server_env[@]}" bash -c "$cmd" >>"$SERVER_LOG" 2>&1 9>&- &
@@ -626,6 +744,7 @@ start_server() {
       say "vLLM draait (poort $PORT). Log: $SERVER_LOG"
       echo "$tunable" > "$STATE_DIR/current_flags"
       echo "$backend" > "$STATE_DIR/current_backend"
+      echo "$NCCL_P2P_OFF" > "$STATE_DIR/current_nccl_p2p"
       printf '%s' "$tunable" | sed -n 's/.*--kv-cache-dtype \([a-z0-9]*\).*/\1/p' \
         > "$STATE_DIR/current_kv_dtype"
       return 0
@@ -707,6 +826,22 @@ start_server() {
       fi
       # Sampler off and a non-FlashInfer backend, and still FlashInfer: this
       # is nothing the script can steer around. die_server_start says so.
+    fi
+
+    # Two cards that cannot reach each other directly. NCCL wants the PCIe
+    # peer-to-peer path and consumer Blackwell does not always offer it; the
+    # worker then dies where it opens the communicator, and the API server
+    # passes on only that a background process went away. NCCL_P2P_DISABLE=1
+    # routes the collectives over host memory instead: slower per exchange,
+    # but it comes up. Slower is a different measurement, so it is announced
+    # here, made sticky for the rest of the run, and left in the log.
+    if [ "$status" = 2 ] && [ "$TENSOR_PARALLEL" -gt 1 ] && [ "$NCCL_P2P_OFF" != 1 ] \
+       && grep -qEi "$NCCL_FAILURE_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      warn "NCCL komt niet door tussen de kaarten; opnieuw met NCCL_P2P_DISABLE=1, dan gaat het"
+      warn "verkeer via het werkgeheugen in plaats van rechtstreeks over PCIe."
+      warn "Dat is trager voor alles wat de kaarten uitwisselen: noteer het bij de resultaten."
+      NCCL_P2P_OFF=1
+      continue
     fi
 
     # The README's documented fallback, but only when the log actually blames
@@ -1245,7 +1380,12 @@ plural_runs() { [ "$1" = 1 ] && printf '1 run' || printf '%s runs' "$1"; }
 # fingerprint does match.
 describe_results_dir() {
   local dir="$1" stamp epoch age runs
-  runs="$(find "$dir/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d " ")"
+  # The `|| true` sits inside the substitution, next to find, not after the
+  # assignment. A resumed directory whose first server never came up has no
+  # runs/ yet; find then exits 1, pipefail hands that on, and the ERR trap
+  # ends this line -- a directory listing -- with "afgebroken op regel N",
+  # twice, and the description the operator was about to read comes out empty.
+  runs="$( { find "$dir/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true; } | wc -l | tr -d " ")"
   # The directory name carries the moment it was created: 20260908-180708_matrix.
   stamp="$(basename "$dir" | sed -n 's/^\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)-\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\).*/\1-\2-\3 \4:\5:\6/p')"
   epoch=""
