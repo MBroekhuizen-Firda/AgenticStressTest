@@ -11,7 +11,7 @@ import os
 from typing import Any, Sequence
 
 from .grading import AMBER, GREEN, RED
-from .report import analyse, resolve_hardware
+from .report import analyse, describe_source, resolve_hardware
 from .runner import RunResult
 from .util import iso
 
@@ -47,6 +47,139 @@ def _verdict_line(colour: str) -> str:
             RED: "**Nee.**"}.get(colour, "**Onbekend.**")
 
 
+def _measured_on(described: Sequence[dict], environment: dict) -> str:
+    """The date the numbers were made, not the date this file was written.
+
+    Those two drifted apart the moment a report could be regenerated, and the
+    report claimed the regeneration date as the measurement date.
+    """
+    dates = sorted({entry["measured"] for entry in described if entry.get("measured")})
+    if not dates:
+        stamp = (environment.get("generated") or "")[:10]
+        return stamp or "onbekende datum"
+    return dates[0] if len(dates) == 1 else f"{dates[0]} t/m {dates[-1]}"
+
+
+def _provenance(described: Sequence[dict]) -> list[str]:
+    """Which measurement each half of this report came from.
+
+    A combined report is a report over two directories, and two directories can
+    hold two different measurements: a matrix from Monday under one behaviour
+    model and a lesson from Tuesday under another. The fingerprint is what
+    tells them apart, so it goes in the header where a reader cannot miss it --
+    with a warning above it when they disagree.
+    """
+    if not described:
+        return ["> Dit bestand is automatisch gegenereerd uit de meetgegevens in "
+                "deze map. De onderliggende getallen staan in `summary.csv`; per "
+                "run staan alle afzonderlijke verzoeken in "
+                "`runs/<run_id>/requests.csv`.", ""]
+    lines: list[str] = []
+    marks = {entry["fingerprint"] for entry in described if entry.get("fingerprint")}
+    unknown = [entry for entry in described if not entry.get("fingerprint")]
+    if len(marks) > 1:
+        lines.append("> **Let op: dit rapport combineert metingen die niet met "
+                     "dezelfde opstelling gemaakt zijn.** De vingerafdrukken "
+                     "hieronder verschillen, dus corpus, gedragsmodel, tokenizer "
+                     "of attention-backend was niet gelijk. Getallen uit de ene "
+                     "bron zijn dan niet zonder meer te vergelijken met die uit "
+                     "de andere.")
+        lines.append(">")
+    elif unknown and marks:
+        lines.append("> **Let op: van "
+                     f"{', '.join('`' + e['path'] + '`' for e in unknown)} is niet "
+                     "vast te stellen met welke opstelling er gemeten is** (geen "
+                     "vingerafdruk in `environment.json`; gemeten met een oudere "
+                     "versie van het harnas).")
+        lines.append(">")
+    lines.append("> Dit bestand is automatisch gegenereerd uit:")
+    for entry in described:
+        bits = [f"gemeten {entry['measured']}" if entry.get("measured")
+                else "meetdatum onbekend",
+                f"{entry['runs']} runs" if entry["runs"] != 1 else "1 run",
+                f"opstelling `{entry['fingerprint']}`" if entry.get("fingerprint")
+                else "opstelling onbekend"]
+        lines.append(f"> - `{entry['path']}` -- {', '.join(bits)}")
+    lines.append(">")
+    lines.append("> De onderliggende getallen staan daar in `summary.csv`; per run "
+                 "staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.")
+    lines.append("")
+    return lines
+
+
+def _behaviour_section(model: dict, mix: dict) -> list[str]:
+    """Who the class was, and what the class was drawn from.
+
+    These are two different claims and they used to be made with one number:
+    the composition of whichever run happened to come first, printed under a
+    heading that said "the class". A sweep run of ten students is not the
+    class. So the shares -- which are configuration, and hold for every run in
+    the measurement -- carry the section, and the drawn composition is shown
+    beside them only when a run of the full class actually produced one, with
+    that run named.
+    """
+    lines: list[str] = []
+    add = lines.append
+    measured_personas = mix.get("personas") or {}
+    measured_work = mix.get("werk") or {}
+
+    add("## Uit wie de klas bestond" if measured_personas
+        else "## Het gedragsmodel van de klas")
+    add("")
+    add("Twee assen, los van elkaar geloot. Een *persona* is een tempo: hoe "
+        "lang iemand nadenkt, hoeveel stappen een instructie kost, of hij "
+        "afhaakt. Een *werkprofiel* is een gewicht: hoe groot de codebase "
+        "is, hoeveel bestanden de agent per keer leest, hoeveel het model "
+        "per stap schrijft.")
+    add("")
+    add(f"De aandelen hieronder zijn de loting die voor **elke** run in deze "
+        f"meting gold, met seed `{model.get('seed')}`. Vingerafdruk van dit "
+        f"gedragsmodel: `{model.get('fingerprint')}` -- twee metingen met "
+        f"hetzelfde getal zijn met dezelfde persona's, werkprofielen en seed "
+        f"gedaan, en dus onderling te vergelijken. (De vingerafdruk boven aan "
+        f"dit bestand is een andere: die dekt de hele opstelling, corpus en "
+        f"tokenizer inbegrepen.)")
+    add("")
+    if measured_personas:
+        add(f"De kolom *geloot* komt uit `{mix.get('run_id')}`: de run met "
+            f"{mix.get('students')} studenten op activiteit "
+            f"{mix.get('activity', 'normaal')}. Andere runs in deze meting "
+            f"hebben minder of meer studenten en dus een eigen loting.")
+    else:
+        add("Deze meting bevat geen run met een volledige klas onder normale "
+            "activiteit, dus de feitelijke loting staat er niet bij: die zou "
+            "van een andere groep zijn dan de klas waar het rapport over gaat.")
+    add("")
+    lines += _mix_table("Persona", model.get("personas") or {}, measured_personas)
+    lines += _mix_table("Werkprofiel", model.get("work_profiles") or {}, measured_work)
+    add("Het werkprofiel bepaalt hoeveel werk één modelaanroep is, en dat "
+        "is het getal waar de doorlooptijd het gevoeligst voor is. De "
+        "gebruikte waarden staan in `environment.json` naast dit bestand.")
+    add("")
+    return lines
+
+
+def _mix_table(axis: str, shares: dict, drawn: dict) -> list[str]:
+    if not shares and not drawn:
+        return []
+    names = list(shares) or list(drawn)
+    for name in drawn:
+        if name not in names:
+            names.append(name)
+    names.sort(key=lambda name: (-(shares.get(name) or 0), name))
+    header = f"| {axis} | Aandeel | Geloot |" if drawn else f"| {axis} | Aandeel |"
+    lines = [header, "|---|---|---|" if drawn else "|---|---|"]
+    for name in names:
+        share = shares.get(name)
+        cell = f"{share * 100:.0f}%" if isinstance(share, (int, float)) else "n.v.t."
+        if drawn:
+            lines.append(f"| {name} | {cell} | {drawn.get(name, 0)} |")
+        else:
+            lines.append(f"| {name} | {cell} |")
+    lines.append("")
+    return lines
+
+
 def render(results: Sequence[RunResult], config: dict, environment: dict,
            sources: Sequence[str] | None = None) -> str:
     findings = analyse(results, config)
@@ -60,20 +193,12 @@ def render(results: Sequence[RunResult], config: dict, environment: dict,
     add(f"Gemeten op **{hardware.get('gpu_name', 'onbekende GPU')}** "
         f"({_n(hardware.get('vram_gb'), ' GB', 0)} videogeheugen) met "
         f"**{environment.get('model', 'onbekend model')}** via vLLM.")
-    add(f"Uitgevoerd op {iso()[:10]}, {findings.get('runs', 0)} runs, "
-        f"seed {config.get('seed')}.")
+    described = [describe_source(source) for source in (sources or [])]
+    measured = _measured_on(described, environment)
+    add(f"Meting van {measured}: {findings.get('runs', 0)} runs, "
+        f"seed {config.get('seed')}. Dit bestand is geschreven op {iso()[:10]}.")
     add("")
-    if sources:
-        where = ", ".join(f"`{source}`" for source in sources)
-        add(f"> Dit bestand is automatisch gegenereerd uit de meetgegevens in "
-            f"{where}. De onderliggende getallen staan daar in `summary.csv`; per "
-            f"run staan alle afzonderlijke verzoeken in "
-            f"`runs/<run_id>/requests.csv`.")
-    else:
-        add("> Dit bestand is automatisch gegenereerd uit de meetgegevens in deze "
-            "map. De onderliggende getallen staan in `summary.csv`; per run staan "
-            "alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.")
-    add("")
+    lines += _provenance(described)
 
     # ---------------------------------------------------------------- kern
     add("## De korte versie")
@@ -310,32 +435,9 @@ def render(results: Sequence[RunResult], config: dict, environment: dict,
         add("")
 
     # ------------------------------------------------------------- de klas
-    mix = findings.get("class_mix") or {}
-    work_mix = mix.get("werk") if isinstance(mix.get("werk"), dict) else None
-    if work_mix:
-        add("## Uit wie de klas bestond")
-        add("")
-        add("Twee assen, los van elkaar geloot. Een *persona* is een tempo: hoe "
-            "lang iemand nadenkt, hoeveel stappen een instructie kost, of hij "
-            "afhaakt. Een *werkprofiel* is een gewicht: hoe groot de codebase "
-            "is, hoeveel bestanden de agent per keer leest, hoeveel het model "
-            "per stap schrijft.")
-        add("")
-        personas = {k: v for k, v in mix.items() if k != "werk"}
-        add("| Persona | Studenten | Werkprofiel | Studenten |")
-        add("|---|---|---|---|")
-        left = sorted(personas.items(), key=lambda kv: -kv[1])
-        right = sorted(work_mix.items(), key=lambda kv: -kv[1])
-        for i in range(max(len(left), len(right))):
-            a = f"{left[i][0]} | {left[i][1]}" if i < len(left) else " | "
-            b = f"{right[i][0]} | {right[i][1]}" if i < len(right) else " | "
-            add(f"| {a} | {b} |")
-        add("")
-        add("Het werkprofiel bepaalt hoeveel werk één modelaanroep is, en dat "
-            "is het getal waar de doorlooptijd het gevoeligst voor is. De "
-            "gebruikte waarden staan in `environment.json` naast dit bestand.")
-        add("")
-
+    model = findings.get("behaviour_model") or {}
+    if model:
+        lines += _behaviour_section(model, findings.get("class_mix") or {})
     # -------------------------------------------------------- contextdruk
     if findings.get("context_pressure"):
         add("## Is de context groot genoeg?")
@@ -472,5 +574,7 @@ def write(directory: str, results: Sequence[RunResult], config: dict,
           environment: dict) -> str:
     path = os.path.join(directory, "RESULTATEN.md")
     with open(path, "w", encoding="utf-8") as handle:
-        handle.write(render(results, config, environment))
+        # Its own directory is its source, so this report dates and fingerprints
+        # itself the same way a combined one does.
+        handle.write(render(results, config, environment, sources=[directory]))
     return path

@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import os
 import random
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -715,6 +717,357 @@ class TestEndToEnd(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+
+class TestFingerprint(unittest.TestCase):
+    """A run id says students and context and nothing else. Everything the id
+    leaves out -- corpus, behaviour model, tokenizer, attention backend -- is
+    what the fingerprint carries, so a resume can tell "already measured" from
+    "measured with something else"."""
+
+    def setUp(self):
+        import tempfile
+        from stresstest.cli import load_config
+        self.config = load_config(os.path.join(ROOT, "config", "default.json"))
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _store(self, run_id: str, mark) -> None:
+        run_dir = os.path.join(self.tmp, "runs", run_id)
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "run.json"), "w", encoding="utf-8") as handle:
+            json.dump({"spec": {"run_id": run_id}, "fingerprint": mark}, handle)
+
+    def test_the_same_configuration_gives_the_same_fingerprint(self):
+        from stresstest import fingerprint
+        first = fingerprint.from_config(self.config)
+        second = fingerprint.from_config(json.loads(json.dumps(self.config)))
+        self.assertEqual(fingerprint.digest(first), fingerprint.digest(second))
+        self.assertEqual(fingerprint.differences(first, second), [])
+
+    def test_a_changed_behaviour_model_is_a_difference(self):
+        """The reproduction from the issue: change a work profile and the run
+        ids stay identical, so only the fingerprint can notice."""
+        from stresstest import fingerprint
+        before = fingerprint.from_config(self.config)
+        changed = json.loads(json.dumps(self.config))
+        changed["behaviour"]["work_profiles"][0]["share"] = 0.9
+        after = fingerprint.from_config(changed)
+        paths = [path for path, _, _ in fingerprint.differences(before, after)]
+        self.assertIn("behaviour.work_profiles.klein.share", paths)
+        self.assertNotEqual(fingerprint.digest(before), fingerprint.digest(after))
+
+    def test_corpus_tokenizer_and_backend_all_count(self):
+        from stresstest import fingerprint
+        before = fingerprint.from_config(self.config)
+        for path, value in ((("corpus", "extensions"), ".py"),
+                            (("tokenizer", "prefer_exact"), False),
+                            (("hardware", "attention_backend"), "TRITON_ATTN"),
+                            (("seed",), 999)):
+            changed = json.loads(json.dumps(self.config))
+            node = changed
+            for key in path[:-1]:
+                node = node[key]
+            node[path[-1]] = value
+            self.assertTrue(fingerprint.differences(before, fingerprint.from_config(changed)),
+                            f"{'.'.join(path)} veranderen zou een verschil moeten zijn")
+
+    def test_a_field_only_one_side_knows_is_not_a_difference(self):
+        """The cheap check knows only the configuration; a full run also knows
+        the corpus file counts. They share one stored fingerprint, so absence
+        on one side must not read as disagreement."""
+        from stresstest import fingerprint
+        cheap = fingerprint.from_config(self.config)
+        full = dict(cheap, corpus_files={"name": "web", "files": 120},
+                    tokenizer_exact=True)
+        self.assertEqual(fingerprint.differences(full, cheap), [])
+
+    def test_the_path_to_the_tokenizer_is_recorded_but_not_compared(self):
+        """Two pods keep the model in different directories. That is not a
+        different measurement, and stopping a six-hour run over it would be."""
+        from stresstest import fingerprint
+        here = json.loads(json.dumps(self.config))
+        here["tokenizer"]["path"] = "/workspace/hf/snapshot-a"
+        there = json.loads(json.dumps(self.config))
+        there["tokenizer"]["path"] = "/root/hf/snapshot-a"
+        left, right = fingerprint.from_config(here), fingerprint.from_config(there)
+        self.assertEqual(left["tokenizer"]["path"], "/workspace/hf/snapshot-a")
+        self.assertEqual(fingerprint.differences(left, right), [])
+        self.assertEqual(fingerprint.digest(left), fingerprint.digest(right))
+
+    def test_the_guard_refuses_a_directory_measured_with_another_setup(self):
+        from stresstest import fingerprint
+        changed = json.loads(json.dumps(self.config))
+        changed["behaviour"]["personas"][0]["think_time_s"] = [1, 2]
+        self._store("sweep_s20_c8k", fingerprint.from_config(changed))
+        with self.assertRaises(fingerprint.Mismatch) as caught:
+            fingerprint.guard(self.tmp, fingerprint.from_config(self.config))
+        message = caught.exception.message()
+        self.assertIn("sweep_s20_c8k", message)
+        self.assertIn("think_time_s", message)
+        self.assertIn("RESULTS_DIR=", message, "de melding moet de uitweg noemen")
+        self.assertIn("--resume-anyway", message)
+
+    def test_the_guard_lets_a_matching_directory_through(self):
+        from stresstest import fingerprint
+        mark = fingerprint.from_config(self.config)
+        self._store("sweep_s20_c8k", mark)
+        self.assertEqual(fingerprint.guard(self.tmp, mark), {})
+
+    def test_resume_anyway_reports_instead_of_stopping(self):
+        from stresstest import fingerprint
+        changed = json.loads(json.dumps(self.config))
+        changed["seed"] = 7
+        self._store("sweep_s20_c8k", fingerprint.from_config(changed))
+        said = []
+        offenders = fingerprint.guard(self.tmp, fingerprint.from_config(self.config),
+                                      allow_mismatch=True, warn=said.append)
+        self.assertIn("sweep_s20_c8k", offenders)
+        self.assertTrue(any("seed" in line for line in said),
+                        "toch hervatten mag, stilzwijgend niet")
+
+    def test_runs_without_a_fingerprint_are_reported_not_accused(self):
+        """Everything measured before this existed. Unknown is not the same as
+        wrong, and neither one is the same as fine."""
+        from stresstest import fingerprint
+        run_dir = os.path.join(self.tmp, "runs", "sweep_s5_c8k")
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "run.json"), "w", encoding="utf-8") as handle:
+            json.dump({"spec": {"run_id": "sweep_s5_c8k"}}, handle)
+        said = []
+        self.assertEqual(
+            fingerprint.guard(self.tmp, fingerprint.from_config(self.config),
+                              warn=said.append), {})
+        self.assertTrue(any("vingerafdruk" in line for line in said))
+
+    def test_engine_variants_are_not_refused_for_varying_the_engine(self):
+        """`engine_kv_fp8` restarts vLLM with another KV dtype: that is what it
+        measures. A check that called it a changed setup would stop the group
+        it is meant to protect."""
+        from stresstest import fingerprint
+        baseline = json.loads(json.dumps(self.config))
+        baseline["hardware"]["kv_cache_dtype"] = "auto"
+        self._store("sweep_s20_c8k", fingerprint.from_config(baseline))
+        variant = json.loads(json.dumps(self.config))
+        variant["hardware"]["kv_cache_dtype"] = "fp8"
+        current = fingerprint.from_config(variant)
+        with self.assertRaises(fingerprint.Mismatch):
+            fingerprint.guard(self.tmp, current)
+        self.assertEqual(fingerprint.guard(self.tmp, current,
+                                           adding_engine_runs=True), {})
+
+    def test_a_stored_engine_run_does_not_block_the_next_group(self):
+        from stresstest import fingerprint
+        variant = json.loads(json.dumps(self.config))
+        variant["hardware"]["kv_cache_dtype"] = "fp8"
+        run_dir = os.path.join(self.tmp, "runs", "engine_kv_fp8")
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "run.json"), "w", encoding="utf-8") as handle:
+            json.dump({"spec": {"run_id": "engine_kv_fp8", "kind": "engine"},
+                       "fingerprint": fingerprint.from_config(variant)}, handle)
+        self.assertEqual(fingerprint.guard(self.tmp,
+                                           fingerprint.from_config(self.config)), {})
+
+    def test_an_engine_run_is_still_held_to_the_rest_of_the_setup(self):
+        """Only the engine settings get the exception. A different corpus is a
+        different measurement whatever the run is called."""
+        from stresstest import fingerprint
+        changed = json.loads(json.dumps(self.config))
+        changed["corpus"]["extensions"] = ".py"
+        self._store("sweep_s20_c8k", fingerprint.from_config(changed))
+        with self.assertRaises(fingerprint.Mismatch):
+            fingerprint.guard(self.tmp, fingerprint.from_config(self.config),
+                              adding_engine_runs=True)
+
+    def test_the_digest_survives_the_engine_variants(self):
+        """One matrix directory, one digest -- otherwise `fingerprint --same`
+        would say a matrix and its own lesson disagree."""
+        from stresstest import fingerprint
+        auto = json.loads(json.dumps(self.config))
+        auto["hardware"]["kv_cache_dtype"] = "auto"
+        fp8 = json.loads(json.dumps(self.config))
+        fp8["hardware"]["kv_cache_dtype"] = "fp8"
+        self.assertEqual(fingerprint.digest(fingerprint.from_config(auto)),
+                         fingerprint.digest(fingerprint.from_config(fp8)))
+        changed = json.loads(json.dumps(self.config))
+        changed["seed"] = 3
+        self.assertNotEqual(fingerprint.digest(fingerprint.from_config(auto)),
+                            fingerprint.digest(fingerprint.from_config(changed)))
+
+    def test_pending_stops_on_a_mismatch_and_lists_ids_otherwise(self):
+        """What scripts/pod.sh calls before every group."""
+        from stresstest import fingerprint
+        self._store("sweep_s5_c8k", fingerprint.from_config(self.config))
+        command = [sys.executable, "-m", "stresstest", "pending", self.tmp,
+                   "--only", "sweep", "-c",
+                   os.path.join(ROOT, "config", "default.json")]
+        done = subprocess.run(command, capture_output=True, text=True, cwd=ROOT,
+                              timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("sweep_s5_c8k", done.stdout.split(),
+                         "een run die er al staat is niet pending")
+        self.assertIn("sweep_s20_c8k", done.stdout.split())
+
+        done = subprocess.run(command + ["--set", "seed=4321"], capture_output=True,
+                              text=True, cwd=ROOT, timeout=120)
+        self.assertEqual(done.returncode, 3, done.stdout)
+        self.assertIn("seed", done.stderr)
+        self.assertEqual(done.stdout.strip(), "",
+                         "bij een afwijking mag er geen id-lijst uitkomen")
+
+        done = subprocess.run(command + ["--set", "seed=4321", "--resume-anyway"],
+                              capture_output=True, text=True, cwd=ROOT, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("sweep_s20_c8k", done.stdout.split())
+
+    def test_the_directory_fingerprint_is_readable_from_the_command_line(self):
+        """How pod.sh decides whether an older lesson belongs with this matrix."""
+        from stresstest import fingerprint
+        other = os.path.join(self.tmp, "elders")
+        os.makedirs(other)
+        mark = fingerprint.from_config(self.config)
+        for directory, payload in ((self.tmp, mark),
+                                   (other, fingerprint.from_config(
+                                       dict(self.config, seed=11)))):
+            with open(os.path.join(directory, "environment.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump({"fingerprint": payload,
+                           "fingerprint_digest": fingerprint.digest(payload)}, handle)
+        command = [sys.executable, "-m", "stresstest", "fingerprint", "--same"]
+        self.assertEqual(subprocess.run(command + [self.tmp, self.tmp], cwd=ROOT,
+                                        capture_output=True, timeout=120).returncode, 0)
+        self.assertEqual(subprocess.run(command + [self.tmp, other], cwd=ROOT,
+                                        capture_output=True, timeout=120).returncode, 1)
+
+
+class TestReportProvenance(unittest.TestCase):
+    """RESULTATEN.md is the file the budget request rests on. It has to say
+    which measurements it is made of, and say it loudly when they disagree."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _directory(self, name: str, seed: int, day: str, runs=("sweep_s5_c8k",)):
+        from stresstest import fingerprint
+        from stresstest.cli import load_config
+        config = load_config(os.path.join(ROOT, "config", "default.json"))
+        config["seed"] = seed
+        mark = fingerprint.from_config(config)
+        directory = os.path.join(self.tmp, name)
+        os.makedirs(os.path.join(directory, "runs"), exist_ok=True)
+        with open(os.path.join(directory, "environment.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"fingerprint": mark,
+                       "fingerprint_digest": fingerprint.digest(mark),
+                       "generated": "2026-01-01T00:00:00Z"}, handle)
+        for run_id in runs:
+            run_dir = os.path.join(directory, "runs", run_id)
+            os.makedirs(run_dir, exist_ok=True)
+            with open(os.path.join(run_dir, "run.json"), "w", encoding="utf-8") as handle:
+                json.dump({"spec": {"run_id": run_id},
+                           "started": f"{day}T09:00:00Z", "fingerprint": mark}, handle)
+        return directory
+
+    def test_a_source_is_dated_by_its_runs_not_by_today(self):
+        """environment.json is rewritten every time the report is regenerated,
+        so its timestamp is a rendering date. The runs know better."""
+        from stresstest.report import describe_source
+        described = describe_source(self._directory("een", 1, "2026-09-08"))
+        self.assertEqual(described["measured"], "2026-09-08")
+        self.assertEqual(described["runs"], 1)
+        self.assertTrue(described["fingerprint"])
+
+    def test_two_measurements_in_one_report_are_named_and_flagged(self):
+        from stresstest import resultaten
+        first = self._directory("matrix", 1, "2026-09-08")
+        second = self._directory("les", 2, "2026-09-09")
+        text = resultaten.render([], {}, {}, sources=[first, second])
+        self.assertIn("2026-09-08", text)
+        self.assertIn("2026-09-09", text)
+        self.assertIn("niet met dezelfde opstelling gemaakt", text,
+                      "twee gedragsmodellen in een rapport horen bovenaan te staan")
+
+    def test_one_measurement_is_not_flagged(self):
+        from stresstest import resultaten
+        first = self._directory("matrix", 1, "2026-09-08")
+        second = self._directory("les", 1, "2026-09-08")
+        text = resultaten.render([], {}, {}, sources=[first, second])
+        self.assertNotIn("niet met dezelfde opstelling gemaakt", text)
+        self.assertIn(first, text, "de bronnen horen er nog wel bij te staan")
+        self.assertIn(second, text)
+
+    def test_a_source_without_a_fingerprint_says_so(self):
+        from stresstest import resultaten
+        known = self._directory("matrix", 1, "2026-09-08")
+        older = os.path.join(self.tmp, "oud")
+        os.makedirs(os.path.join(older, "runs"))
+        text = resultaten.render([], {}, {}, sources=[known, older])
+        self.assertIn("niet vast te stellen", text)
+
+
+class TestBehaviourModelInTheReport(unittest.TestCase):
+    """Who the class was drawn from, and who it turned out to be, are two
+    claims. Reporting the first run's draw as "the class" answers neither."""
+
+    def _result(self, run_id, kind, students, composition):
+        from stresstest.grading import Grade
+        from stresstest.metrics import Collector
+        from stresstest.runner import RunResult
+        from stresstest.runspec import RunSpec
+        spec = RunSpec(run_id=run_id, label=run_id, kind=kind, students=students,
+                       context_tokens=8000, phases=[])
+        grade = Grade(colour="groen", reasons=[], warnings=[])
+        return RunResult(spec=spec, started_wall=0.0, finished_wall=1.0,
+                         aggregate={}, server={}, grade=grade, grade_brief=grade,
+                         composition=composition, collector=Collector(run_id),
+                         metric_rows=[])
+
+    def _config(self):
+        from stresstest.cli import load_config
+        return load_config(os.path.join(ROOT, "config", "default.json"))
+
+    def test_a_smaller_run_is_never_presented_as_the_class(self):
+        """The bug: with only sweep runs present, the ten-student draw was
+        published under "who the class consisted of"."""
+        from stresstest.report import analyse
+        findings = analyse([self._result("sweep_s10_c8k", "sweep", 10,
+                                         {"gemiddelde": 5, "afhaker": 5})],
+                           self._config())
+        self.assertIsNone(findings.get("class_mix"),
+                          "een run van tien studenten beschrijft de klas niet")
+        self.assertEqual(findings["behaviour_model"]["personas"]["gemiddelde"], 0.45)
+
+    def test_the_class_run_is_used_and_named(self):
+        from stresstest.report import analyse
+        config = self._config()
+        findings = analyse([self._result("sweep_s10_c8k", "sweep", 10, {"afhaker": 10}),
+                            self._result("les_90min", "lesson", 20,
+                                         {"gemiddelde": 9, "werk": {"klein": 10}})],
+                           config)
+        self.assertEqual(findings["class_mix"]["run_id"], "les_90min")
+        self.assertEqual(findings["class_mix"]["students"], 20)
+        self.assertEqual(findings["class_mix"]["personas"], {"gemiddelde": 9})
+
+    def test_an_activity_run_does_not_stand_in_for_the_class(self):
+        """`act_intensief_s20` has twenty students and a deliberately unusual
+        mix -- that is what it is for."""
+        from stresstest.report import analyse
+        findings = analyse([self._result("act_intensief_s20", "activity", 20,
+                                         {"doorpakker": 20})], self._config())
+        self.assertIsNone(findings.get("class_mix"))
+
+    def test_the_behaviour_model_travels_with_the_report(self):
+        from stresstest import resultaten
+        from stresstest.report import analyse
+        config = self._config()
+        results = [self._result("les_90min", "lesson", 20,
+                                {"gemiddelde": 9, "werk": {"klein": 10}})]
+        text = resultaten.render(results, config, {"model": "mock"})
+        self.assertIn("les_90min", text, "de bron van de loting hoort in het rapport")
+        self.assertIn(str(config["seed"]), text)
+        self.assertIn(analyse(results, config)["behaviour_model"]["fingerprint"], text)
 
 
 if __name__ == "__main__":

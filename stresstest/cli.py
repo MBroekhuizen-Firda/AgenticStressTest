@@ -6,6 +6,8 @@
     python -m stresstest matrix        fase 1: de volledige stresstestmatrix
     python -m stresstest lesson        fase 2: een les van negentig minuten
     python -m stresstest run           een losse run met eigen parameters
+    python -m stresstest pending DIR   welke runs uit een groep nog ontbreken
+    python -m stresstest fingerprint DIR  met welke opstelling een map gemeten is
     python -m stresstest report DIR    grafieken en RESULTATEN.md opnieuw maken
     python -m stresstest monitor       een draaiende server meten zonder zelf last te maken
     python -m stresstest mock          een nep-vLLM om het harnas te testen
@@ -20,7 +22,7 @@ import sys
 import time
 from typing import Any, Sequence
 
-from . import __version__, resultaten
+from . import __version__, fingerprint, resultaten
 from .client import Endpoint, OpenAIClient
 from .corpus import load_corpus
 from .matrix import BUILDERS, PHASE1, build_specs, describe_plan
@@ -85,7 +87,13 @@ def make_endpoint(config: dict) -> Endpoint:
 
 
 def build_environment(config: dict, counter, corpus, endpoint: Endpoint) -> dict:
+    # What this measurement was made with, in one comparable object. A resume
+    # that finds runs made with a different corpus or behaviour model has to be
+    # able to say so instead of skipping them as "already done".
+    mark = fingerprint.from_run(config, corpus=corpus, counter=counter)
     return {
+        "fingerprint": mark,
+        "fingerprint_digest": fingerprint.digest(mark),
         "version": __version__,
         "generated": iso(),
         "python": sys.version.split()[0],
@@ -369,12 +377,23 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 async def _execute(specs: list[RunSpec], config: dict, directory: str,
-                   pause_for_engine: bool) -> list[RunResult]:
+                   pause_for_engine: bool, resume_anyway: bool = False) -> list[RunResult]:
     endpoint = make_endpoint(config)
     counter = _counter(config)
     corpus = load_corpus(config.get("corpus", {}))
     client = OpenAIClient(endpoint)
     environment = build_environment(config, counter, corpus, endpoint)
+    # Adding runs to a directory that was measured with a different corpus or
+    # behaviour model produces one report over two measurements. Refuse before
+    # anything is written -- ResultsWriter would overwrite environment.json,
+    # and with it the evidence of what the runs already there were made with.
+    try:
+        fingerprint.guard(directory, environment["fingerprint"],
+                          allow_mismatch=resume_anyway,
+                          warn=lambda text: log(text, color="amber"),
+                          adding_engine_runs=any(s.kind == "engine" for s in specs))
+    except fingerprint.Mismatch as mismatch:
+        raise SystemExit(mismatch.message()) from None
     writer = ResultsWriter(directory, config, environment)
     engine = RunEngine(client=client, corpus=corpus, counter=counter, config=config)
 
@@ -463,7 +482,8 @@ def cmd_matrix(args: argparse.Namespace) -> int:
         args.only = groups
         return cmd_plan(args)
     directory = results_directory(config, args.out, "matrix")
-    asyncio.run(_execute(specs, config, directory, pause_for_engine=not args.no_pause))
+    asyncio.run(_execute(specs, config, directory, pause_for_engine=not args.no_pause,
+                         resume_anyway=getattr(args, "resume_anyway", False)))
     return 0
 
 
@@ -474,7 +494,8 @@ def cmd_lesson(args: argparse.Namespace) -> int:
         args.only = ["lesson"]
         return cmd_plan(args)
     directory = results_directory(config, args.out, "les")
-    asyncio.run(_execute(specs, config, directory, pause_for_engine=False))
+    asyncio.run(_execute(specs, config, directory, pause_for_engine=False,
+                         resume_anyway=getattr(args, "resume_anyway", False)))
     return 0
 
 
@@ -496,6 +517,63 @@ def cmd_run(args: argparse.Namespace) -> int:
     directory = results_directory(config, args.out, spec.run_id)
     asyncio.run(_execute([spec], config, directory, pause_for_engine=False))
     return 0
+
+
+# --------------------------------------------------------------------------
+# pending: which runs of a group are still missing, and may we add them here?
+# --------------------------------------------------------------------------
+#
+# `scripts/pod.sh` asks this before every group so that a measurement which
+# lost its connection can be resumed instead of restarted. The dangerous part
+# is not the counting but the assumption underneath it: that a run.json with
+# the right name was made with the setup we are running now. That is what the
+# fingerprint check answers, and it answers it here -- before the group starts,
+# not six hours later in a report.
+#
+# The check is deliberately the cheap one: configuration only, no corpus load
+# and no tokenizer. `matrix` repeats it with both loaded, so a corpus that
+# gained files is still caught before anything is written.
+
+def cmd_pending(args: argparse.Namespace) -> int:
+    config = load_config(args.config, args.set)
+    current = fingerprint.from_config(config)
+    try:
+        fingerprint.guard(args.directory, current,
+                          allow_mismatch=args.resume_anyway,
+                          warn=lambda text: print(text, file=sys.stderr),
+                          adding_engine_runs="engine" in args.only)
+    except fingerprint.Mismatch as mismatch:
+        print(mismatch.message(), file=sys.stderr)
+        return 3
+    ids = [spec.run_id for group in args.only for spec in BUILDERS[group](config)]
+    missing = [run_id for run_id in ids
+               if not os.path.exists(os.path.join(args.directory, "runs",
+                                                  run_id, "run.json"))]
+    print(" ".join(missing))
+    return 0
+
+
+def cmd_fingerprint(args: argparse.Namespace) -> int:
+    """What each results directory was measured with, as one short hash.
+
+    `--same` is the question a script actually asks: may these directories be
+    folded into one report? An unknown fingerprint answers no, because "we
+    cannot tell" and "yes" are not the same answer.
+    """
+    marks = []
+    for directory in args.directories:
+        environment = fingerprint.environment_of(directory)
+        mark = environment.get("fingerprint")
+        digest = environment.get("fingerprint_digest") or (
+            fingerprint.digest(mark) if mark else None)
+        marks.append(digest)
+        print(f"{digest or 'onbekend'}\t{directory}")
+    if not args.same:
+        return 0
+    if any(mark is None for mark in marks):
+        print("minstens een map draagt geen vingerafdruk", file=sys.stderr)
+        return 1
+    return 0 if len(set(marks)) <= 1 else 1
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -841,13 +919,36 @@ def build_parser() -> argparse.ArgumentParser:
     matrix.add_argument("--no-pause", action="store_true",
                         help="niet wachten op een handmatige vLLM-herstart bij "
                              "de engine-varianten")
+    matrix.add_argument("--resume-anyway", action="store_true",
+                        help="hervat ook als de map met een andere opstelling "
+                             "gemeten is (het verschil wordt wel gemeld)")
     matrix.set_defaults(func=cmd_matrix, price_per_hour=None)
 
     lesson = subparsers.add_parser("lesson", help="fase 2: lesvalidatie van negentig minuten")
     common(lesson)
     lesson.add_argument("--out")
     lesson.add_argument("--dry-run", action="store_true")
+    lesson.add_argument("--resume-anyway", action="store_true")
     lesson.set_defaults(func=cmd_lesson, price_per_hour=None)
+
+    pending = subparsers.add_parser(
+        "pending", help="welke runs uit een groep nog niet in een map staan")
+    common(pending)
+    pending.add_argument("directory", help="resultatenmap om in te kijken")
+    pending.add_argument("--only", nargs="+", choices=list(BUILDERS), required=True,
+                         help="de groep of groepen waarvan de runs geteld worden")
+    pending.add_argument("--resume-anyway", action="store_true",
+                         help="ook ids teruggeven als de map met een andere "
+                              "opstelling gemeten is")
+    pending.set_defaults(func=cmd_pending)
+
+    mark = subparsers.add_parser(
+        "fingerprint", help="met welke opstelling een resultatenmap gemeten is")
+    mark.add_argument("directories", nargs="+")
+    mark.add_argument("--same", action="store_true",
+                      help="geef alleen een nulstatus als alle mappen dezelfde "
+                           "opstelling dragen")
+    mark.set_defaults(func=cmd_fingerprint)
 
     run = subparsers.add_parser("run", help="een losse run met eigen parameters")
     common(run)
