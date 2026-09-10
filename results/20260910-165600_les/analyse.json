@@ -1,0 +1,116 @@
+{
+  "kv_pool_gb": 11.559999999999995,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 47.4,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 1,
+  "kv_peak_overall_fraction": 0.9998251951986948,
+  "kv_peak_overall_gb": 11.557979256496907,
+  "kv_peak_overall_run": "les_90min",
+  "kv_peak_overall_label": "Lesvalidatie 90 minuten, 20 studenten",
+  "cliff_per_context": {},
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7,
+      "needed_kv_gb": 11.6,
+      "fits": true,
+      "margin_gb": 22.1,
+      "utilisation_on_alternative": 0.343,
+      "exceeded_by": []
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5,
+      "needed_kv_gb": 11.6,
+      "fits": true,
+      "margin_gb": 14.9,
+      "utilisation_on_alternative": 0.436,
+      "exceeded_by": []
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3,
+      "needed_kv_gb": 11.6,
+      "fits": true,
+      "margin_gb": 43.7,
+      "utilisation_on_alternative": 0.209,
+      "exceeded_by": []
+    }
+  ],
+  "alternatives_basis": "kv_peak_overall_fraction",
+  "scenarios": [],
+  "lesson": {
+    "grade": "rood",
+    "ttft_p90_s": 4.769367681816223,
+    "burst_p90_s": 314.1322069238872,
+    "preemptions": 4.0,
+    "prefix_cache_hit_rate": 0.8913665676028861,
+    "kv_peak": 0.9998251951986948,
+    "compactions": 146,
+    "compactions_per_100_steps": 6.483126110124333,
+    "context_tokens_peak": 73738
+  },
+  "behaviour_model": {
+    "personas": {
+      "doorpakker": 0.15,
+      "gemiddelde": 0.45,
+      "worstelaar": 0.25,
+      "afhaker": 0.15
+    },
+    "work_profiles": {
+      "klein": 0.5,
+      "middel": 0.3,
+      "doorspitten": 0.2
+    },
+    "seed": 20250908,
+    "fingerprint": "0389659f7efb"
+  },
+  "class_mix": {
+    "run_id": "les_90min",
+    "students": 20,
+    "activity": "normaal",
+    "personas": {
+      "worstelaar": 5,
+      "gemiddelde": 9,
+      "doorpakker": 3,
+      "afhaker": 3
+    },
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "grading_disagreements": []
+}

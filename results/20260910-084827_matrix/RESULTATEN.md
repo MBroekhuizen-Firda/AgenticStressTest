@@ -1,10 +1,10 @@
 # Resultaten stresstest agentic coding
 
 Gemeten op **NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)** (47 GB videogeheugen) met **qwen3-coder** via vLLM.
-Meting van 2026-09-10: 37 runs, seed 20250908. Dit bestand is geschreven op 2026-09-10.
+Meting van 2026-09-10: 38 runs, seed 20250908. Dit bestand is geschreven op 2026-09-10.
 
 > Dit bestand is automatisch gegenereerd uit:
-> - `results/20260910-084827_matrix` -- gemeten 2026-09-10, 37 runs, opstelling `d7954db50151`
+> - `results/20260910-084827_matrix` -- gemeten 2026-09-10, 38 runs, opstelling `d7954db50151`
 >
 > De onderliggende getallen staan daar in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
 
@@ -66,6 +66,7 @@ Deze vergelijking rekent alleen met geheugen. Een kaart met minder geheugen heef
 |---|---|---|---|---|---|---|
 | kv_auto | `--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072` | rood | 95.1 s | 99% | 0 | 46% |
 | kv_fp8 | `--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072` | rood | 2.1 s | 100% | 0 | 95% |
+| len_65k | `--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536` | rood | 3.1 s | 100% | 0 | 94% |
 | seqs_16 | `--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072` | rood | 3.7 s | 99% | 0 | 94% |
 | seqs_64 | `--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072` | rood | 4.2 s | 100% | 0 | 93% |
 
@@ -148,7 +149,7 @@ Twee afwijkingen ten opzichte van de oorspronkelijke opzet, allebei bewust:
 1. **De doorlooptijd van een hele instructie telt mee.** Time to first token is de eerste van drie tot vijftien modelaanroepen die de agent doet voor een enkele opdracht van de student. Een run kan een prima TTFT hebben en toch twee minuten over een instructie doen; dat is wat de student wacht.
 2. **De prefix cache hit rate is gerapporteerd maar geen groen-eis.** Die hangt af van het scenario, niet van de hardware: in de runs met 0% gedeelde basis en in de koude start is 60% per definitie onhaalbaar. Een lage hit rate waar we een hoge verwachtten staat als waarschuwing bij de run.
 
-Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 26 van de 37 runs: act_intensief_s10, act_intensief_s20, act_rustig_s20, engine_kv_fp8, engine_seqs_16, engine_seqs_64, scen_deadline, scen_koudestart_s20, scen_koudestart_s30, scen_lange_sessies ....
+Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 27 van de 38 runs: act_intensief_s10, act_intensief_s20, act_rustig_s20, engine_kv_fp8, engine_len_65k, engine_seqs_16, engine_seqs_64, scen_deadline, scen_koudestart_s20, scen_koudestart_s30 ....
 
 ## Wat deze test niet zegt
 

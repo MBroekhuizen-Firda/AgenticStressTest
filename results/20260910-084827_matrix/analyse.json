@@ -27,7 +27,7 @@
     "kv_cache_dtype": "fp8"
   },
   "hardware_defaults_used": [],
-  "runs": 37,
+  "runs": 38,
   "class_size": 20,
   "class_grades": {
     "100k": "rood",
@@ -136,6 +136,15 @@
       "kv_peak": 0.9979606106514393,
       "preemptions": 0.0,
       "prefix_cache_hit_rate": 0.9494542417947927
+    },
+    {
+      "name": "len_65k",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536",
+      "grade": "rood",
+      "ttft_p90_s": 3.1283945305272933,
+      "kv_peak": 0.997382517652788,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9399020422192307
     },
     {
       "name": "seqs_16",
@@ -292,14 +301,14 @@
   "context_pressure": [
     {
       "context_tokens": 8000,
-      "compactions_per_100_steps": 12.482793196698456,
+      "compactions_per_100_steps": 12.482793196698454,
       "compactions": 74,
       "context_tokens_peak": 52879,
       "fill_fraction": 6.609875
     },
     {
       "context_tokens": 32000,
-      "compactions_per_100_steps": 3.7984117331943423,
+      "compactions_per_100_steps": 3.798411733194342,
       "compactions": 17,
       "context_tokens_peak": 57235,
       "fill_fraction": 1.78859375
@@ -355,6 +364,7 @@
     "act_intensief_s20",
     "act_rustig_s20",
     "engine_kv_fp8",
+    "engine_len_65k",
     "engine_seqs_16",
     "engine_seqs_64",
     "scen_deadline",
