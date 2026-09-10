@@ -104,6 +104,15 @@ MOCK="${MOCK:-0}"
 FORCE=0
 SHUTDOWN_WHEN_DONE=0
 DEADMAN_HOURS=""
+# Where VRAM_GB came from; detect_gpu fills it in, preflight refuses a guess.
+VRAM_SOURCE=""
+# How long the pod may keep standing after a fatal error. A run that dies takes
+# its measurement with it but not the machine: the deadman armed at the start
+# of 'all' sits hours out, and until it fires the pod bills for doing nothing.
+# That is what a refused start cost twice over, both times within a minute of
+# the model being loaded. Half an hour is enough to log in and look; anything
+# longer is paid for out of the budget the measurement is for.
+ABORT_GRACE_HOURS="${ABORT_GRACE_HOURS:-0.5}"
 SKIP_LESSON=0
 SKIP_ENGINE=0
 # Resume in a directory that was measured with a different corpus, behaviour
@@ -134,7 +143,7 @@ head_() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '1' "$*")" >&2; }
 warn() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '33' "LET OP: $*")" >&2; }
 # Clearing the ERR trap first: a deliberate stop should print its own reason,
 # not that plus a generic "afgebroken op regel N" from the trap.
-die()  { trap - ERR; printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; exit 1; }
+die()  { trap - ERR; printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; shorten_deadman "$ABORT_GRACE_HOURS" || true; exit 1; }
 
 on_error() { die "afgebroken op regel $1. Server-log: $SERVER_LOG"; }
 trap 'on_error $LINENO' ERR
@@ -145,18 +154,48 @@ trap 'on_error $LINENO' ERR
 # question 3 ("zou 72 GB ook volstaan?") gets the wrong answer.
 # --------------------------------------------------------------------------
 
+# What nvidia-smi will not tell you on a MIG instance. `--query-gpu=memory.total`
+# answers "[N/A]" there, and `awk 'BEGIN{print m/1024}'` turns that into 0.0
+# without a word -- non-empty, so the 96.0 fallback at the end of detect_gpu
+# never gets its turn. torch does know: on a MIG instance it reports the slice,
+# which is exactly the pool vLLM gets to divide.
+gpu_memory_gb_from_torch() {
+  [ "$MOCK" = 1 ] && return 0
+  "$PY" -c 'import sys
+try:
+    import torch
+    total = torch.cuda.get_device_properties(0).total_memory
+except Exception:
+    sys.exit(1)
+print("%.1f" % (total / (1024 ** 3)))' 2>/dev/null || true
+}
+
 detect_gpu() {
   GPU_NAME="${GPU_NAME:-onbekend}"
   GPU_COUNT=1
+  # Where VRAM_GB came from, because the report hangs on it and a guess must
+  # not pass for a measurement. Set here, checked in preflight.
+  VRAM_SOURCE="aanname"
+  [ -n "${VRAM_GB:-}" ] && VRAM_SOURCE="opgegeven"
   if command -v nvidia-smi >/dev/null 2>&1; then
     local line
     line="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits | head -1 || true)"
     if [ -n "$line" ]; then
       GPU_COUNT="$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l | tr -d ' ')"
       [ "${GPU_NAME}" = "onbekend" ] && GPU_NAME="$(echo "$line" | cut -d, -f1 | sed 's/^ *//;s/ *$//')"
-      local mib per_card
+      local mib per_card=""
       mib="$(echo "$line" | cut -d, -f2 | tr -d ' ')"
-      per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')"
+      # "[N/A]" on a MIG instance, and awk would silently make that a 0.
+      case "$mib" in
+        ""|*[!0-9.]*) : ;;
+        *) per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')" ;;
+      esac
+      if [ -z "$per_card" ] || awk -v p="${per_card:-0}" 'BEGIN{exit !(p <= 0)}'; then
+        per_card="$(gpu_memory_gb_from_torch)"
+        [ -n "$per_card" ] && [ "$VRAM_SOURCE" = "aanname" ] && VRAM_SOURCE="torch"
+      elif [ "$VRAM_SOURCE" = "aanname" ]; then
+        VRAM_SOURCE="nvidia-smi"
+      fi
       # With tensor parallelism the pool is the sum of the cards -- of the
       # cards that are there. TENSOR_PARALLEL is what was asked for, and
       # asking for more cards than the machine has (see check_tensor_parallel,
@@ -165,7 +204,9 @@ detect_gpu() {
       # the same factor.
       local cards="$TENSOR_PARALLEL"
       [ "$cards" -gt "$GPU_COUNT" ] && cards="$GPU_COUNT"
-      VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
+      if [ -n "$per_card" ]; then
+        VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
+      fi
 
       # Which RTX PRO 6000 you got matters: the Max-Q variant carries the same
       # 96 GB but runs at half the power budget, so it is a different
@@ -377,7 +418,17 @@ preflight() {
     || die "Python 3.9 of nieuwer nodig, gevonden: $("$PY" --version 2>&1)"
 
   detect_gpu
-  say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB | HF_HOME=$HF_HOME"
+  say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB (bron: $VRAM_SOURCE) | HF_HOME=$HF_HOME"
+  # Every gigabyte in the report is a KV percentage times this pool, and vraag 3
+  # ("zou 72 GB ook volstaan?") is nothing but this number. A guess produces a
+  # report that reads like a measurement: measured once on a 48 GB MIG slice
+  # that recorded 0.0 GB, and the conclusion said a class of twenty fits on
+  # every card in the table. So the pool is either known or the run stops here.
+  if [ "$VRAM_SOURCE" = "aanname" ]; then
+    [ "$FORCE" = 1 ] || die "het videogeheugen van deze kaart is niet vast te stellen. nvidia-smi geeft geen bruikbare memory.total (dat doet een MIG-instantie: '[N/A]') en torch kon het ook niet zeggen. Zonder dat getal is elke GB in het rapport een slag in de lucht en is vraag 3 -- past het ook op 72 GB? -- niet te beantwoorden. Geef het mee: VRAM_GB=48 scripts/pod.sh all. Of --force om met de aanname van ${VRAM_GB} GB te meten."
+    warn "pool onbekend, doorgaan met de aanname van ${VRAM_GB} GB vanwege --force"
+    warn "elke GB in het rapport staat of valt met dat getal; noteer het bij de uitkomst"
+  fi
   check_tensor_parallel
   check_driver_matches_torch
 }
@@ -953,27 +1004,67 @@ start_server() {
 # on its own: until now the check only touched /v1/models, so nothing had
 # proved that the model actually generates before the run started.
 warm_up_server() {
-  curl -s -m 120 -o /dev/null \
+  curl -s -m "${1:-120}" -o /dev/null \
     -H 'Content-Type: application/json' \
     -d "{\"model\":\"$SERVED_NAME\",\"max_tokens\":8,\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":\"hallo\"}]}" \
     "http://127.0.0.1:$PORT/v1/chat/completions" || true
 }
 
+# Which of the three the body does not have, as words for the operator.
+#
+# Deliberately not through a pipe. `printf "%s" "$body" | grep -q` reads as the
+# obvious way to do this and is a trap: grep -q stops at its first match, and a
+# body bigger than the pipe buffer (64 KB; a vLLM with a few hundred series is
+# far past that) leaves printf still writing when it does. printf dies of
+# SIGPIPE, `set -o pipefail` passes that non-zero status to the `||`, and a
+# series that is right there in the body is reported missing.
+#
+# Which of the three it hits depends on where they sit in the body: a series
+# near the end lets printf finish first and passes, one near the top does not.
+# That is how two pods were refused over "KV-bezetting" -- the series was in
+# the body both times, and the harness read that very number without trouble.
+# A here-string has no writing process to kill, so grep's own status is the
+# status of the test.
+missing_metrics() {
+  local body="$1" missing=""
+  grep -q '^vllm:num_preemptions' <<<"$body" || missing="$missing preempties"
+  grep -qE '^vllm:(gpu_)?prefix_cache_(queries|hits|hit_rate)' <<<"$body" || missing="$missing prefix-cache"
+  grep -qE '^vllm:(kv_cache_usage_perc|gpu_cache_usage_perc)' <<<"$body" || missing="$missing KV-bezetting"
+  printf '%s' "$missing"
+}
+
+# What the engine does expose in the direction of the three, names only. A gate
+# that stops a run has to show what it saw: without it the next round costs
+# another start-up just to find out whether the series is missing or the gate
+# is wrong -- and on a rented machine that answer is worth having in the log.
+show_metric_candidates() {
+  local names
+  names="$(grep -oE '^vllm:[a-z_]*(cache|preempt)[a-z_]*' <<<"$1" | sort -u | tr '\n' ' ' || true)"
+  if [ -n "$names" ]; then
+    warn "wel aanwezig in die richting: $names"
+  else
+    warn "geen enkele reeks in die richting; dit ziet er niet uit als vLLM's /metrics."
+  fi
+}
+
 check_metrics() {
-  local body count missing="" attempt
-  warm_up_server
+  local body="" count missing="" attempt
+  # The warm-up is inside the loop, and the loop waits for all three rather
+  # than for preemptions alone: a gauge the engine only writes once it has
+  # scheduled something is not there before the first generation, and the old
+  # break condition ended the loop on the counter that arrives first, spending
+  # none of the retries it had on the series it was about to refuse over.
   for attempt in 1 2 3; do
+    warm_up_server "$([ "$attempt" = 1 ] && echo 120 || echo 30)"
     body="$(curl -s "http://127.0.0.1:$PORT/metrics" || true)"
-    printf '%s' "$body" | grep -q '^vllm:num_preemptions' && break
+    missing="$(missing_metrics "$body")"
+    [ -z "$missing" ] && break
     [ "$attempt" = 3 ] || sleep 5
   done
-  count="$(printf '%s' "$body" | grep -c '^vllm:' || true)"
-
-  printf '%s' "$body" | grep -q '^vllm:\(num_preemptions\)' || missing="$missing preempties"
-  printf '%s' "$body" | grep -q '^vllm:\(gpu_\)\?prefix_cache_\(queries\|hits\|hit_rate\)' || missing="$missing prefix-cache"
-  printf '%s' "$body" | grep -q '^vllm:\(kv_cache_usage_perc\|gpu_cache_usage_perc\)' || missing="$missing KV-bezetting"
+  count="$(grep -c '^vllm:' <<<"$body" || true)"
 
   if [ -n "$missing" ]; then
+    show_metric_candidates "$body"
     [ "$FORCE" = 1 ] || die "/metrics mist:$missing (van $count vllm-reeksen), ook na een opwarmverzoek. Daarmee is de hoofdvraag niet te beantwoorden -- zonder preempties, cache hit rate en KV-bezetting meet je alleen latentie. Zet de Prometheus-endpoint aan, of gebruik --force."
     warn "/metrics mist:$missing -- doorgaan vanwege --force; de conclusie wordt onvolledig"
   else
@@ -1160,6 +1251,42 @@ cmd_monitor() {
   "$PY" -m stresstest monitor --out "$dir" "${SETS[@]}" "$@"
 }
 
+# Getting a measurement off the machine after a run that never reached its own
+# push. `all` pushes at the end and stops the pod on the way out; a run that
+# ends earlier -- a gate that refused to start, a dropped connection, a kill --
+# leaves everything it did measure on a rented disk, with an scp over a port
+# from the RunPod dashboard as the only way out. The results are the one thing
+# on a pod worth keeping, so this is a command of its own.
+cmd_push() {
+  local dirs=("$@")
+  if [ "${#dirs[@]}" = 0 ]; then
+    local dir; dir="$(latest_matrix_dir)"
+    [ -n "$dir" ] || die "geen resultatenmap gevonden; geef er een mee: pod.sh push results/<map>"
+    dirs=("$dir")
+    say "$dir: $(describe_results_dir "$dir")"
+    local lesson; lesson="$(cat "$STATE_DIR/last_lesson_dir" 2>/dev/null || true)"
+    if [ -n "$lesson" ] && [ -d "$lesson" ]; then
+      dirs+=("$lesson")
+      say "$lesson: lesvalidatie, gaat mee"
+    fi
+  fi
+  # An interrupted run leaves summary.csv and summary.json describing only the
+  # group that was running: they are written from the memory of the measuring
+  # session, and this command exists for runs that did not get that far. The
+  # first push out of a stopped pod carried one of 37 runs in summary.csv --
+  # the file the report points at for "de onderliggende getallen". Rebuilding
+  # from runs/*/run.json costs seconds and no GPU.
+  local d
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    say "conclusie en samenvatting bijwerken: $d"
+    "$PY" -m stresstest report "$d" >/dev/null 2>&1 \
+      || warn "$d: bijwerken mislukt; de runs zelf worden wel gepusht"
+  done
+  detect_gpu
+  push_results "${dirs[@]}" || die "pushen mislukt -- zie hierboven. De meting staat nog wel op deze pod."
+}
+
 cmd_report() {
   local dir="${1:-}"
   [ -n "$dir" ] || dir="$(latest_matrix_dir)"
@@ -1210,6 +1337,26 @@ arm_deadman() {
   echo $! > "$DEADMAN_PID_FILE"
   warn "doodsklok gezet: over ${hours} uur ($(cat "$STATE_DIR/deadman_at")) wordt de pod gestopt."
   warn "Afzetten met: scripts/pod.sh disarm"
+}
+
+# Bring a standing deadman forward, never push it back.
+#
+# Only when one is armed at all: that is the operator having said the machine
+# may stop by itself. And only when it stands further out than the grace
+# period, so a run that is already ten minutes from stopping is left alone.
+# The comparison needs a timestamp it can read; when arm_deadman could not
+# write one ("over 8.1u") there is nothing to compare against and the standing
+# deadman keeps its word.
+shorten_deadman() {
+  local hours="$1" at planned grace
+  [ -f "${DEADMAN_PID_FILE:-/nonexistent}" ] || return 0
+  at="$(cat "${STATE_DIR:-/nonexistent}/deadman_at" 2>/dev/null || true)"
+  planned="$(date -d "$at" +%s 2>/dev/null || true)"
+  [ -n "$planned" ] || return 0
+  grace="$(awk -v h="$hours" 'BEGIN{printf "%d", h*3600}')"
+  [ "$planned" -gt "$(( $(date +%s) + grace ))" ] || return 0
+  warn "hierna doet de pod niets meer, dus de doodsklok gaat van $at naar over ${hours} uur."
+  arm_deadman "$hours"
 }
 
 disarm_deadman() {
@@ -1483,6 +1630,13 @@ cmd_all() {
     if [ -n "$dir" ]; then
       say "hervat in bestaande map $dir ($(describe_results_dir "$dir"))"
       say "  zet RESULTS_DIR= om ergens anders te beginnen"
+      # Asked here and not at the first group: a directory measured on another
+      # card cannot be measured into, and finding that out after vLLM is up
+      # costs a quarter of an hour of rent. A shared netwerkschijf makes this
+      # ordinary -- twee pods, one /workspace, one results/, and `all` resumes
+      # into whatever is there. The check is cheap: configuration only.
+      pending_ids rampup "$dir" >/dev/null \
+        || die "kan niet hervatten in $dir -- zie de melding hierboven. Begin ergens anders:  RESULTS_DIR=results/\$(date +%Y%m%d-%H%M%S)_matrix scripts/pod.sh all"
     else
       dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
     fi
@@ -1613,6 +1767,8 @@ Commando's
   monitor [map]      een draaiende server meten zonder zelf belasting te
                      maken: voor een echte les via OpenCode. Ctrl-C stopt
   report [map]       grafieken en conclusie opnieuw maken (geen GPU nodig)
+  push [map...]      de resultaten alsnog naar de repo pushen. Voor een run die
+                     zijn eigen push niet gehaald heeft; zonder map de laatste
   deadman <uren>     doodsklok zetten: stop de pod automatisch
   disarm             doodsklok afzetten
   power-down         nu stoppen
@@ -1645,7 +1801,7 @@ Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
   MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND SERVER_START_ATTEMPTS
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
-  RESULTS_BRANCH PUSH_RETRIES
+  RESULTS_BRANCH PUSH_RETRIES ABORT_GRACE_HOURS
   HF_TOKEN HF_HUB_OFFLINE HF_DOWNLOAD_RETRIES HF_RATE_LIMIT_WAIT_S
   HF_RATE_LIMIT_MAX_WAIT_S
 
@@ -1657,6 +1813,7 @@ Voorbeelden
     VRAM_GB=24 scripts/pod.sh all --skip-engine         # goedkoop uitproberen
   HF_TOKEN=hf_... scripts/pod.sh setup                  # ruimere limiet bij de Hub
   HF_HUB_OFFLINE=1 scripts/pod.sh serve                # niets van huggingface.co
+  scripts/pod.sh push && scripts/pod.sh power-down     # afgebroken run redden
 USAGE
 }
 
@@ -1739,6 +1896,7 @@ main() {
     lesson)     cmd_lesson >/dev/null ;;
     monitor)    cmd_monitor "$@" ;;
     report)     cmd_report "${1:-}" ;;
+    push)       cmd_push "$@" ;;
     deadman)    [ $# -ge 1 ] || die "hoeveel uur?"; mkdir -p "$STATE_DIR"; arm_deadman "$1" ;;
     disarm)     disarm_deadman ;;
     power-down) power_down ;;

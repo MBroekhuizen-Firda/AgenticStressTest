@@ -504,7 +504,9 @@ run een tweede logbestand achterlaat, weigert `tail` die verkorte vorm
 | **De controle vooraf** | Schijfruimte, driverversie, `tokenizers`, en of `/metrics` de drie reeksen levert waar de hoofdvraag op hangt: preempties, prefix-cache en KV-bezetting. Ontbreekt er een, dan stopt het script in plaats van zes uur het verkeerde te meten. |
 | **De resultaten veiligstellen** | Aan het eind schrijft het één rapport over beide fases, commit de meetmappen naar een eigen branch en pusht die. Pas als dat gelukt is, stopt het de pod. Mislukt de push, dan blijft de machine draaien en blijft de doodsklok staan: de meting bestaat dan nog maar op één plek. |
 | **De tool-call-parser** | Start vLLM niet op met `--tool-call-parser qwen3_coder`, dan probeert het script het nog één keer zonder, zoals hoofdstuk 4.4 beschrijft. |
+| **De gedeelde netwerkschijf** | Twee pods op één `/workspace` hervatten in elkaars `results/`. Het harnas vergelijkt de kaart — naam én videogeheugen, want een MIG-plak heet net als de hele kaart — en weigert dan te hervatten, ook met `--resume-anyway`. Metingen van twee kaarten in één rapport zijn niet te vergelijken: elke gigabyte erin is een KV-percentage maal de pool van die kaart. |
 | **De vergeten instance** | `--deadman auto` zet een wekker op de geschatte duur plus anderhalf uur; daarna wordt de pod *gestopt* — niet getermineerd, dus `/workspace` en je resultaten blijven staan. Afzetten met `scripts/pod.sh disarm`. |
+| **De afgebroken run** | Stopt de meting op een fout, dan doet de pod daarna niets meer — maar hij huurt door tot de doodsklok afgaat, en die staat op de duur van de héle meting. Een fatale fout haalt hem daarom naar voren, naar een half uur (`ABORT_GRACE_HOURS`); genoeg om in te loggen en te kijken. Afzetten met `scripts/pod.sh disarm`. Wat er al gemeten was staat nog op de pod: `scripts/pod.sh push`. |
 
 **De losse commando's**, als je het toch stap voor stap wilt:
 
@@ -516,6 +518,7 @@ scripts/pod.sh plan --price-per-hour 3.36
 scripts/pod.sh group rampup           # één groep: rampup, sweep, scenarios, shared, activity, engine
 scripts/pod.sh lesson                 # alleen fase 2
 scripts/pod.sh report results/<map>   # grafieken en conclusie opnieuw, zonder GPU
+scripts/pod.sh push                   # de meting alsnog naar de repo, na een afgebroken run
 scripts/pod.sh stop                   # de lopende run en vLLM stoppen
 ```
 

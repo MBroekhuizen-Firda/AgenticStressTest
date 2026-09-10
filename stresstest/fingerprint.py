@@ -46,6 +46,42 @@ UNCOMPARED = ("tokenizer.path",)
 # than one per variant.
 ENGINE = "hardware"
 
+# The card, kept apart from the engine settings on purpose. `hardware` drops
+# out of the comparison whenever an engine run is involved -- varying
+# --kv-cache-dtype is what those runs measure -- and the card must never fall
+# through that hole: an engine variant measured on another card is exactly the
+# mix this guards against. Out of the digest, so that adding this field does
+# not change what earlier measurements are called; the guard below and
+# `--same` compare it directly.
+CARD = "card"
+
+
+def card_of(hardware: dict | None) -> dict:
+    """Which card a measurement was made on, as little as identifies it.
+
+    A MIG slice and the whole card report the same name -- a 48 GB slice of an
+    RTX PRO 6000 says "NVIDIA RTX PRO 6000 Blackwell Server Edition", exactly
+    what the 96 GB card says. The memory is what tells them apart, and the
+    memory is also what every gigabyte in the report is computed from. So both.
+
+    The wattage suffix comes off: "(600W)" describes the card, and a driver
+    that reports 599.99 one boot and 600.00 the next would otherwise read as a
+    different machine. Values that are not there are left out rather than
+    stored as null -- absent is "cannot tell", and that is not a difference.
+    """
+    hardware = hardware or {}
+    out: dict[str, Any] = {}
+    name = hardware.get("gpu_name")
+    if isinstance(name, str) and name.split(" (")[0].strip():
+        out["gpu_name"] = name.split(" (")[0].strip()
+    vram = hardware.get("vram_gb")
+    try:
+        if vram is not None and float(vram) > 0:
+            out["vram_gb"] = round(float(vram), 1)
+    except (TypeError, ValueError):
+        pass
+    return out
+
 
 def from_config(config: dict) -> dict:
     """Everything the configuration alone decides about the measurement."""
@@ -81,6 +117,7 @@ def from_config(config: dict) -> dict:
             "attention_backend": hardware.get("attention_backend"),
             "kv_cache_dtype": hardware.get("kv_cache_dtype"),
         },
+        "card": card_of(hardware),
     }
 
 
@@ -130,7 +167,7 @@ def digest(fingerprint: dict | None) -> str:
     """
     if not fingerprint:
         return "onbekend"
-    canonical = json.dumps(_comparable(fingerprint, ignore=(ENGINE,)),
+    canonical = json.dumps(_comparable(fingerprint, ignore=(ENGINE, CARD)),
                            sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
@@ -264,6 +301,54 @@ class Mismatch(Exception):
         return "\n".join(lines)
 
 
+class CardMismatch(Mismatch):
+    """A results directory was measured on a different card.
+
+    Apart from Mismatch because it is not the same kind of problem. A changed
+    corpus or behaviour model makes the runs describe something else, and an
+    operator who knows why can decide to put them in one directory anyway.
+    Another card makes the numbers incomparable: gigabytes are KV percentages
+    times that card's pool, and half a report over two cards answers the
+    question it was written for with a number that was never measured. So this
+    one is not waved through with --resume-anyway.
+
+    A shared network volume is how this arrives. Two pods, one volume, the same
+    `results/` -- and `all` resumes into whatever is there.
+    """
+
+    def message(self, with_options: bool = True) -> str:
+        lines = [f"{self.directory} is op een andere kaart gemeten dan deze."]
+        for where, diffs in sorted(self.offenders.items()):
+            lines.append(f"  {where}:")
+            lines += [f"    {line}" for line in describe(diffs)]
+        if with_options:
+            lines.append("")
+            lines.append("Getallen van twee kaarten horen niet in een meting: elke gigabyte in")
+            lines.append("het rapport is een KV-percentage maal de pool van de kaart. Meet in")
+            lines.append("een nieuwe map:")
+            lines.append("  RESULTS_DIR=results/$(date +%Y%m%d-%H%M%S)_matrix")
+            lines.append("(--resume-anyway helpt hier niet, en dat is met opzet. Deelt deze pod")
+            lines.append("een netwerkschijf met een eerdere meting, dan is dit precies waarom.)")
+        return "\n".join(lines)
+
+
+CARD_SOURCE = "environment.json (kaart)"
+
+
+def card_differences(directory: str, current: dict) -> dict[str, list]:
+    """Card differences between what `directory` holds and the current setup.
+
+    Read from `environment.json`'s own `hardware` block, not from the
+    fingerprints in `runs/*/run.json`: every results directory has carried that
+    block since before the fingerprint existed, and a directory left on a
+    shared volume by an older measurement is exactly the case this has to
+    catch.
+    """
+    stored = card_of(environment_of(directory).get("hardware"))
+    diffs = differences({"kaart": stored}, {"kaart": current.get(CARD) or {}})
+    return {CARD_SOURCE: diffs} if diffs else {}
+
+
 def check(directory: str, current: dict, adding_engine_runs: bool = False) -> dict[str, list]:
     """Runs in `directory` whose fingerprint differs from `current`.
 
@@ -298,6 +383,10 @@ def guard(directory: str, current: dict, allow_mismatch: bool = False,
     on -- for someone who knows why the setup changed and wants the runs in one
     directory anyway.
     """
+    # Before anything else, and not subject to allow_mismatch: see CardMismatch.
+    card = card_differences(directory, current)
+    if card:
+        raise CardMismatch(directory, card)
     offenders = check(directory, current, adding_engine_runs=adding_engine_runs)
     if offenders and not allow_mismatch:
         raise Mismatch(directory, offenders)

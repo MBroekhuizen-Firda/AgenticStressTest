@@ -1482,5 +1482,384 @@ class TestSkippedLessonDoesNotLeaveAStaleReport(unittest.TestCase):
                                       "dat het rapport alsnog bijwerkt")
 
 
+class TestTheMetricsGate(unittest.TestCase):
+    """The gate that decides whether a measurement may start.
+
+    It refused two rented pods within a minute of the model being loaded, both
+    times over "KV-bezetting" -- a series that was in the body it had just
+    scraped, and that the harness read without trouble on the very same server.
+    The refusal was in the plumbing: `printf "%s" "$body" | grep -q` lets grep
+    stop at its first match while printf is still writing, printf dies of
+    SIGPIPE, and `set -o pipefail` turns that into "the series is not there".
+    A series near the top of a body larger than the pipe buffer therefore reads
+    as missing, and vLLM prints the KV gauge near the top.
+
+    The bodies below are built the same way round: KV first, tens of thousands
+    of histogram buckets after it, preemptions last."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def body(self, *, kv: bool = True, preemptions: bool = True,
+             prefix: bool = True, buckets: int = 4000) -> str:
+        lines = ["# HELP vllm:kv_cache_usage_perc KV cache usage",
+                 "# TYPE vllm:kv_cache_usage_perc gauge"]
+        if kv:
+            lines.append('vllm:kv_cache_usage_perc{model_name="qwen3-coder"} 0.0274')
+        for i in range(buckets):
+            lines.append('vllm:request_latency_seconds_bucket'
+                         f'{{model_name="qwen3-coder",le="{i}.0"}} {i}')
+        if prefix:
+            lines.append('vllm:prefix_cache_queries_total{model_name="qwen3-coder"} 54495.0')
+            lines.append('vllm:prefix_cache_hits_total{model_name="qwen3-coder"} 18112.0')
+        if preemptions:
+            lines.append('vllm:num_preemptions_total{model_name="qwen3-coder"} 0.0')
+        return "\n".join(lines) + "\n"
+
+    def write(self, body: str, name: str = "metrics.txt") -> str:
+        path = os.path.join(self.tmp, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(body)
+        return path
+
+    def missing(self, body: str) -> str:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            function_body("missing_metrics"),
+            'missing_metrics "$(cat "$1")"',
+        ])
+        done = subprocess.run(["bash", "-c", program, "pod.sh", self.write(body)],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout.strip()
+
+    def test_a_body_larger_than_the_pipe_buffer_is_read_correctly(self):
+        body = self.body()
+        self.assertGreater(len(body), 65536, "this body would not have shown the bug")
+        self.assertEqual(self.missing(body), "")
+
+    def test_the_same_body_small_enough_to_fit_still_passes(self):
+        self.assertEqual(self.missing(self.body(buckets=5)), "")
+
+    def test_a_series_that_really_is_gone_is_still_reported(self):
+        self.assertEqual(self.missing(self.body(kv=False)), "KV-bezetting")
+        self.assertEqual(self.missing(self.body(preemptions=False)), "preempties")
+        self.assertEqual(self.missing(self.body(prefix=False)), "prefix-cache")
+        self.assertEqual(self.missing(self.body(kv=False, preemptions=False, prefix=False)),
+                         "preempties prefix-cache KV-bezetting")
+
+    def test_the_older_name_for_the_kv_gauge_is_accepted(self):
+        """vLLM renamed gpu_cache_usage_perc to kv_cache_usage_perc. The
+        harness reads both, and so must the gate."""
+        body = self.body(kv=False).replace(
+            "# TYPE vllm:kv_cache_usage_perc gauge",
+            '# TYPE vllm:gpu_cache_usage_perc gauge\n'
+            'vllm:gpu_cache_usage_perc{model_name="qwen3-coder"} 0.0274')
+        self.assertEqual(self.missing(body), "")
+
+    def _gate(self, bodies: list[str]) -> tuple[subprocess.CompletedProcess, int]:
+        """check_metrics against a server that answers with `bodies` in turn."""
+        counter = os.path.join(self.tmp, "attempts")
+        with open(counter, "w", encoding="utf-8") as handle:
+            handle.write("0")
+        paths = [self.write(body, f"body{i}.txt") for i, body in enumerate(bodies)]
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            "sleep() { :; }",              # the retries wait five seconds each
+            "warm_up_server() { :; }",
+            "FORCE=0; PORT=8000",
+            'COUNTER="$1"; shift; BODIES=("$@")',
+            # Stands in for the scrape: hands out one body per attempt, and the
+            # last one for every attempt after that.
+            'curl() {',
+            '  local n; n=$(( $(cat "$COUNTER") + 1 )); echo "$n" > "$COUNTER"',
+            '  [ "$n" -le "${#BODIES[@]}" ] || n="${#BODIES[@]}"',
+            '  cat "${BODIES[$((n - 1))]}"',
+            "}",
+            function_body("missing_metrics"),
+            function_body("show_metric_candidates"),
+            function_body("check_metrics"),
+            "check_metrics",
+            "echo reached-the-end",
+        ])
+        done = subprocess.run(["bash", "-c", program, "pod.sh", counter, *paths],
+                              capture_output=True, text=True)
+        with open(counter, encoding="utf-8") as handle:
+            return done, int(handle.read())
+
+    def test_a_gauge_that_arrives_late_gets_the_retries_it_is_refused_over(self):
+        """The KV gauge is not written before the engine has scheduled
+        something. The loop used to stop as soon as the preemption counter was
+        there -- the series that arrives first -- and then refused over the one
+        it had just given up waiting for."""
+        done, attempts = self._gate([self.body(kv=False), self.body(kv=False), self.body()])
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertEqual(attempts, 3, "the gate did not spend its retries")
+        self.assertNotIn("[die]", done.stderr)
+
+    def test_a_gate_that_stops_a_run_says_what_it_did_see(self):
+        """Another start-up is a quarter of an hour of rent. The names it found
+        turn the next round into a read instead of a rerun."""
+        done, _ = self._gate([self.body(kv=False)])
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("KV-bezetting", done.stderr)
+        self.assertIn("vllm:num_preemptions_total", done.stderr)
+        self.assertIn("vllm:prefix_cache_hits_total", done.stderr)
+
+
+class TestAFailedRunDoesNotKeepThePodRunning(unittest.TestCase):
+    """What a refused start actually cost: not the run, but the hours the pod
+    stood idle afterwards with a deadman still eight hours out."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _shorten(self, deadman_at: str | None, armed: bool = True,
+                 hours: str = "0.5") -> subprocess.CompletedProcess:
+        if armed:
+            with open(os.path.join(self.tmp, "deadman.pid"), "w", encoding="utf-8") as handle:
+                handle.write("424242")
+        if deadman_at is not None:
+            with open(os.path.join(self.tmp, "deadman_at"), "w", encoding="utf-8") as handle:
+                handle.write(deadman_at + "\n")
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'warn() { echo "[warn] $*" >&2; }',
+            'arm_deadman() { echo "[arm] $1" >&2; }',
+            f'STATE_DIR="{self.tmp}"; DEADMAN_PID_FILE="{self.tmp}/deadman.pid"',
+            function_body("shorten_deadman"),
+            f'shorten_deadman {hours}',
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def when(self, seconds: int) -> str:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + seconds))
+
+    def test_a_deadman_hours_out_is_brought_forward(self):
+        done = self._shorten(self.when(8 * 3600))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[arm] 0.5", done.stderr)
+
+    def test_a_deadman_that_is_already_closer_is_left_alone(self):
+        """The ten minutes 'all' arms after a successful push must not be
+        stretched to half an hour by a failure in the push that follows it."""
+        done = self._shorten(self.when(600))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_without_a_deadman_nothing_is_armed(self):
+        """No deadman is the operator saying the machine stops when they say
+        so. An error is not the moment to overrule that."""
+        done = self._shorten(self.when(8 * 3600), armed=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_a_time_it_cannot_read_leaves_the_deadman_standing(self):
+        done = self._shorten("over 8.1u")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_the_fatal_path_goes_through_it(self):
+        die = re.search(r"^die\(\).*$", script_text(), re.M)
+        self.assertIsNotNone(die)
+        self.assertIn("shorten_deadman", die.group(0))
+        self.assertIn('ABORT_GRACE_HOURS="${ABORT_GRACE_HOURS:-', script_text())
+
+
+class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
+    """`all` pushes at the end. Everything that stops earlier leaves the runs it
+    did finish on a rented disk, and the only way out used to be an scp over a
+    port from the dashboard -- see VALKUILEN.md on how well that goes."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.trace = os.path.join(self.tmp, "trace")
+        open(self.trace, "w", encoding="utf-8").close()
+
+    def _push(self, latest: str = "", lesson: str = "", *args: str, report_fails: bool = False):
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            "detect_gpu() { GPU_NAME=test; }",
+            'describe_results_dir() { echo "3 runs"; }',
+            'push_results() { echo "[push] $*" >&2; echo "push $*" >> "$TRACE"; }',
+            ('stresstestreport() { echo "report $*" >> "$TRACE"; return 1; }' if report_fails
+             else 'stresstestreport() { echo "report $*" >> "$TRACE"; }'),
+            "PY=stresstestreport",
+            f'TRACE="{self.trace}"',
+            f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
+            f'STATE_DIR="{self.tmp}"',
+            function_body("cmd_push"),
+            "cmd_push " + " ".join(args),
+            "echo reached-the-end",
+        ])
+        if lesson:
+            with open(os.path.join(self.tmp, "last_lesson_dir"), "w", encoding="utf-8") as handle:
+                handle.write(lesson + "\n")
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_without_arguments_it_pushes_the_last_measurement(self):
+        done = self._push(latest="results/20260910-084827_matrix")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/20260910-084827_matrix", done.stderr)
+
+    def test_a_lesson_that_belongs_to_it_goes_along(self):
+        lesson = os.path.join(self.tmp, "les")
+        os.makedirs(lesson)
+        done = self._push(latest="results/20260910-084827_matrix", lesson=lesson)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(f"[push] results/20260910-084827_matrix {lesson}", done.stderr)
+
+    def test_a_lesson_directory_that_is_gone_is_not_pushed(self):
+        done = self._push(latest="results/x_matrix", lesson=os.path.join(self.tmp, "weg"))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/x_matrix\n", done.stderr)
+
+    def test_an_explicit_directory_is_taken_as_given(self):
+        done = self._push("", "", "results/een", "results/twee")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/een results/twee", done.stderr)
+
+    def trace_lines(self) -> list[str]:
+        with open(self.trace, encoding="utf-8") as handle:
+            return [line.strip() for line in handle if line.strip()]
+
+    def test_the_summary_is_rebuilt_before_it_is_pushed(self):
+        """summary.csv and summary.json are written from the memory of the
+        measuring session. A run that is interrupted pushes a summary of the
+        group it happened to be in -- the first rescue push carried 1 of 37
+        runs. Rebuilding from runs/*/run.json needs no GPU."""
+        done = self._push("", "", self.tmp)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.trace_lines(),
+                         [f"report -m stresstest report {self.tmp}", f"push {self.tmp}"],
+                         "the summary has to be rebuilt, and before it is pushed")
+
+    def test_a_summary_that_cannot_be_rebuilt_does_not_cost_the_data(self):
+        """Whatever is wrong with the report, the runs are what must not stay
+        behind on a rented disk."""
+        done = self._push("", "", self.tmp, report_fails=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn(f"push {self.tmp}", self.trace_lines())
+
+    def test_nothing_to_push_says_so_instead_of_pushing_nothing(self):
+        done = self._push(latest="")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+
+
+class TestHowMuchMemoryTheCardHas(unittest.TestCase):
+    """VRAM_GB is what every gigabyte in the report is computed from: the KV
+    percentages are multiplied by it, and vraag 3 -- past het ook op 72 GB? --
+    is nothing else.
+
+    On a MIG instance `nvidia-smi --query-gpu=memory.total` answers "[N/A]".
+    `awk 'BEGIN{printf m/1024}'` makes that a silent 0.0, which is not empty,
+    so the 96.0 fallback never fired. A whole matrix was measured that way: the
+    conclusion opened with "past een klas van 20 op 0 GB" and marked every
+    alternative card as fitting."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+
+    def _detect(self, memory_total: str, torch_gb: str | None = None,
+                vram_gb: str = "", cards: int = 1, tensor_parallel: int = 1):
+        torch = (f'faketorch() {{ printf "%s\\n" "{torch_gb}"; }}' if torch_gb
+                 else "faketorch() { return 1; }")
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            torch,
+            "PY=faketorch; MOCK=0",
+            f"TENSOR_PARALLEL={tensor_parallel}",
+            (f'VRAM_GB="{vram_gb}"' if vram_gb else ":"),
+            # command -v finds shell functions, so this stands in for the tool.
+            'nvidia-smi() {',
+            '  case "$*" in',
+            f'    *name,memory.total*) for _ in $(seq 1 {cards}); do echo "NVIDIA RTX PRO 6000 Blackwell Server Edition, {memory_total}"; done ;;',
+            f'    *--query-gpu=name\ *|*--query-gpu=name) for _ in $(seq 1 {cards}); do echo "NVIDIA RTX PRO 6000"; done ;;',
+            '    *power.default_limit*) echo "600.00" ;;',
+            '    *) echo "" ;;',
+            "  esac",
+            "}",
+            function_body("gpu_memory_gb_from_torch"),
+            function_body("detect_gpu"),
+            "detect_gpu",
+            'echo "VRAM_GB=$VRAM_GB SOURCE=$VRAM_SOURCE COUNT=$GPU_COUNT"',
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_a_card_that_answers_normally(self):
+        done = self._detect("98304")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=96.0 SOURCE=nvidia-smi", done.stdout)
+
+    def test_a_mig_slice_is_asked_of_torch_instead(self):
+        """torch reports the slice, which is exactly the pool vLLM divides."""
+        done = self._detect("[N/A]", torch_gb="47.5")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=47.5 SOURCE=torch", done.stdout)
+
+    def test_a_mig_slice_without_torch_is_marked_as_a_guess(self):
+        """The number it falls back on is the one from the budget request. It
+        may not pass for something the machine said."""
+        done = self._detect("[N/A]")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("SOURCE=aanname", done.stdout)
+        self.assertNotIn("VRAM_GB=0", done.stdout)
+
+    def test_a_number_from_the_operator_wins_from_both(self):
+        done = self._detect("98304", torch_gb="47.5", vram_gb="48")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=48 SOURCE=opgegeven", done.stdout)
+
+    def test_two_cards_are_added_up(self):
+        done = self._detect("32768", cards=2, tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=64.0 SOURCE=nvidia-smi", done.stdout)
+
+    def test_a_resume_is_checked_before_the_server_starts(self):
+        """A directory left on a shared network volume by another card cannot
+        be measured into. Discovering that at the first group means the model
+        is already loaded -- a quarter of an hour of rent for an answer the
+        configuration alone could give."""
+        body = function_body("cmd_all")
+        resume = body.index("hervat in bestaande map")
+        check = body.index("pending_ids rampup")
+        server = body.index("start_server")
+        self.assertLess(resume, check, "the check has to follow the directory it checks")
+        self.assertLess(check, server, "the check has to come before vLLM is started")
+
+    def test_preflight_refuses_to_measure_on_a_guess(self):
+        body = function_body("preflight")
+        self.assertIn('VRAM_SOURCE" = "aanname"', body)
+        self.assertIn("FORCE", body)
+        self.assertIn("VRAM_GB=48", body, "the refusal has to say how to supply the number")
+        self.assertIn("bron: $VRAM_SOURCE", body,
+                      "the pool line has to say where the number came from")
+
+
 if __name__ == "__main__":
     unittest.main()

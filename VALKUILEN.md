@@ -261,8 +261,36 @@ hoort in het rapport genoemd te worden.
 
   Rond 600 W is de volle kaart, rond 300 W een Max-Q. Meet je op een Max-Q en
   rapporteer je dat als de kaart uit de aanvraag, dan klopt het getal niet.
+- **Op een MIG-instantie zegt `nvidia-smi` niets over het geheugen.**
+  `--query-gpu=memory.total` antwoordt daar `[N/A]`, en dat wordt in een
+  awk-berekening een stille `0`. Het hele GB-deel van het rapport draait dan op
+  een pool van nul: *"past een klas van 20 op 0 GB"*, een piek van 0,1 GB en
+  elke alternatieve kaart afgevinkt als "past". Zo is een complete matrix van
+  37 runs gemeten. Het script vraagt het nu aan torch (die geeft de MIG-plak
+  wél terug) en weigert te meten als geen van beide het weet; geef het anders
+  zelf mee: `VRAM_GB=48 scripts/pod.sh all`. Controleer het altijd even:
+
+  ```bash
+  nvidia-smi --query-gpu=memory.total --format=csv          # [N/A] op MIG
+  python3 -c "import torch; print(torch.cuda.get_device_properties(0).total_memory/1024**3)"
+  ```
+- **Een gedeeld netwerkvolume mengt metingen van twee kaarten.** Twee pods, één
+  `/workspace`, één `results/` — en `all` hervat in de map die er staat. Corpus,
+  gedragsmodel en run-namen kloppen dan allemaal; alleen de kaart verschilt, en
+  dat is precies het getal waar elke gigabyte in het rapport op rust. De naam
+  helpt niet: een MIG-plak van 48 GB meldt zich als dezelfde `RTX PRO 6000
+  Blackwell Server Edition` als de hele kaart van 96 GB. Het harnas vergelijkt
+  daarom naam **en** geheugen, en weigert hervatten, `--also` en `--same` over
+  twee kaarten. Dat is de enige weigering die `--resume-anyway` niet opzij zet.
+  Meet in een eigen map: `RESULTS_DIR=results/$(date +%Y%m%d-%H%M%S)_matrix`.
 
 ### De resultaten van de pod halen
+
+Probeer eerst de korte weg: **`scripts/pod.sh push`** zet wat er gemeten is
+alsnog op een branch in de repo. `all` doet dat zelf aan het eind, maar een run
+die eerder stopt — een weigering bij de start, een verbroken verbinding, een
+`kill` — laat alles op de huurschijf staan. Dan hoef je de rest van deze
+paragraaf niet.
 
 Drie dingen staan tussen jou en een `scp` die werkt. Ze geven alle drie een
 andere fout, en samen kosten ze een halve avond.
@@ -327,6 +355,14 @@ disk; controleer bij de pod-instellingen welk volume gekoppeld is.
 - **`pkill -f "iets"` matcht ook je eigen commandoregel**, inclusief de tekst
   van een heredoc. Je schiet dan je eigen shell dood. Schrijf het patroon zo
   dat het zichzelf niet vindt (`"stresstest[ ]mock"`).
+- **`printf "%s" "$body" | grep -q` liegt over grote invoer.** `grep -q` stopt
+  bij zijn eerste treffer; is `$body` groter dan de pijpbuffer (64 KB), dan
+  schrijft `printf` op dat moment nog en gaat dood aan SIGPIPE. `pipefail`
+  geeft die status door en je test zegt "niet gevonden" over iets dat er wél
+  staat. Of het misgaat hangt ervan af waar in de invoer de treffer zit: bovenin
+  wel, onderin niet. Dit heeft twee pods gekost (zie *De meting zelf*). Gebruik
+  een here-string: `grep -q ... <<<"$body"` heeft geen schrijvend proces dat
+  omvalt.
 - **`export` vóór het script, niet erin.** Het script geeft zijn omgeving door
   aan vLLM, maar wat er niet is kan het niet doorgeven.
 
@@ -342,9 +378,24 @@ disk; controleer bij de pod-instellingen welk volume gekoppeld is.
   één keer, maar met een paar seconden tussenruimte (`scripts/pod.sh` doet dat
   zelf). Let op: `vllm:num_preemptions_created` is een tijdstempel van
   prometheus_client, niet het aantal preempties.
+- **Controleer de pool voordat je gaat meten.** De regel `pool voor het harnas:
+  ... GB (bron: ...)` in de opstartcontrole is geen decoratie: elk
+  GB-getal in het rapport is een KV-percentage maal die pool, en vraag 3 — past
+  het ook op 72 GB? — is niets anders. Staat er `bron: aanname`, dan weet de pod
+  het niet en stopt het script.
 - **Zonder `/metrics` meet je alleen latentie.** De hoofdvraag hangt op
   preempties, prefix-cache-hitrate en KV-bezetting. Ontbreken die reeksen, dan
   is de run zinloos — daarom stopt het script erop.
+- **Een poortwachter die ten onrechte weigert kost een hele pod.** Twee pods
+  (2× RTX 5090 en een PRO 6000 MIG) stopten binnen een seconde na
+  "vLLM draait" op `/metrics mist: KV-bezetting`, terwijl `vllm:kv_cache_usage_perc`
+  gewoon in de body stond en het harnas hem in dezelfde run had uitgelezen. De
+  oorzaak zat in de pijp, niet in vLLM (zie *Shell en gereedschap*). Wat het
+  duur maakte: het model was al binnen, de doodsklok stond op acht uur, en de
+  pod stond daarna uren stil te huren. Sindsdien haalt een fatale fout de
+  doodsklok naar voren (`ABORT_GRACE_HOURS`, standaard een half uur) en zegt de
+  weigering erbij welke `vllm:`-reeksen er wél stonden — genoeg om in het log
+  te zien of de reeks ontbreekt of de controle stuk is.
 - **`--detach` gebruikt `nohup`, geen tmux.** De run overleeft je SSH-sessie.
   Meekijken met `scripts/pod.sh log -f`; ctrl-C stopt het kijken, niet de test.
 - **Zet een doodsklok.** Een run die 's nachts vastloopt kost anders tot de
