@@ -141,11 +141,93 @@ het aantal sessies dat erin past; dat is wat `scripts/pod.sh` doet.
 gebruikers, maar levert een eerlijke ondergrens. Noteer in beide gevallen wat
 je gebruikt hebt — de conclusie hangt eraan.
 
+### `WorkerProc initialization failed due to an exception in a background process`
+
+Alleen met `--tensor-parallel-size 2` of hoger. vLLM start dan een
+werkproces per kaart, en wat je onderaan het log ziet is de API-server die
+meldt dat er eentje is weggevallen:
+
+```
+Exception: WorkerProc initialization failed due to an exception in a
+  background process. See stack trace for root cause.
+RuntimeError: Engine core initialization failed. Failed core proc(s): {}
+```
+
+Die "stack trace for root cause" staat *niet* onderaan. Hij staat honderden
+regels hoger, in de regels van het werkproces zelf — de regels die met
+`(VllmWorker rank=1 pid=...)` beginnen. `tail` van het log laat precies het
+verkeerde deel zien.
+
+```bash
+grep -n '^(VllmWorker' /workspace/.stresstest/vllm.log | tail -30
+```
+
+Vier oorzaken. De eerste is de enige die niets met de opstelling te maken
+heeft en tegelijk de enige waar geen vlag tegen helpt, dus begin daar:
+
+0. **De driver is te oud voor de torch in de image.** In de regels van de
+   worker staat dan:
+
+   ```
+   File ".../vllm/v1/worker/gpu_worker.py", line 412, in init_device
+       torch._C._cuda_init()
+   RuntimeError: The NVIDIA driver on your system is too old (found version 12080).
+   ```
+
+   `12080` is CUDA 12.8, wat een 570-driver levert. De torch in de image is
+   dan gebouwd tegen CUDA 13, en die wil 580 of nieuwer. Dit gaat *niet* over
+   tensor parallelism: elke worker sterft bij het openen van de kaart, ook met
+   `TENSOR_PARALLEL=1` — daar is het alleen minder zichtbaar, omdat er dan één
+   proces omvalt in plaats van twee.
+
+   Verwarrend is dat `nvidia-smi` er tevreden uitziet en de kaarten gewoon in
+   het log staan. De driver is nieuw genoeg voor de *kaart* (570+ voor
+   Blackwell) en te oud voor de *image*. Twee getallen die allebei kloppen.
+
+   **Oplossing:** een image met een torch die bij de driver past (`cu128` bij
+   een 570-driver), of een pod met een driver van 580 of nieuwer.
+   `/workspace` blijft staan, dus het model hoeft niet opnieuw gedownload.
+   `scripts/pod.sh` vraagt dit nu vóór de download aan torch zelf
+   (`torch.cuda.init()`, kost een seconde) en stopt daar, in plaats van een
+   kwartier later in een worker.
+
+1. **Te weinig gedeeld geheugen.** De workers praten met elkaar over
+   `/dev/shm`, en een container die zonder `--shm-size` is gestart krijgt
+   64 MB. In het log van de worker staat dan `OSError: [Errno 28] No space
+   left on device` met een `/psm_...`-naam erbij, of een `Bus error`.
+   Controleer met `df -h /dev/shm`; het moet gigabytes zijn, niet megabytes.
+   Op RunPod stel je dit in bij het aanmaken van de pod — achteraf kan het
+   niet, een draaiende container kan zijn eigen `/dev/shm` niet vergroten.
+2. **De kaarten bereiken elkaar niet.** NCCL wil de directe weg tussen de
+   kaarten (PCIe peer-to-peer), en twee consumentenkaarten in één pod (twee
+   5090's bijvoorbeeld) hebben die niet altijd. In het log staat
+   `ncclUnhandledCudaError`, `NCCL error` of `DistBackendError`. Oplossing:
+   `export NCCL_P2P_DISABLE=1`, dan gaat het verkeer via het werkgeheugen.
+   Dat is trager voor alles wat de kaarten uitwisselen, dus het hoort bij de
+   resultaten genoteerd te worden. Let op het verschil met `custom allreduce
+   is disabled because your platform lacks GPU P2P capability`: dat is een
+   `INFO`-regel op een start die verder helemaal goed gaat.
+3. **Er zijn minder kaarten dan processen.** `TENSOR_PARALLEL=2` op één
+   zichtbare kaart. Kijk wat `nvidia-smi -L` zegt en of
+   `CUDA_VISIBLE_DEVICES` de rest wegfiltert.
+
+`scripts/pod.sh` vangt alle vier af. Het nulde en het derde geval worden vóór
+de meting geweigerd (bij het derde gaat `--force` er langs), een te kleine
+`/dev/shm` levert een waarschuwing op voordat het model geladen wordt, en
+noemt het log NCCL, dan
+start het script één keer opnieuw met `NCCL_P2P_DISABLE=1` en zegt erbij dat
+dat de getallen raakt. Komt de server ook dan niet omhoog, dan zet het de
+regels van de workers zelf onder de foutmelding — de regels waar de oorzaak
+in staat.
+
 ### De laatste regels van het log zijn niet de oorzaak
 
 vLLM print een Python-traceback; de reden staat erbóven, vaak 50 regels
 hoger. Zoek op `ValueError`, `RuntimeError`, `no available memory`,
-`unrecognized arguments`. `scripts/pod.sh` licht die regels zelf uit.
+`unrecognized arguments`. `scripts/pod.sh` licht die regels zelf uit — en
+sinds kort zonder de traceback zelf mee te nemen: elke frameregel van vLLM
+begint met `ERROR`, dus een zoektocht naar "Error" leverde twaalf regels
+`return func(*args, **kwargs)` op en niet de ene regel die iets zei.
 
 ### Het opstarten duurt minuten
 

@@ -229,6 +229,136 @@ class TestFirstCleanStart(unittest.TestCase):
         self.assertIn("|| true", lines[0])
 
 
+class TestDescribingAResumedDirectory(unittest.TestCase):
+    """The same trap as TestFirstCleanStart, one directory deeper. A resumed
+    directory whose first server never came up exists but has no runs/ in it
+    yet; `find` exits 1 on that, pipefail hands the failure on, and the ERR
+    trap ends the run with "afgebroken op regel N" -- over a line that was
+    only counting subdirectories for a status message."""
+
+    def _describe(self, directory: str) -> subprocess.CompletedProcess:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'die() { trap - ERR; printf "FOUT: %s\\n" "$*" >&2; exit 1; }',
+            'on_error() { die "afgebroken op regel $1."; }',
+            "trap 'on_error $LINENO' ERR",
+            'say() { printf "%s\\n" "$*" >&2; }',
+            function_body("plural_runs"),
+            function_body("describe_results_dir"),
+            f'say "hervat in bestaande map {directory} ($(describe_results_dir {directory}))"',
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_a_directory_without_runs_yet_does_not_abort_the_run(self):
+        directory = os.path.join(self.tmp, "20260910-081024_matrix")
+        os.makedirs(directory)
+        done = self._describe(directory)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertNotIn("FOUT", done.stderr)
+        self.assertIn("0 runs aanwezig", done.stderr)
+
+    def test_a_directory_with_runs_is_still_counted(self):
+        directory = os.path.join(self.tmp, "20260910-081024_matrix")
+        os.makedirs(os.path.join(directory, "runs", "a"))
+        os.makedirs(os.path.join(directory, "runs", "b"))
+        done = self._describe(directory)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("2 runs aanwezig", done.stderr)
+
+
+class TestTensorParallelIsCheckedBeforeTheRun(unittest.TestCase):
+    """--tensor-parallel-size is a promise about the machine: one worker
+    process per card, all of them talking over shared memory. Both ways that
+    promise is broken are answerable in a second here, and cost a quarter of
+    an hour of rent and an unreadable traceback if they are left to vLLM."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+
+    def _check(self, tensor_parallel: int, gpu_count: int, force: int = 0,
+               shm_mb: str = "8192") -> subprocess.CompletedProcess:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            f'shm_size_mb() {{ printf "%s" "{shm_mb}"; }}',
+            f"TENSOR_PARALLEL={tensor_parallel}; GPU_COUNT={gpu_count}; FORCE={force}",
+            function_body("check_tensor_parallel"),
+            "check_tensor_parallel",
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_more_workers_than_cards_is_refused_before_anything_is_loaded(self):
+        done = self._check(tensor_parallel=2, gpu_count=1)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("TENSOR_PARALLEL=2", done.stderr)
+        self.assertIn("CUDA_VISIBLE_DEVICES", done.stderr)
+
+    def test_force_lets_the_operator_through_but_says_so(self):
+        done = self._check(tensor_parallel=2, gpu_count=1, force=1)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_a_container_without_shared_memory_is_warned_about(self):
+        """64 MB is what a container without --shm-size gets, and vLLM's
+        workers cannot build their channels in it. Nothing on the machine
+        says so; the failure arrives as "WorkerProc initialization failed"."""
+        done = self._check(tensor_parallel=2, gpu_count=2, shm_mb="64")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("shm-size", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_one_card_is_never_bothered_with_any_of_this(self):
+        done = self._check(tensor_parallel=1, gpu_count=1, shm_mb="64")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[warn]", done.stderr)
+
+    def test_the_check_runs_in_preflight(self):
+        self.assertIn("check_tensor_parallel", function_body("preflight"))
+
+    def test_the_pool_never_counts_cards_that_are_not_there(self):
+        """VRAM_GB is what the harness converts KV percentages to gigabytes
+        with. Multiplying one card by a TENSOR_PARALLEL of two reports a
+        192 GB machine and puts every gigabyte in the report out by two."""
+        body = function_body("detect_gpu")
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'warn() { :; }',
+            "TENSOR_PARALLEL=2",
+            'nvidia_smi_one_card() { :; }',
+            body.replace("nvidia-smi", "fake_smi"),
+            "command() { return 0; }",
+            'fake_smi() {',
+            '  case "$*" in',
+            '    *name,memory.total*) echo "NVIDIA RTX PRO 6000, 97887" ;;',
+            '    *power.default_limit*) echo "600.00" ;;',
+            '    *name*) echo "NVIDIA RTX PRO 6000" ;;',
+            '  esac',
+            '}',
+            "detect_gpu",
+            'echo "VRAM_GB=$VRAM_GB GPU_COUNT=$GPU_COUNT"',
+        ])
+        done = subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("GPU_COUNT=1", done.stdout)
+        pool = float(done.stdout.split("VRAM_GB=")[1].split()[0])
+        self.assertAlmostEqual(pool, 95.6, delta=0.5,
+                               msg=f"one 96 GB card, not two: {done.stdout}")
+
+
 class TestOnlyOneRunAtATime(unittest.TestCase):
     """Two runs side by side share one GPU, one port and one results directory.
     Nothing in the numbers afterwards says that happened, so the wrapper has to
@@ -438,8 +568,8 @@ class StartServerHarness(unittest.TestCase):
         return done.stdout.strip()
 
     def _drive_start_server(self, fake_vllm: str, model_on_disk: bool = True,
-                            attempts: int = 4,
-                            backend: str = "") -> subprocess.CompletedProcess:
+                            attempts: int = 4, backend: str = "",
+                            tensor_parallel: int = 1) -> subprocess.CompletedProcess:
         """Run start_server with `fake_vllm` (a bash script) as vllm.
         `backend` is what an operator would export as ATTENTION_BACKEND."""
         home = os.path.join(self.tmp, "hf")
@@ -455,7 +585,9 @@ class StartServerHarness(unittest.TestCase):
         text = script_text()
         bodies = []
         for name in ("model_dir", "model_size_gb", "model_is_complete",
-                     "model_snapshot_dir", "show_server_error",
+                     "model_snapshot_dir", "shm_size_mb", "driver_cuda_version",
+                     "log_suspects",
+                     "worker_lines", "show_server_error",
                      "die_server_start", "start_server"):
             found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
             self.assertIsNotNone(found, f"{name} is gone")
@@ -463,16 +595,17 @@ class StartServerHarness(unittest.TestCase):
         # Every pattern constant, so a new one cannot be missed here and read
         # as an unbound variable under set -u.
         consts = [line for line in text.splitlines()
-                  if re.match(r"^[A-Z_]+_PATTERNS=", line)]
+                  if re.match(r"^[A-Z_]+(_PATTERNS|_STRIP)=", line)]
         state = os.path.join(self.tmp, "state")
         os.makedirs(state, exist_ok=True)
         script = "\n".join([
             "set -Eeuo pipefail",
             'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
             "SERVED_NAME=qwen3-coder; HOST_BIND=127.0.0.1; PORT=8000",
-            "GPU_UTIL=0.90; TENSOR_PARALLEL=1; MOCK=0",
+            f"GPU_UTIL=0.90; TENSOR_PARALLEL={tensor_parallel}; GPU_COUNT={tensor_parallel}; MOCK=0",
             "KV_CACHE_DTYPE=fp8; MAX_NUM_SEQS=32; MAX_MODEL_LEN=131072",
             f'ATTENTION_BACKEND="{backend}"; NO_FLASHINFER_SAMPLER=0',
+            "NCCL_P2P_OFF=0",
             f"HF_OFFLINE=0; SERVER_START_ATTEMPTS={attempts}",
             "HF_RATE_LIMIT_WAIT_S=1; HF_RATE_LIMIT_MAX_WAIT_S=1",
             "SERVER_START_TIMEOUT_S=900",
@@ -495,6 +628,7 @@ class StartServerHarness(unittest.TestCase):
             'echo "[ok] HF_OFFLINE=$HF_OFFLINE"',
             'echo "[ok] ATTENTION_BACKEND=$ATTENTION_BACKEND"',
             'echo "[ok] NO_FLASHINFER_SAMPLER=$NO_FLASHINFER_SAMPLER"',
+            'echo "[ok] NCCL_P2P_OFF=$NCCL_P2P_OFF"',
             'echo "[ok] current_backend=$(cat "$STATE_DIR/current_backend" 2>/dev/null)"',
         ])
         env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"])
@@ -759,6 +893,285 @@ class TestHubRateLimit(StartServerHarness):
                             "start_server reported success without a server")
         self.assertIn("429", done.stderr)
         self.assertNotIn("te weinig geheugen voor de KV-cache", done.stderr)
+
+
+# A vLLM that dies the way a multi-card start dies: the reason is in the
+# worker's own lines, and the API server -- whose traceback is the tail of the
+# log, and the only part anyone sees -- says only that a background process
+# went away. Taken from the 08:13 log of a two-card start.
+WORKER_FAILURE = """
+cat <<'VLLMEOF'
+(VllmWorker rank=1 pid=1301) INFO 09-10 08:13:50 [multiproc_executor.py:558] Worker ready
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600] Traceback (most recent call last):
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600]   File "/dist-packages/vllm/distributed/device_communicators/shm_broadcast.py", line 209, in __init__
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600]     self.shared_memory = shared_memory.SharedMemory(create=True, size=self.total_bytes)
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600]                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600] OSError: [Errno 28] No space left on device
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374]     return func(*args, **kwargs)
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374]   File "/dist-packages/vllm/v1/executor/abstract.py", line 110, in __init__
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374]     self._init_executor()
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374] Exception: WorkerProc initialization failed due to an exception in a background process. See stack trace for root cause.
+(APIServer pid=1000)   File "/dist-packages/vllm/v1/engine/utils.py", line 1320, in wait_for_engine_startup
+(APIServer pid=1000)     raise RuntimeError(
+(APIServer pid=1000) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+VLLMEOF
+exit 1
+"""
+
+# One card, one process, and a reason the log states outright.
+SINGLE_CARD_OOM = """
+echo "$ARGS_ECHO"
+echo "(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374] ValueError: No available memory for the cache blocks. Try increasing gpu_memory_utilization."
+exit 1
+"""
+
+
+class TestAWorkerThatDiedInAnotherProcess(StartServerHarness):
+    """With --tensor-parallel-size above 1 vLLM runs a process per card, and
+    the traceback at the end of the log is the API server's: it says a
+    background process went away and refers to a stack trace that is hundreds
+    of lines further up, in the worker's own output. The wrapper has to fetch
+    that, and it has to stop reporting stack frames as the suspected cause --
+    SERVER_ERROR_PATTERNS ends in a bare "Error", which matched the ERROR
+    prefix of every frame and drowned the one line that named a reason."""
+
+    def _fail(self, tensor_parallel: int = 2, body: str = WORKER_FAILURE):
+        done = self._drive_start_server(fake_vllm(body), attempts=2,
+                                        tensor_parallel=tensor_parallel)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        return done
+
+    @staticmethod
+    def _section(stderr: str, heading: str) -> str:
+        rest = stderr.split(heading, 1)[1]
+        return rest.split("\n--- ", 1)[0]
+
+    def test_the_suspected_cause_names_a_cause_and_not_a_stack_frame(self):
+        done = self._fail()
+        self.assertIn("vermoedelijke oorzaak", done.stderr)
+        suspects = self._section(done.stderr, "vermoedelijke oorzaak")
+        self.assertIn("OSError: [Errno 28] No space left on device", suspects)
+        self.assertNotIn("return func(*args, **kwargs)", suspects)
+        self.assertNotIn("self._init_executor()", suspects)
+        self.assertNotIn('File "', suspects)
+
+    def test_the_workers_own_lines_are_surfaced(self):
+        done = self._fail()
+        self.assertIn("wat de workers zelf zeiden", done.stderr)
+        workers = self._section(done.stderr, "wat de workers zelf zeiden")
+        self.assertIn("OSError: [Errno 28] No space left on device", workers)
+        self.assertNotIn("APIServer", workers)
+
+    def test_the_diagnosis_names_the_three_things_that_break_here(self):
+        done = self._fail()
+        for expected in ("shm-size", "NCCL", "TENSOR_PARALLEL=1"):
+            self.assertIn(expected, done.stderr,
+                          f"the multi-card diagnosis should mention {expected}")
+
+    def test_it_does_not_read_as_a_kv_cache_problem(self):
+        """The generic message sends the operator after --max-model-len and
+        GPU_UTIL. Neither has anything to do with a worker that never got to
+        the point of allocating a cache."""
+        done = self._fail()
+        self.assertNotIn("verlaag --max-model-len", done.stderr)
+
+    def test_one_card_keeps_the_message_it_had(self):
+        done = self._fail(tensor_parallel=1, body=SINGLE_CARD_OOM)
+        self.assertIn("verlaag --max-model-len", done.stderr)
+        self.assertNotIn("shm-size", done.stderr)
+        suspects = self._section(done.stderr, "vermoedelijke oorzaak")
+        self.assertIn("No available memory for the cache blocks", suspects)
+
+    def test_a_worker_failure_is_not_mistaken_for_a_flashinfer_one(self):
+        """Retrying without the sampler, or on another attention backend,
+        costs a start-up and measures nothing different."""
+        done = self._fail()
+        self.assertEqual(len(self.starts(done)), 1, done.stderr)
+        self.assertIn("--tensor-parallel-size 2", self.starts(done)[0])
+
+
+# The pod as it is on two 5090s: NCCL wants the direct PCIe path between the
+# cards, does not get it, and the worker dies opening the communicator.
+NCCL_P2P_FAILURE = """
+cat <<'VLLMEOF'
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600]   File "/dist-packages/torch/distributed/distributed_c10d.py", line 1600, in init
+(VllmWorker rank=1 pid=1301) ERROR 09-10 08:13:52 [multiproc_executor.py:600] torch.distributed.DistBackendError: NCCL error in: ProcessGroupNCCL.cpp:1970, unhandled system error
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374] Exception: WorkerProc initialization failed due to an exception in a background process.
+(APIServer pid=1000) RuntimeError: Engine core initialization failed. Failed core proc(s): {}
+VLLMEOF
+exit 1
+"""
+
+NEEDS_NO_P2P = fake_vllm(f"""
+    if [ "${{NCCL_P2P_DISABLE:-}}" = 1 ]; then {STARTED}; fi
+    {NCCL_P2P_FAILURE}""")
+
+
+class TestCardsThatCannotReachEachOther(StartServerHarness):
+    """Two consumer cards in one pod do not always have the PCIe peer-to-peer
+    path NCCL reaches for first, and NCCL dies in the worker rather than
+    routing around it. Going over host memory instead costs throughput on
+    every exchange between the cards, so the wrapper may only do it when the
+    log actually blames NCCL -- and has to say that it did."""
+
+    def test_the_run_is_retried_over_host_memory(self):
+        done = self._drive_start_server(NEEDS_NO_P2P, attempts=3, tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(len(self.starts(done)), 2, done.stderr)
+        self.assertIn("[ok] NCCL_P2P_OFF=1", done.stdout)
+        self.assertIn("NCCL_P2P_DISABLE=1", done.stderr)
+
+    def test_the_operator_is_told_it_costs_speed(self):
+        done = self._drive_start_server(NEEDS_NO_P2P, attempts=3, tensor_parallel=2)
+        self.assertIn("trager", done.stderr)
+        self.assertIn("noteer het", done.stderr)
+
+    def test_it_is_recorded_next_to_the_other_sticky_choices(self):
+        done = self._drive_start_server(NEEDS_NO_P2P, attempts=3, tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        state = os.path.join(self.tmp, "state", "current_nccl_p2p")
+        with open(state, encoding="utf-8") as handle:
+            self.assertEqual(handle.read().strip(), "1")
+
+    def test_one_card_never_takes_this_branch(self):
+        """A single-card run has no communicator to fail, and the same log
+        lines there mean something else entirely."""
+        done = self._drive_start_server(fake_vllm(NCCL_P2P_FAILURE), attempts=3,
+                                        tensor_parallel=1)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertEqual(len(self.starts(done)), 1, done.stderr)
+        self.assertNotIn("NCCL_P2P_DISABLE=1", done.stderr)
+
+    def test_a_healthy_start_that_merely_mentions_p2p_is_left_alone(self):
+        """vLLM says "custom allreduce is disabled because your platform lacks
+        GPU P2P capability" on starts that are entirely fine."""
+        chatty = fake_vllm(f"""
+            echo "INFO [custom_all_reduce.py:98] custom allreduce is disabled because your platform lacks GPU P2P capability"
+            {STARTED}""")
+        done = self._drive_start_server(chatty, attempts=3, tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(len(self.starts(done)), 1, done.stderr)
+        self.assertIn("[ok] NCCL_P2P_OFF=0", done.stdout)
+
+
+# What an image whose torch is built against CUDA 13 does on a pod with a
+# 570 driver: every worker dies at CUDA initialisation, and vLLM reports that
+# as a background process that went away. The real line is in the worker's own
+# output, and it names neither vLLM nor the flag that was used.
+DRIVER_TOO_OLD = """
+cat <<'VLLMEOF'
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944] WorkerProc failed to start.
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944]   File "/dist-packages/vllm/v1/worker/gpu_worker.py", line 412, in init_device
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944]     torch._C._cuda_init()
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944] RuntimeError: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver.
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374] Exception: WorkerProc initialization failed due to an exception in a background process.
+(APIServer pid=1000) RuntimeError: Engine core initialization failed. Failed core proc(s): {}
+VLLMEOF
+exit 1
+"""
+
+
+class TestATorchThatCannotOpenTheCard(StartServerHarness):
+    """The measurement of 10 September: two 5090s, driver 570.144, an image
+    whose torch wants CUDA 13. Every worker died in torch._C._cuda_init(), and
+    because --tensor-parallel-size was 2 the failure arrived dressed as a
+    worker that went away -- a machine problem, apparently, on a machine that
+    was fine. No flag helps against this one, so nothing may be retried and
+    nothing may be blamed on /dev/shm or on NCCL."""
+
+    def test_the_driver_is_named_and_not_the_shared_memory(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn("driver", done.stderr)
+        self.assertIn("torch", done.stderr)
+        self.assertNotIn("shm-size", done.stderr)
+        self.assertNotIn("NCCL_P2P_DISABLE", done.stderr)
+
+    def test_nothing_is_retried_because_nothing_would_help(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertEqual(len(self.starts(done)), 1, done.stderr)
+
+    def test_it_does_not_read_as_a_kv_cache_problem_either(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=1)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertNotIn("verlaag --max-model-len", done.stderr)
+        self.assertIn("ook TENSOR_PARALLEL=1 niet", done.stderr,
+                      "a single card hides this failure, it does not fix it")
+
+    def test_the_worker_line_reaches_the_operator(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertIn("The NVIDIA driver on your system is too old", done.stderr)
+
+
+class TestTorchIsAskedBeforeTheModelIsDownloaded(unittest.TestCase):
+    """Fifteen minutes of loading to find out that torch and the driver do not
+    agree about CUDA is fifteen minutes of rent. torch answers the same
+    question in a second, before anything has been fetched or started."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _probe(self, answer: str, status: int) -> subprocess.CompletedProcess:
+        py = os.path.join(self.tmp, "fake-python")
+        with open(py, "w", encoding="utf-8") as handle:
+            handle.write("#!/usr/bin/env bash\n"
+                         f"printf '%s' {shell_quote(answer)}\n"
+                         f"exit {status}\n")
+        os.chmod(py, os.stat(py).st_mode | stat.S_IEXEC)
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            f'MOCK=0; PY="{py}"',
+            function_body("driver_cuda_version"),
+            function_body("check_driver_matches_torch"),
+            "check_driver_matches_torch",
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_a_driver_that_is_too_old_stops_the_run_there(self):
+        done = self._probe("13.0|The NVIDIA driver on your system is too old "
+                           "(found version 12080).", status=1)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("CUDA 13.0", done.stderr)
+        self.assertIn("cu128", done.stderr, "the way out belongs in the message")
+        self.assertNotIn("reached-the-end", done.stdout)
+
+    def test_a_healthy_pod_says_so_and_carries_on(self):
+        done = self._probe("12.8|ok", status=0)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertIn("CUDA 12.8", done.stderr)
+
+    def test_a_pod_without_torch_yet_is_not_an_error(self):
+        """preflight runs before vLLM is installed on a clean pod; cmd_setup
+        asks again once it is."""
+        done = self._probe("", status=3)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertNotIn("[warn]", done.stderr)
+
+    def test_any_other_refusal_warns_instead_of_guessing(self):
+        done = self._probe("12.8|CUDA unknown error", status=1)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("CUDA unknown error", done.stderr)
+
+    def test_the_probe_runs_in_preflight_and_after_the_install(self):
+        self.assertIn("check_driver_matches_torch", function_body("preflight"))
+        self.assertIn("check_driver_matches_torch", function_body("cmd_setup"))
 
 
 class TestPushingResults(unittest.TestCase):
