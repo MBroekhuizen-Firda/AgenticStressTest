@@ -104,6 +104,13 @@ MOCK="${MOCK:-0}"
 FORCE=0
 SHUTDOWN_WHEN_DONE=0
 DEADMAN_HOURS=""
+# How long the pod may keep standing after a fatal error. A run that dies takes
+# its measurement with it but not the machine: the deadman armed at the start
+# of 'all' sits hours out, and until it fires the pod bills for doing nothing.
+# That is what a refused start cost twice over, both times within a minute of
+# the model being loaded. Half an hour is enough to log in and look; anything
+# longer is paid for out of the budget the measurement is for.
+ABORT_GRACE_HOURS="${ABORT_GRACE_HOURS:-0.5}"
 SKIP_LESSON=0
 SKIP_ENGINE=0
 # Resume in a directory that was measured with a different corpus, behaviour
@@ -134,7 +141,7 @@ head_() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '1' "$*")" >&2; }
 warn() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '33' "LET OP: $*")" >&2; }
 # Clearing the ERR trap first: a deliberate stop should print its own reason,
 # not that plus a generic "afgebroken op regel N" from the trap.
-die()  { trap - ERR; printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; exit 1; }
+die()  { trap - ERR; printf '[%s] %s\n' "$(date +%H:%M:%S)" "$(_c '31' "FOUT: $*")" >&2; shorten_deadman "$ABORT_GRACE_HOURS" || true; exit 1; }
 
 on_error() { die "afgebroken op regel $1. Server-log: $SERVER_LOG"; }
 trap 'on_error $LINENO' ERR
@@ -953,27 +960,67 @@ start_server() {
 # on its own: until now the check only touched /v1/models, so nothing had
 # proved that the model actually generates before the run started.
 warm_up_server() {
-  curl -s -m 120 -o /dev/null \
+  curl -s -m "${1:-120}" -o /dev/null \
     -H 'Content-Type: application/json' \
     -d "{\"model\":\"$SERVED_NAME\",\"max_tokens\":8,\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":\"hallo\"}]}" \
     "http://127.0.0.1:$PORT/v1/chat/completions" || true
 }
 
+# Which of the three the body does not have, as words for the operator.
+#
+# Deliberately not through a pipe. `printf "%s" "$body" | grep -q` reads as the
+# obvious way to do this and is a trap: grep -q stops at its first match, and a
+# body bigger than the pipe buffer (64 KB; a vLLM with a few hundred series is
+# far past that) leaves printf still writing when it does. printf dies of
+# SIGPIPE, `set -o pipefail` passes that non-zero status to the `||`, and a
+# series that is right there in the body is reported missing.
+#
+# Which of the three it hits depends on where they sit in the body: a series
+# near the end lets printf finish first and passes, one near the top does not.
+# That is how two pods were refused over "KV-bezetting" -- the series was in
+# the body both times, and the harness read that very number without trouble.
+# A here-string has no writing process to kill, so grep's own status is the
+# status of the test.
+missing_metrics() {
+  local body="$1" missing=""
+  grep -q '^vllm:num_preemptions' <<<"$body" || missing="$missing preempties"
+  grep -qE '^vllm:(gpu_)?prefix_cache_(queries|hits|hit_rate)' <<<"$body" || missing="$missing prefix-cache"
+  grep -qE '^vllm:(kv_cache_usage_perc|gpu_cache_usage_perc)' <<<"$body" || missing="$missing KV-bezetting"
+  printf '%s' "$missing"
+}
+
+# What the engine does expose in the direction of the three, names only. A gate
+# that stops a run has to show what it saw: without it the next round costs
+# another start-up just to find out whether the series is missing or the gate
+# is wrong -- and on a rented machine that answer is worth having in the log.
+show_metric_candidates() {
+  local names
+  names="$(grep -oE '^vllm:[a-z_]*(cache|preempt)[a-z_]*' <<<"$1" | sort -u | tr '\n' ' ' || true)"
+  if [ -n "$names" ]; then
+    warn "wel aanwezig in die richting: $names"
+  else
+    warn "geen enkele reeks in die richting; dit ziet er niet uit als vLLM's /metrics."
+  fi
+}
+
 check_metrics() {
-  local body count missing="" attempt
-  warm_up_server
+  local body="" count missing="" attempt
+  # The warm-up is inside the loop, and the loop waits for all three rather
+  # than for preemptions alone: a gauge the engine only writes once it has
+  # scheduled something is not there before the first generation, and the old
+  # break condition ended the loop on the counter that arrives first, spending
+  # none of the retries it had on the series it was about to refuse over.
   for attempt in 1 2 3; do
+    warm_up_server "$([ "$attempt" = 1 ] && echo 120 || echo 30)"
     body="$(curl -s "http://127.0.0.1:$PORT/metrics" || true)"
-    printf '%s' "$body" | grep -q '^vllm:num_preemptions' && break
+    missing="$(missing_metrics "$body")"
+    [ -z "$missing" ] && break
     [ "$attempt" = 3 ] || sleep 5
   done
-  count="$(printf '%s' "$body" | grep -c '^vllm:' || true)"
-
-  printf '%s' "$body" | grep -q '^vllm:\(num_preemptions\)' || missing="$missing preempties"
-  printf '%s' "$body" | grep -q '^vllm:\(gpu_\)\?prefix_cache_\(queries\|hits\|hit_rate\)' || missing="$missing prefix-cache"
-  printf '%s' "$body" | grep -q '^vllm:\(kv_cache_usage_perc\|gpu_cache_usage_perc\)' || missing="$missing KV-bezetting"
+  count="$(grep -c '^vllm:' <<<"$body" || true)"
 
   if [ -n "$missing" ]; then
+    show_metric_candidates "$body"
     [ "$FORCE" = 1 ] || die "/metrics mist:$missing (van $count vllm-reeksen), ook na een opwarmverzoek. Daarmee is de hoofdvraag niet te beantwoorden -- zonder preempties, cache hit rate en KV-bezetting meet je alleen latentie. Zet de Prometheus-endpoint aan, of gebruik --force."
     warn "/metrics mist:$missing -- doorgaan vanwege --force; de conclusie wordt onvolledig"
   else
@@ -1160,6 +1207,29 @@ cmd_monitor() {
   "$PY" -m stresstest monitor --out "$dir" "${SETS[@]}" "$@"
 }
 
+# Getting a measurement off the machine after a run that never reached its own
+# push. `all` pushes at the end and stops the pod on the way out; a run that
+# ends earlier -- a gate that refused to start, a dropped connection, a kill --
+# leaves everything it did measure on a rented disk, with an scp over a port
+# from the RunPod dashboard as the only way out. The results are the one thing
+# on a pod worth keeping, so this is a command of its own.
+cmd_push() {
+  local dirs=("$@")
+  if [ "${#dirs[@]}" = 0 ]; then
+    local dir; dir="$(latest_matrix_dir)"
+    [ -n "$dir" ] || die "geen resultatenmap gevonden; geef er een mee: pod.sh push results/<map>"
+    dirs=("$dir")
+    say "$dir: $(describe_results_dir "$dir")"
+    local lesson; lesson="$(cat "$STATE_DIR/last_lesson_dir" 2>/dev/null || true)"
+    if [ -n "$lesson" ] && [ -d "$lesson" ]; then
+      dirs+=("$lesson")
+      say "$lesson: lesvalidatie, gaat mee"
+    fi
+  fi
+  detect_gpu
+  push_results "${dirs[@]}" || die "pushen mislukt -- zie hierboven. De meting staat nog wel op deze pod."
+}
+
 cmd_report() {
   local dir="${1:-}"
   [ -n "$dir" ] || dir="$(latest_matrix_dir)"
@@ -1210,6 +1280,26 @@ arm_deadman() {
   echo $! > "$DEADMAN_PID_FILE"
   warn "doodsklok gezet: over ${hours} uur ($(cat "$STATE_DIR/deadman_at")) wordt de pod gestopt."
   warn "Afzetten met: scripts/pod.sh disarm"
+}
+
+# Bring a standing deadman forward, never push it back.
+#
+# Only when one is armed at all: that is the operator having said the machine
+# may stop by itself. And only when it stands further out than the grace
+# period, so a run that is already ten minutes from stopping is left alone.
+# The comparison needs a timestamp it can read; when arm_deadman could not
+# write one ("over 8.1u") there is nothing to compare against and the standing
+# deadman keeps its word.
+shorten_deadman() {
+  local hours="$1" at planned grace
+  [ -f "${DEADMAN_PID_FILE:-/nonexistent}" ] || return 0
+  at="$(cat "${STATE_DIR:-/nonexistent}/deadman_at" 2>/dev/null || true)"
+  planned="$(date -d "$at" +%s 2>/dev/null || true)"
+  [ -n "$planned" ] || return 0
+  grace="$(awk -v h="$hours" 'BEGIN{printf "%d", h*3600}')"
+  [ "$planned" -gt "$(( $(date +%s) + grace ))" ] || return 0
+  warn "hierna doet de pod niets meer, dus de doodsklok gaat van $at naar over ${hours} uur."
+  arm_deadman "$hours"
 }
 
 disarm_deadman() {
@@ -1613,6 +1703,8 @@ Commando's
   monitor [map]      een draaiende server meten zonder zelf belasting te
                      maken: voor een echte les via OpenCode. Ctrl-C stopt
   report [map]       grafieken en conclusie opnieuw maken (geen GPU nodig)
+  push [map...]      de resultaten alsnog naar de repo pushen. Voor een run die
+                     zijn eigen push niet gehaald heeft; zonder map de laatste
   deadman <uren>     doodsklok zetten: stop de pod automatisch
   disarm             doodsklok afzetten
   power-down         nu stoppen
@@ -1645,7 +1737,7 @@ Omgevingsvariabelen
   MODEL SERVED_NAME PORT MAX_MODEL_LEN MAX_NUM_SEQS KV_CACHE_DTYPE GPU_UTIL
   MIN_FREE_GB MIN_CONTAINER_FREE_GB ATTENTION_BACKEND SERVER_START_ATTEMPTS
   TENSOR_PARALLEL VRAM_GB GPU_NAME HF_HOME CONFIG RESULTS_DIR WORKSPACE
-  RESULTS_BRANCH PUSH_RETRIES
+  RESULTS_BRANCH PUSH_RETRIES ABORT_GRACE_HOURS
   HF_TOKEN HF_HUB_OFFLINE HF_DOWNLOAD_RETRIES HF_RATE_LIMIT_WAIT_S
   HF_RATE_LIMIT_MAX_WAIT_S
 
@@ -1657,6 +1749,7 @@ Voorbeelden
     VRAM_GB=24 scripts/pod.sh all --skip-engine         # goedkoop uitproberen
   HF_TOKEN=hf_... scripts/pod.sh setup                  # ruimere limiet bij de Hub
   HF_HUB_OFFLINE=1 scripts/pod.sh serve                # niets van huggingface.co
+  scripts/pod.sh push && scripts/pod.sh power-down     # afgebroken run redden
 USAGE
 }
 
@@ -1739,6 +1832,7 @@ main() {
     lesson)     cmd_lesson >/dev/null ;;
     monitor)    cmd_monitor "$@" ;;
     report)     cmd_report "${1:-}" ;;
+    push)       cmd_push "$@" ;;
     deadman)    [ $# -ge 1 ] || die "hoeveel uur?"; mkdir -p "$STATE_DIR"; arm_deadman "$1" ;;
     disarm)     disarm_deadman ;;
     power-down) power_down ;;

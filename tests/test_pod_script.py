@@ -1482,5 +1482,261 @@ class TestSkippedLessonDoesNotLeaveAStaleReport(unittest.TestCase):
                                       "dat het rapport alsnog bijwerkt")
 
 
+class TestTheMetricsGate(unittest.TestCase):
+    """The gate that decides whether a measurement may start.
+
+    It refused two rented pods within a minute of the model being loaded, both
+    times over "KV-bezetting" -- a series that was in the body it had just
+    scraped, and that the harness read without trouble on the very same server.
+    The refusal was in the plumbing: `printf "%s" "$body" | grep -q` lets grep
+    stop at its first match while printf is still writing, printf dies of
+    SIGPIPE, and `set -o pipefail` turns that into "the series is not there".
+    A series near the top of a body larger than the pipe buffer therefore reads
+    as missing, and vLLM prints the KV gauge near the top.
+
+    The bodies below are built the same way round: KV first, tens of thousands
+    of histogram buckets after it, preemptions last."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def body(self, *, kv: bool = True, preemptions: bool = True,
+             prefix: bool = True, buckets: int = 4000) -> str:
+        lines = ["# HELP vllm:kv_cache_usage_perc KV cache usage",
+                 "# TYPE vllm:kv_cache_usage_perc gauge"]
+        if kv:
+            lines.append('vllm:kv_cache_usage_perc{model_name="qwen3-coder"} 0.0274')
+        for i in range(buckets):
+            lines.append('vllm:request_latency_seconds_bucket'
+                         f'{{model_name="qwen3-coder",le="{i}.0"}} {i}')
+        if prefix:
+            lines.append('vllm:prefix_cache_queries_total{model_name="qwen3-coder"} 54495.0')
+            lines.append('vllm:prefix_cache_hits_total{model_name="qwen3-coder"} 18112.0')
+        if preemptions:
+            lines.append('vllm:num_preemptions_total{model_name="qwen3-coder"} 0.0')
+        return "\n".join(lines) + "\n"
+
+    def write(self, body: str, name: str = "metrics.txt") -> str:
+        path = os.path.join(self.tmp, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(body)
+        return path
+
+    def missing(self, body: str) -> str:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            function_body("missing_metrics"),
+            'missing_metrics "$(cat "$1")"',
+        ])
+        done = subprocess.run(["bash", "-c", program, "pod.sh", self.write(body)],
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout.strip()
+
+    def test_a_body_larger_than_the_pipe_buffer_is_read_correctly(self):
+        body = self.body()
+        self.assertGreater(len(body), 65536, "this body would not have shown the bug")
+        self.assertEqual(self.missing(body), "")
+
+    def test_the_same_body_small_enough_to_fit_still_passes(self):
+        self.assertEqual(self.missing(self.body(buckets=5)), "")
+
+    def test_a_series_that_really_is_gone_is_still_reported(self):
+        self.assertEqual(self.missing(self.body(kv=False)), "KV-bezetting")
+        self.assertEqual(self.missing(self.body(preemptions=False)), "preempties")
+        self.assertEqual(self.missing(self.body(prefix=False)), "prefix-cache")
+        self.assertEqual(self.missing(self.body(kv=False, preemptions=False, prefix=False)),
+                         "preempties prefix-cache KV-bezetting")
+
+    def test_the_older_name_for_the_kv_gauge_is_accepted(self):
+        """vLLM renamed gpu_cache_usage_perc to kv_cache_usage_perc. The
+        harness reads both, and so must the gate."""
+        body = self.body(kv=False).replace(
+            "# TYPE vllm:kv_cache_usage_perc gauge",
+            '# TYPE vllm:gpu_cache_usage_perc gauge\n'
+            'vllm:gpu_cache_usage_perc{model_name="qwen3-coder"} 0.0274')
+        self.assertEqual(self.missing(body), "")
+
+    def _gate(self, bodies: list[str]) -> tuple[subprocess.CompletedProcess, int]:
+        """check_metrics against a server that answers with `bodies` in turn."""
+        counter = os.path.join(self.tmp, "attempts")
+        with open(counter, "w", encoding="utf-8") as handle:
+            handle.write("0")
+        paths = [self.write(body, f"body{i}.txt") for i, body in enumerate(bodies)]
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            "sleep() { :; }",              # the retries wait five seconds each
+            "warm_up_server() { :; }",
+            "FORCE=0; PORT=8000",
+            'COUNTER="$1"; shift; BODIES=("$@")',
+            # Stands in for the scrape: hands out one body per attempt, and the
+            # last one for every attempt after that.
+            'curl() {',
+            '  local n; n=$(( $(cat "$COUNTER") + 1 )); echo "$n" > "$COUNTER"',
+            '  [ "$n" -le "${#BODIES[@]}" ] || n="${#BODIES[@]}"',
+            '  cat "${BODIES[$((n - 1))]}"',
+            "}",
+            function_body("missing_metrics"),
+            function_body("show_metric_candidates"),
+            function_body("check_metrics"),
+            "check_metrics",
+            "echo reached-the-end",
+        ])
+        done = subprocess.run(["bash", "-c", program, "pod.sh", counter, *paths],
+                              capture_output=True, text=True)
+        with open(counter, encoding="utf-8") as handle:
+            return done, int(handle.read())
+
+    def test_a_gauge_that_arrives_late_gets_the_retries_it_is_refused_over(self):
+        """The KV gauge is not written before the engine has scheduled
+        something. The loop used to stop as soon as the preemption counter was
+        there -- the series that arrives first -- and then refused over the one
+        it had just given up waiting for."""
+        done, attempts = self._gate([self.body(kv=False), self.body(kv=False), self.body()])
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertEqual(attempts, 3, "the gate did not spend its retries")
+        self.assertNotIn("[die]", done.stderr)
+
+    def test_a_gate_that_stops_a_run_says_what_it_did_see(self):
+        """Another start-up is a quarter of an hour of rent. The names it found
+        turn the next round into a read instead of a rerun."""
+        done, _ = self._gate([self.body(kv=False)])
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("KV-bezetting", done.stderr)
+        self.assertIn("vllm:num_preemptions_total", done.stderr)
+        self.assertIn("vllm:prefix_cache_hits_total", done.stderr)
+
+
+class TestAFailedRunDoesNotKeepThePodRunning(unittest.TestCase):
+    """What a refused start actually cost: not the run, but the hours the pod
+    stood idle afterwards with a deadman still eight hours out."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _shorten(self, deadman_at: str | None, armed: bool = True,
+                 hours: str = "0.5") -> subprocess.CompletedProcess:
+        if armed:
+            with open(os.path.join(self.tmp, "deadman.pid"), "w", encoding="utf-8") as handle:
+                handle.write("424242")
+        if deadman_at is not None:
+            with open(os.path.join(self.tmp, "deadman_at"), "w", encoding="utf-8") as handle:
+                handle.write(deadman_at + "\n")
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'warn() { echo "[warn] $*" >&2; }',
+            'arm_deadman() { echo "[arm] $1" >&2; }',
+            f'STATE_DIR="{self.tmp}"; DEADMAN_PID_FILE="{self.tmp}/deadman.pid"',
+            function_body("shorten_deadman"),
+            f'shorten_deadman {hours}',
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def when(self, seconds: int) -> str:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + seconds))
+
+    def test_a_deadman_hours_out_is_brought_forward(self):
+        done = self._shorten(self.when(8 * 3600))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[arm] 0.5", done.stderr)
+
+    def test_a_deadman_that_is_already_closer_is_left_alone(self):
+        """The ten minutes 'all' arms after a successful push must not be
+        stretched to half an hour by a failure in the push that follows it."""
+        done = self._shorten(self.when(600))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_without_a_deadman_nothing_is_armed(self):
+        """No deadman is the operator saying the machine stops when they say
+        so. An error is not the moment to overrule that."""
+        done = self._shorten(self.when(8 * 3600), armed=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_a_time_it_cannot_read_leaves_the_deadman_standing(self):
+        done = self._shorten("over 8.1u")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertNotIn("[arm]", done.stderr)
+
+    def test_the_fatal_path_goes_through_it(self):
+        die = re.search(r"^die\(\).*$", script_text(), re.M)
+        self.assertIsNotNone(die)
+        self.assertIn("shorten_deadman", die.group(0))
+        self.assertIn('ABORT_GRACE_HOURS="${ABORT_GRACE_HOURS:-', script_text())
+
+
+class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
+    """`all` pushes at the end. Everything that stops earlier leaves the runs it
+    did finish on a rented disk, and the only way out used to be an scp over a
+    port from the dashboard -- see VALKUILEN.md on how well that goes."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _push(self, latest: str = "", lesson: str = "", *args: str):
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            "detect_gpu() { GPU_NAME=test; }",
+            'describe_results_dir() { echo "3 runs"; }',
+            'push_results() { echo "[push] $*" >&2; }',
+            f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
+            f'STATE_DIR="{self.tmp}"',
+            function_body("cmd_push"),
+            "cmd_push " + " ".join(args),
+            "echo reached-the-end",
+        ])
+        if lesson:
+            with open(os.path.join(self.tmp, "last_lesson_dir"), "w", encoding="utf-8") as handle:
+                handle.write(lesson + "\n")
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_without_arguments_it_pushes_the_last_measurement(self):
+        done = self._push(latest="results/20260910-084827_matrix")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/20260910-084827_matrix", done.stderr)
+
+    def test_a_lesson_that_belongs_to_it_goes_along(self):
+        lesson = os.path.join(self.tmp, "les")
+        os.makedirs(lesson)
+        done = self._push(latest="results/20260910-084827_matrix", lesson=lesson)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(f"[push] results/20260910-084827_matrix {lesson}", done.stderr)
+
+    def test_a_lesson_directory_that_is_gone_is_not_pushed(self):
+        done = self._push(latest="results/x_matrix", lesson=os.path.join(self.tmp, "weg"))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/x_matrix\n", done.stderr)
+
+    def test_an_explicit_directory_is_taken_as_given(self):
+        done = self._push("", "", "results/een", "results/twee")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[push] results/een results/twee", done.stderr)
+
+    def test_nothing_to_push_says_so_instead_of_pushing_nothing(self):
+        done = self._push(latest="")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

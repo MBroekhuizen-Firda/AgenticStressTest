@@ -264,6 +264,12 @@ hoort in het rapport genoemd te worden.
 
 ### De resultaten van de pod halen
 
+Probeer eerst de korte weg: **`scripts/pod.sh push`** zet wat er gemeten is
+alsnog op een branch in de repo. `all` doet dat zelf aan het eind, maar een run
+die eerder stopt — een weigering bij de start, een verbroken verbinding, een
+`kill` — laat alles op de huurschijf staan. Dan hoef je de rest van deze
+paragraaf niet.
+
 Drie dingen staan tussen jou en een `scp` die werkt. Ze geven alle drie een
 andere fout, en samen kosten ze een halve avond.
 
@@ -327,6 +333,14 @@ disk; controleer bij de pod-instellingen welk volume gekoppeld is.
 - **`pkill -f "iets"` matcht ook je eigen commandoregel**, inclusief de tekst
   van een heredoc. Je schiet dan je eigen shell dood. Schrijf het patroon zo
   dat het zichzelf niet vindt (`"stresstest[ ]mock"`).
+- **`printf "%s" "$body" | grep -q` liegt over grote invoer.** `grep -q` stopt
+  bij zijn eerste treffer; is `$body` groter dan de pijpbuffer (64 KB), dan
+  schrijft `printf` op dat moment nog en gaat dood aan SIGPIPE. `pipefail`
+  geeft die status door en je test zegt "niet gevonden" over iets dat er wél
+  staat. Of het misgaat hangt ervan af waar in de invoer de treffer zit: bovenin
+  wel, onderin niet. Dit heeft twee pods gekost (zie *De meting zelf*). Gebruik
+  een here-string: `grep -q ... <<<"$body"` heeft geen schrijvend proces dat
+  omvalt.
 - **`export` vóór het script, niet erin.** Het script geeft zijn omgeving door
   aan vLLM, maar wat er niet is kan het niet doorgeven.
 
@@ -345,6 +359,16 @@ disk; controleer bij de pod-instellingen welk volume gekoppeld is.
 - **Zonder `/metrics` meet je alleen latentie.** De hoofdvraag hangt op
   preempties, prefix-cache-hitrate en KV-bezetting. Ontbreken die reeksen, dan
   is de run zinloos — daarom stopt het script erop.
+- **Een poortwachter die ten onrechte weigert kost een hele pod.** Twee pods
+  (2× RTX 5090 en een PRO 6000 MIG) stopten binnen een seconde na
+  "vLLM draait" op `/metrics mist: KV-bezetting`, terwijl `vllm:kv_cache_usage_perc`
+  gewoon in de body stond en het harnas hem in dezelfde run had uitgelezen. De
+  oorzaak zat in de pijp, niet in vLLM (zie *Shell en gereedschap*). Wat het
+  duur maakte: het model was al binnen, de doodsklok stond op acht uur, en de
+  pod stond daarna uren stil te huren. Sindsdien haalt een fatale fout de
+  doodsklok naar voren (`ABORT_GRACE_HOURS`, standaard een half uur) en zegt de
+  weigering erbij welke `vllm:`-reeksen er wél stonden — genoeg om in het log
+  te zien of de reeks ontbreekt of de controle stuk is.
 - **`--detach` gebruikt `nohup`, geen tmux.** De run overleeft je SSH-sessie.
   Meekijken met `scripts/pod.sh log -f`; ctrl-C stopt het kijken, niet de test.
 - **Zet een doodsklok.** Een run die 's nachts vastloopt kost anders tot de
