@@ -262,7 +262,9 @@ hoort in het rapport genoemd te worden.
   Rond 600 W is de volle kaart, rond 300 W een Max-Q. Meet je op een Max-Q en
   rapporteer je dat als de kaart uit de aanvraag, dan klopt het getal niet.
 - **Op een MIG-instantie zegt `nvidia-smi` niets over het geheugen.**
-  `--query-gpu=memory.total` antwoordt daar `[N/A]`, en dat wordt in een
+  `--query-gpu=memory.total` antwoordt daar `[N/A]`, en in een container die de
+  MIG-plak kreeg maar niet de hele kaart — zo verhuurt RunPod ze —
+  `[Insufficient Permissions]`. Geen van beide is een getal, en dat wordt in een
   awk-berekening een stille `0`. Het hele GB-deel van het rapport draait dan op
   een pool van nul: *"past een klas van 20 op 0 GB"*, een piek van 0,1 GB en
   elke alternatieve kaart afgevinkt als "past". Zo is een complete matrix van
@@ -271,7 +273,7 @@ hoort in het rapport genoemd te worden.
   zelf mee: `VRAM_GB=48 scripts/pod.sh all`. Controleer het altijd even:
 
   ```bash
-  nvidia-smi --query-gpu=memory.total --format=csv          # [N/A] op MIG
+  nvidia-smi --query-gpu=memory.total --format=csv   # [N/A] of [Insufficient Permissions]
   python3 -c "import torch; print(torch.cuda.get_device_properties(0).total_memory/1024**3)"
   ```
 - **Een gedeeld netwerkvolume mengt metingen van twee kaarten.** Twee pods, één
