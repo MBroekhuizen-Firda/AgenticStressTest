@@ -104,6 +104,8 @@ MOCK="${MOCK:-0}"
 FORCE=0
 SHUTDOWN_WHEN_DONE=0
 DEADMAN_HOURS=""
+# Where VRAM_GB came from; detect_gpu fills it in, preflight refuses a guess.
+VRAM_SOURCE=""
 # How long the pod may keep standing after a fatal error. A run that dies takes
 # its measurement with it but not the machine: the deadman armed at the start
 # of 'all' sits hours out, and until it fires the pod bills for doing nothing.
@@ -152,18 +154,48 @@ trap 'on_error $LINENO' ERR
 # question 3 ("zou 72 GB ook volstaan?") gets the wrong answer.
 # --------------------------------------------------------------------------
 
+# What nvidia-smi will not tell you on a MIG instance. `--query-gpu=memory.total`
+# answers "[N/A]" there, and `awk 'BEGIN{print m/1024}'` turns that into 0.0
+# without a word -- non-empty, so the 96.0 fallback at the end of detect_gpu
+# never gets its turn. torch does know: on a MIG instance it reports the slice,
+# which is exactly the pool vLLM gets to divide.
+gpu_memory_gb_from_torch() {
+  [ "$MOCK" = 1 ] && return 0
+  "$PY" -c 'import sys
+try:
+    import torch
+    total = torch.cuda.get_device_properties(0).total_memory
+except Exception:
+    sys.exit(1)
+print("%.1f" % (total / (1024 ** 3)))' 2>/dev/null || true
+}
+
 detect_gpu() {
   GPU_NAME="${GPU_NAME:-onbekend}"
   GPU_COUNT=1
+  # Where VRAM_GB came from, because the report hangs on it and a guess must
+  # not pass for a measurement. Set here, checked in preflight.
+  VRAM_SOURCE="aanname"
+  [ -n "${VRAM_GB:-}" ] && VRAM_SOURCE="opgegeven"
   if command -v nvidia-smi >/dev/null 2>&1; then
     local line
     line="$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits | head -1 || true)"
     if [ -n "$line" ]; then
       GPU_COUNT="$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l | tr -d ' ')"
       [ "${GPU_NAME}" = "onbekend" ] && GPU_NAME="$(echo "$line" | cut -d, -f1 | sed 's/^ *//;s/ *$//')"
-      local mib per_card
+      local mib per_card=""
       mib="$(echo "$line" | cut -d, -f2 | tr -d ' ')"
-      per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')"
+      # "[N/A]" on a MIG instance, and awk would silently make that a 0.
+      case "$mib" in
+        ""|*[!0-9.]*) : ;;
+        *) per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')" ;;
+      esac
+      if [ -z "$per_card" ] || awk -v p="${per_card:-0}" 'BEGIN{exit !(p <= 0)}'; then
+        per_card="$(gpu_memory_gb_from_torch)"
+        [ -n "$per_card" ] && [ "$VRAM_SOURCE" = "aanname" ] && VRAM_SOURCE="torch"
+      elif [ "$VRAM_SOURCE" = "aanname" ]; then
+        VRAM_SOURCE="nvidia-smi"
+      fi
       # With tensor parallelism the pool is the sum of the cards -- of the
       # cards that are there. TENSOR_PARALLEL is what was asked for, and
       # asking for more cards than the machine has (see check_tensor_parallel,
@@ -172,7 +204,9 @@ detect_gpu() {
       # the same factor.
       local cards="$TENSOR_PARALLEL"
       [ "$cards" -gt "$GPU_COUNT" ] && cards="$GPU_COUNT"
-      VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
+      if [ -n "$per_card" ]; then
+        VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
+      fi
 
       # Which RTX PRO 6000 you got matters: the Max-Q variant carries the same
       # 96 GB but runs at half the power budget, so it is a different
@@ -384,7 +418,17 @@ preflight() {
     || die "Python 3.9 of nieuwer nodig, gevonden: $("$PY" --version 2>&1)"
 
   detect_gpu
-  say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB | HF_HOME=$HF_HOME"
+  say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB (bron: $VRAM_SOURCE) | HF_HOME=$HF_HOME"
+  # Every gigabyte in the report is a KV percentage times this pool, and vraag 3
+  # ("zou 72 GB ook volstaan?") is nothing but this number. A guess produces a
+  # report that reads like a measurement: measured once on a 48 GB MIG slice
+  # that recorded 0.0 GB, and the conclusion said a class of twenty fits on
+  # every card in the table. So the pool is either known or the run stops here.
+  if [ "$VRAM_SOURCE" = "aanname" ]; then
+    [ "$FORCE" = 1 ] || die "het videogeheugen van deze kaart is niet vast te stellen. nvidia-smi geeft geen bruikbare memory.total (dat doet een MIG-instantie: '[N/A]') en torch kon het ook niet zeggen. Zonder dat getal is elke GB in het rapport een slag in de lucht en is vraag 3 -- past het ook op 72 GB? -- niet te beantwoorden. Geef het mee: VRAM_GB=48 scripts/pod.sh all. Of --force om met de aanname van ${VRAM_GB} GB te meten."
+    warn "pool onbekend, doorgaan met de aanname van ${VRAM_GB} GB vanwege --force"
+    warn "elke GB in het rapport staat of valt met dat getal; noteer het bij de uitkomst"
+  fi
   check_tensor_parallel
   check_driver_matches_torch
 }
@@ -1573,6 +1617,13 @@ cmd_all() {
     if [ -n "$dir" ]; then
       say "hervat in bestaande map $dir ($(describe_results_dir "$dir"))"
       say "  zet RESULTS_DIR= om ergens anders te beginnen"
+      # Asked here and not at the first group: a directory measured on another
+      # card cannot be measured into, and finding that out after vLLM is up
+      # costs a quarter of an hour of rent. A shared netwerkschijf makes this
+      # ordinary -- twee pods, one /workspace, one results/, and `all` resumes
+      # into whatever is there. The check is cheap: configuration only.
+      pending_ids rampup "$dir" >/dev/null \
+        || die "kan niet hervatten in $dir -- zie de melding hierboven. Begin ergens anders:  RESULTS_DIR=results/\$(date +%Y%m%d-%H%M%S)_matrix scripts/pod.sh all"
     else
       dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
     fi

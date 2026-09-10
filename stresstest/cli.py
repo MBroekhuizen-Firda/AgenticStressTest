@@ -561,18 +561,31 @@ def cmd_fingerprint(args: argparse.Namespace) -> int:
     cannot tell" and "yes" are not the same answer.
     """
     marks = []
+    cards = []
     for directory in args.directories:
         environment = fingerprint.environment_of(directory)
         mark = environment.get("fingerprint")
         digest = environment.get("fingerprint_digest") or (
             fingerprint.digest(mark) if mark else None)
         marks.append(digest)
-        print(f"{digest or 'onbekend'}\t{directory}")
+        card = fingerprint.card_of(environment.get("hardware"))
+        cards.append(card)
+        described = ", ".join(f"{k} {v}" for k, v in sorted(card.items())) or "kaart onbekend"
+        print(f"{digest or 'onbekend'}\t{directory}\t{described}")
     if not args.same:
         return 0
     if any(mark is None for mark in marks):
         print("minstens een map draagt geen vingerafdruk", file=sys.stderr)
         return 1
+    # The card is not part of the digest -- adding it would rename every
+    # measurement made before it was recorded -- so it is asked separately.
+    # Two cards are never one report, whatever the rest of the setup says.
+    for card in cards[1:]:
+        diffs = fingerprint.differences({"kaart": cards[0]}, {"kaart": card})
+        if diffs:
+            print("niet op dezelfde kaart gemeten: "
+                  + "; ".join(fingerprint.describe(diffs)), file=sys.stderr)
+            return 1
     return 0 if len(set(marks)) <= 1 else 1
 
 
@@ -589,12 +602,20 @@ def cmd_report(args: argparse.Namespace) -> int:
         more, other_config, _ = load_results(extra)
         if not more:
             raise SystemExit(f"geen runs gevonden in {extra}")
-        here = (config.get("hardware") or {}).get("gpu_name")
-        there = (other_config.get("hardware") or {}).get("gpu_name")
-        if here and there and here.split(" (")[0] != there.split(" (")[0]:
+        # The name alone does not tell two cards apart: a 48 GB MIG slice of an
+        # RTX PRO 6000 reports the same name as the whole 96 GB card. The
+        # memory does, and the memory is what every gigabyte in the report is
+        # computed from.
+        here = fingerprint.card_of(config.get("hardware"))
+        there = fingerprint.card_of(other_config.get("hardware"))
+        card_diffs = fingerprint.differences({"kaart": here}, {"kaart": there})
+        if card_diffs:
             raise SystemExit(
-                f"{extra} is gemeten op '{there}' en {args.directory} op '{here}'. "
-                f"Resultaten van twee kaarten horen niet in een rapport.")
+                f"{extra} en {args.directory} zijn niet op dezelfde kaart gemeten "
+                f"({'; '.join(fingerprint.describe(card_diffs))}, waarbij 'was' "
+                f"{args.directory} is). Resultaten van twee kaarten horen niet in "
+                f"een rapport: elke gigabyte erin is een KV-percentage maal de "
+                f"pool van die kaart.")
         known = {r.spec.run_id for r in results}
         added = [r for r in more if r.spec.run_id not in known]
         if len(added) < len(more):

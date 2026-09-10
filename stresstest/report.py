@@ -295,6 +295,31 @@ DEFAULT_HARDWARE: dict[str, Any] = {
 }
 
 
+# The three numbers every gigabyte in the report is computed from. None of them
+# can be zero or negative on a machine that ran a measurement.
+MEASURED_NUMBERS = ("vram_gb", "gpu_memory_utilization", "model_weights_gb")
+
+
+def usable(key: str, value: Any) -> bool:
+    """Whether a hardware value can be used as measured.
+
+    Absent is not the only way to have no number. `scripts/pod.sh` recorded a
+    vram_gb of 0.0 on a MIG instance, where nvidia-smi answers "[N/A]" for
+    memory.total -- present, so it overrode the default, and the whole GB half
+    of the report ran on a pool of zero: "past een klas van 20 op 0 GB", a peak
+    of 0.1 GB (the clamp in `analyse`) and every alternative card marked "ja".
+    Zero is treated as what it is: not known.
+    """
+    if value is None:
+        return False
+    if key in MEASURED_NUMBERS:
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
 def resolve_hardware(config: dict) -> dict[str, Any]:
     """Hardware description with defaults filled in.
 
@@ -305,7 +330,7 @@ def resolve_hardware(config: dict) -> dict[str, Any]:
     """
     hardware = dict(DEFAULT_HARDWARE)
     hardware.update({k: v for k, v in (config.get("hardware") or {}).items()
-                     if v is not None})
+                     if usable(k, v)})
     if not hardware.get("alternatives"):
         hardware["alternatives"] = DEFAULT_HARDWARE["alternatives"]
     return hardware
@@ -330,8 +355,8 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
         "gpu": hardware.get("gpu_name"),
         "hardware": hardware,
         "hardware_defaults_used": sorted(
-            key for key in ("vram_gb", "gpu_memory_utilization", "model_weights_gb")
-            if (config.get("hardware") or {}).get(key) is None),
+            key for key in MEASURED_NUMBERS
+            if not usable(key, (config.get("hardware") or {}).get(key))),
         "runs": len(results),
     }
 
