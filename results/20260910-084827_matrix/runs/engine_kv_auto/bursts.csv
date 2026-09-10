@@ -1,0 +1,12 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+engine_kv_auto,14,worstelaar,1,2.013,105.977,2,0,10639,0,0,warmup
+engine_kv_auto,5,afhaker,1,20.847,142.747,2,0,12112,0,0,measure
+engine_kv_auto,7,worstelaar,1,26.483,192.901,2,0,17743,0,0,measure
+engine_kv_auto,11,afhaker,1,36.306,281.522,2,0,13176,0,0,measure
+engine_kv_auto,9,gemiddelde,1,27.664,296.189,3,0,25997,0,0,measure
+engine_kv_auto,19,gemiddelde,1,22.769,376.176,4,0,32352,0,0,measure
+engine_kv_auto,8,gemiddelde,1,24.744,375.42,4,0,22550,0,0,measure
+engine_kv_auto,12,gemiddelde,1,4.427,409.751,3,0,36988,0,0,measure
+engine_kv_auto,13,worstelaar,1,0.361,417.437,3,0,21671,0,0,measure
+engine_kv_auto,2,doorpakker,1,14.03,419.529,4,0,42924,0,0,measure
+engine_kv_auto,18,gemiddelde,1,39.046,409.238,3,0,33533,0,0,measure

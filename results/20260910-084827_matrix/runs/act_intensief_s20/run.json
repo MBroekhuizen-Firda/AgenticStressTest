@@ -1,0 +1,395 @@
+{
+  "spec": {
+    "run_id": "act_intensief_s20",
+    "label": "20 studenten, activiteit intensief",
+    "kind": "activity",
+    "students": 20,
+    "context_tokens": 32000,
+    "activity": "intensief",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "activity"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-10T13:25:06Z",
+  "finished": "2026-09-10T13:32:01Z",
+  "composition": {
+    "gemiddelde": 9,
+    "doorpakker": 8,
+    "afhaker": 1,
+    "worstelaar": 2,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "fingerprint": {
+    "seed": 20250908,
+    "corpus": {
+      "groups": {
+        "unity": [
+          "unity-fpssample"
+        ],
+        "web": [
+          "django-realworld",
+          "laravel-realworld",
+          "react-realworld"
+        ]
+      },
+      "extensions": ".py,.js,.php,.md,.html",
+      "shared_skeleton_fraction": 0.4,
+      "shared_skeleton_files": null,
+      "local_path": null
+    },
+    "behaviour": {
+      "personas": {
+        "doorpakker": {
+          "share": 0.15,
+          "think_time_s": [
+            20,
+            60
+          ],
+          "steps_per_burst": [
+            8,
+            15
+          ],
+          "context_scale": [
+            0.8,
+            1.0
+          ],
+          "restart_probability": 0.02,
+          "idle_probability": 0.0
+        },
+        "gemiddelde": {
+          "share": 0.45,
+          "think_time_s": [
+            60,
+            180
+          ],
+          "steps_per_burst": [
+            3,
+            8
+          ],
+          "context_scale": [
+            0.45,
+            0.7
+          ],
+          "restart_probability": 0.05,
+          "idle_probability": 0.02
+        },
+        "worstelaar": {
+          "share": 0.25,
+          "think_time_s": [
+            120,
+            480
+          ],
+          "steps_per_burst": [
+            2,
+            4
+          ],
+          "context_scale": [
+            0.2,
+            0.4
+          ],
+          "restart_probability": 0.25,
+          "idle_probability": 0.05
+        },
+        "afhaker": {
+          "share": 0.15,
+          "think_time_s": [
+            300,
+            1200
+          ],
+          "steps_per_burst": [
+            1,
+            3
+          ],
+          "context_scale": [
+            0.12,
+            0.3
+          ],
+          "restart_probability": 0.15,
+          "idle_probability": 0.3
+        }
+      },
+      "work_profiles": {
+        "klein": {
+          "share": 0.5,
+          "group": "web",
+          "files_per_read": [
+            1,
+            1
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            4,
+            10
+          ],
+          "search_context_lines": 0,
+          "test_output_blocks": [
+            1,
+            1
+          ],
+          "output_tokens_tool": [
+            60,
+            260
+          ],
+          "output_tokens_final": [
+            220,
+            700
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "middel": {
+          "share": 0.3,
+          "group": "web",
+          "files_per_read": [
+            1,
+            3
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            8,
+            20
+          ],
+          "search_context_lines": 2,
+          "test_output_blocks": [
+            1,
+            3
+          ],
+          "output_tokens_tool": [
+            120,
+            500
+          ],
+          "output_tokens_final": [
+            400,
+            1200
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "doorspitten": {
+          "share": 0.2,
+          "group": "unity",
+          "files_per_read": [
+            2,
+            5
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            15,
+            40
+          ],
+          "search_context_lines": 3,
+          "test_output_blocks": [
+            2,
+            5
+          ],
+          "output_tokens_tool": [
+            250,
+            900
+          ],
+          "output_tokens_final": [
+            800,
+            2500
+          ],
+          "tool_mix": {
+            "read_file": 0.5,
+            "edit_file": 0.15,
+            "run_tests": 0.15,
+            "search_code": 0.2
+          }
+        }
+      },
+      "activity_levels": {
+        "rustig": {
+          "doorpakker": 0.05,
+          "gemiddelde": 0.3,
+          "worstelaar": 0.35,
+          "afhaker": 0.3
+        },
+        "normaal": {
+          "doorpakker": 0.15,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.25,
+          "afhaker": 0.15
+        },
+        "intensief": {
+          "doorpakker": 0.4,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.12,
+          "afhaker": 0.03
+        }
+      }
+    },
+    "tokenizer": {
+      "prefer_exact": true,
+      "chars_per_token": 4.65,
+      "path": "/workspace/.cache/huggingface//hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/dcaee4d4dfc5ee71ad501f01f530e5652438fde0"
+    },
+    "hardware": {
+      "attention_backend": "TRITON_ATTN",
+      "kv_cache_dtype": "fp8"
+    },
+    "corpus_files": {
+      "name": "web+unity",
+      "files": 559,
+      "per_group": {
+        "unity": 372,
+        "web": 187
+      }
+    },
+    "tokenizer_exact": true
+  },
+  "aggregate": {
+    "requests_total": 181,
+    "requests_ok": 181,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 34,
+    "ttft": {
+      "count": 181,
+      "mean": 0.6284066766541636,
+      "p50": 0.31911440566182137,
+      "p90": 1.612433522939682,
+      "p99": 3.145901973918076,
+      "max": 9.662631830200553
+    },
+    "burst_duration": {
+      "count": 34,
+      "mean": 122.93740534557797,
+      "p50": 90.48848044779152,
+      "p90": 299.96875914242116,
+      "p99": 380.5708544672281,
+      "max": 390.50856039114296
+    },
+    "decode_tps": {
+      "count": 181,
+      "mean": 18.555527050233692,
+      "p50": 18.189411988585853,
+      "p90": 22.775230663177396,
+      "p99": 28.891078354219665,
+      "max": 41.40977715870709
+    },
+    "request_total_s": {
+      "count": 181,
+      "mean": 18.17927395144879,
+      "p50": 11.816644091159105,
+      "p90": 35.33322809450328,
+      "p99": 95.9332677051423,
+      "max": 115.73678078316152
+    },
+    "output_tokens_total": 57920,
+    "prompt_tokens_total": 4106979,
+    "client_output_tokens_per_s": 193.06666666666666,
+    "requests_per_minute": 36.2,
+    "compactions": 6,
+    "restarts": 1,
+    "context_tokens_peak": 43373,
+    "compactions_per_burst": 0.17647058823529413,
+    "compactions_per_100_steps": 2.9850746268656714,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 113,
+        "ttft_p90": 1.056824019178748,
+        "burst_p90": 332.86560695804656,
+        "decode_tps_p50": 18.821471483740694
+      },
+      "gemiddelde": {
+        "requests": 60,
+        "ttft_p90": 2.1157549945637584,
+        "burst_p90": 216.21651689782738,
+        "decode_tps_p50": 17.14521434327063
+      },
+      "worstelaar": {
+        "requests": 8,
+        "ttft_p90": 0.8208471523597836,
+        "burst_p90": 120.2101498503238,
+        "decode_tps_p50": 19.370724153750245
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9402327256388061,
+    "prefix_cache_queries": 4237436.0,
+    "prefix_cache_hits": 3984176.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.7177036913568747,
+    "kv_cache_usage_peak": 0.9054054054054054,
+    "requests_running_avg": 11.315436241610739,
+    "requests_running_peak": 14.0,
+    "queue_depth_avg": 0.006711409395973154,
+    "queue_depth_peak": 1.0,
+    "server_prefill_tokens_per_s": 14004.243333333334,
+    "server_prompt_tokens": 4201273.0,
+    "server_decode_tokens_per_s": 225.62333333333333,
+    "server_generation_tokens": 67687.0
+  },
+  "grade": {
+    "colour": "rood",
+    "reasons": [
+      "p90 doorlooptijd instructie 300s"
+    ],
+    "warnings": [
+      "KV-cache piekte op 91% -- weinig marge",
+      "wachtrij piekte op 1 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "rood",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "94%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="790" height="416" viewBox="0 0 790 416" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<rect width="790" height="416" fill="#ffffff"/>
+<text x="395" y="28" text-anchor="middle" font-size="17" font-weight="600" fill="#1a202c">Stresstestmatrix: studenten tegen contextgrootte</text>
+<text x="395" y="48" text-anchor="middle" font-size="12" fill="#4a5568">groen = bruikbaar, oranje = merkbaar traag, rood = onbruikbaar</text>
+<text x="225" y="68" text-anchor="middle" font-size="13" fill="#2d3748">8k context</text>
+<text x="375" y="68" text-anchor="middle" font-size="13" fill="#2d3748">32k context</text>
+<text x="525" y="68" text-anchor="middle" font-size="13" fill="#2d3748">64k context</text>
+<text x="675" y="68" text-anchor="middle" font-size="13" fill="#2d3748">100k context</text>
+<text x="136" y="114" text-anchor="end" font-size="13" fill="#2d3748">5 studenten</text>
+<rect x="150" y="78" width="146" height="58" rx="4" fill="#38a169"/>
+<text x="223" y="104" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="223" y="120" text-anchor="middle" font-size="12" fill="#ffffff">instructie 63s</text>
+<rect x="300" y="78" width="146" height="58" rx="4" fill="#38a169"/>
+<text x="373" y="104" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="373" y="120" text-anchor="middle" font-size="12" fill="#ffffff">instructie 69s</text>
+<rect x="450" y="78" width="146" height="58" rx="4" fill="#38a169"/>
+<text x="523" y="104" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="523" y="120" text-anchor="middle" font-size="12" fill="#ffffff">instructie 73s</text>
+<rect x="600" y="78" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="673" y="104" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="673" y="120" text-anchor="middle" font-size="12" fill="#ffffff">instructie 95s</text>
+<text x="136" y="176" text-anchor="end" font-size="13" fill="#2d3748">10 studenten</text>
+<rect x="150" y="140" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="223" y="166" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="223" y="182" text-anchor="middle" font-size="12" fill="#ffffff">instructie 111s</text>
+<rect x="300" y="140" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="373" y="166" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 2s</text>
+<text x="373" y="182" text-anchor="middle" font-size="12" fill="#ffffff">instructie 109s</text>
+<rect x="450" y="140" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="523" y="166" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="523" y="182" text-anchor="middle" font-size="12" fill="#ffffff">instructie 158s</text>
+<rect x="600" y="140" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="673" y="166" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 6s</text>
+<text x="673" y="182" text-anchor="middle" font-size="12" fill="#ffffff">instructie 249s</text>
+<text x="136" y="238" text-anchor="end" font-size="13" fill="#2d3748">20 studenten</text>
+<rect x="150" y="202" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="223" y="228" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="223" y="244" text-anchor="middle" font-size="12" fill="#ffffff">instructie 122s</text>
+<rect x="300" y="202" width="146" height="58" rx="4" fill="#dd6b20"/>
+<text x="373" y="228" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="373" y="244" text-anchor="middle" font-size="12" fill="#ffffff">instructie 172s</text>
+<rect x="450" y="202" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="523" y="228" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 4s</text>
+<text x="523" y="244" text-anchor="middle" font-size="12" fill="#ffffff">instructie 246s</text>
+<rect x="600" y="202" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="673" y="228" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 115s</text>
+<text x="673" y="244" text-anchor="middle" font-size="12" fill="#ffffff">instructie 417s</text>
+<text x="136" y="300" text-anchor="end" font-size="13" fill="#2d3748">30 studenten</text>
+<rect x="150" y="264" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="223" y="290" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="223" y="306" text-anchor="middle" font-size="12" fill="#ffffff">instructie 186s</text>
+<rect x="300" y="264" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="373" y="290" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 1s</text>
+<text x="373" y="306" text-anchor="middle" font-size="12" fill="#ffffff">instructie 269s</text>
+<rect x="450" y="264" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="523" y="290" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 74s</text>
+<text x="523" y="306" text-anchor="middle" font-size="12" fill="#ffffff">instructie 425s</text>
+<rect x="600" y="264" width="146" height="58" rx="4" fill="#c53030"/>
+<text x="673" y="290" text-anchor="middle" font-size="12" fill="#ffffff">TTFT p90 206s</text>
+<text x="673" y="306" text-anchor="middle" font-size="12" fill="#ffffff">instructie 397s</text>
+<rect x="150" y="364" width="14" height="14" rx="3" fill="#38a169"/>
+<text x="170" y="376" font-size="12" fill="#2d3748">groen</text>
+<rect x="280" y="364" width="14" height="14" rx="3" fill="#dd6b20"/>
+<text x="300" y="376" font-size="12" fill="#2d3748">oranje</text>
+<rect x="410" y="364" width="14" height="14" rx="3" fill="#c53030"/>
+<text x="430" y="376" font-size="12" fill="#2d3748">rood</text>
+<rect x="540" y="364" width="14" height="14" rx="3" fill="#a0aec0"/>
+<text x="560" y="376" font-size="12" fill="#2d3748">niet gemeten</text>
+</svg>
