@@ -1689,8 +1689,10 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
             self.skipTest("no bash available")
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.trace = os.path.join(self.tmp, "trace")
+        open(self.trace, "w", encoding="utf-8").close()
 
-    def _push(self, latest: str = "", lesson: str = "", *args: str):
+    def _push(self, latest: str = "", lesson: str = "", *args: str, report_fails: bool = False):
         program = "\n".join([
             "set -Eeuo pipefail",
             'say() { echo "[say] $*" >&2; }',
@@ -1698,7 +1700,11 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
             'die() { echo "[die] $*" >&2; exit 1; }',
             "detect_gpu() { GPU_NAME=test; }",
             'describe_results_dir() { echo "3 runs"; }',
-            'push_results() { echo "[push] $*" >&2; }',
+            'push_results() { echo "[push] $*" >&2; echo "push $*" >> "$TRACE"; }',
+            ('stresstestreport() { echo "report $*" >> "$TRACE"; return 1; }' if report_fails
+             else 'stresstestreport() { echo "report $*" >> "$TRACE"; }'),
+            "PY=stresstestreport",
+            f'TRACE="{self.trace}"',
             f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
             f'STATE_DIR="{self.tmp}"',
             function_body("cmd_push"),
@@ -1731,6 +1737,29 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
         done = self._push("", "", "results/een", "results/twee")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("[push] results/een results/twee", done.stderr)
+
+    def trace_lines(self) -> list[str]:
+        with open(self.trace, encoding="utf-8") as handle:
+            return [line.strip() for line in handle if line.strip()]
+
+    def test_the_summary_is_rebuilt_before_it_is_pushed(self):
+        """summary.csv and summary.json are written from the memory of the
+        measuring session. A run that is interrupted pushes a summary of the
+        group it happened to be in -- the first rescue push carried 1 of 37
+        runs. Rebuilding from runs/*/run.json needs no GPU."""
+        done = self._push("", "", self.tmp)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.trace_lines(),
+                         [f"report -m stresstest report {self.tmp}", f"push {self.tmp}"],
+                         "the summary has to be rebuilt, and before it is pushed")
+
+    def test_a_summary_that_cannot_be_rebuilt_does_not_cost_the_data(self):
+        """Whatever is wrong with the report, the runs are what must not stay
+        behind on a rented disk."""
+        done = self._push("", "", self.tmp, report_fails=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn(f"push {self.tmp}", self.trace_lines())
 
     def test_nothing_to_push_says_so_instead_of_pushing_nothing(self):
         done = self._push(latest="")

@@ -1270,6 +1270,19 @@ cmd_push() {
       say "$lesson: lesvalidatie, gaat mee"
     fi
   fi
+  # An interrupted run leaves summary.csv and summary.json describing only the
+  # group that was running: they are written from the memory of the measuring
+  # session, and this command exists for runs that did not get that far. The
+  # first push out of a stopped pod carried one of 37 runs in summary.csv --
+  # the file the report points at for "de onderliggende getallen". Rebuilding
+  # from runs/*/run.json costs seconds and no GPU.
+  local d
+  for d in "${dirs[@]}"; do
+    [ -d "$d" ] || continue
+    say "conclusie en samenvatting bijwerken: $d"
+    "$PY" -m stresstest report "$d" >/dev/null 2>&1 \
+      || warn "$d: bijwerken mislukt; de runs zelf worden wel gepusht"
+  done
   detect_gpu
   push_results "${dirs[@]}" || die "pushen mislukt -- zie hierboven. De meting staat nog wel op deze pod."
 }
