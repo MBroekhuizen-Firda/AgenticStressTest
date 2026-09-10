@@ -923,6 +923,19 @@ cmd_log() {
 cmd_doctor() { harness_sets; "$PY" -m stresstest doctor "${SETS[@]}"; }
 cmd_plan()   { harness_sets; "$PY" -m stresstest plan "${SETS[@]}" "$@"; }
 
+# Watching a server that a real class is loading, instead of making the load
+# ourselves. Deliberately does not touch vLLM: it must be safe to start, stop
+# and restart while twenty students are working.
+cmd_monitor() {
+  detect_gpu
+  harness_sets
+  local dir="${1:-}"
+  [ -n "$dir" ] || dir="results/$(date +%Y%m%d-%H%M%S)_monitor"
+  shift 2>/dev/null || true
+  say "meet de draaiende server; Ctrl-C stopt en schrijft de samenvatting"
+  "$PY" -m stresstest monitor --out "$dir" "${SETS[@]}" "$@"
+}
+
 cmd_report() {
   local dir="${1:-}"
   [ -n "$dir" ] || dir="$(latest_matrix_dir)"
@@ -1277,6 +1290,8 @@ Commando's
   group <naam>       een losse groep: rampup, sweep, scenarios, shared,
                      activity, engine
   lesson             alleen fase 2
+  monitor [map]      een draaiende server meten zonder zelf belasting te
+                     maken: voor een echte les via OpenCode. Ctrl-C stopt
   report [map]       grafieken en conclusie opnieuw maken (geen GPU nodig)
   deadman <uren>     doodsklok zetten: stop de pod automatisch
   disarm             doodsklok afzetten
@@ -1310,6 +1325,7 @@ Omgevingsvariabelen
 
 Voorbeelden
   scripts/pod.sh all --deadman auto
+  scripts/pod.sh monitor --label "les 3H woensdag"      # meten tijdens een echte les
   TENSOR_PARALLEL=2 VRAM_GB=64 scripts/pod.sh all      # twee RTX 5090's
   MODEL=Qwen/Qwen2.5-Coder-7B-Instruct MAX_MODEL_LEN=32768 \
     VRAM_GB=24 scripts/pod.sh all --skip-engine         # goedkoop uitproberen
@@ -1394,6 +1410,7 @@ main() {
                 if [ "$1" = engine ]; then run_engine_group "$dir"; else run_group "$1" "$dir"; fi
                 say "resultaten in $dir (conclusie bijwerken: scripts/pod.sh report $dir)" ;;
     lesson)     cmd_lesson >/dev/null ;;
+    monitor)    cmd_monitor "$@" ;;
     report)     cmd_report "${1:-}" ;;
     deadman)    [ $# -ge 1 ] || die "hoeveel uur?"; mkdir -p "$STATE_DIR"; arm_deadman "$1" ;;
     disarm)     disarm_deadman ;;

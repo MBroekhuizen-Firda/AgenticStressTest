@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from .client import http_get_text
 from .util import log, now, wall
@@ -95,10 +95,16 @@ class MetricsSampler:
     """Polls ``/metrics`` on a fixed interval for the length of a run."""
 
     def __init__(self, url: str | None, interval_s: float = 2.0,
-                 verify_tls: bool = True) -> None:
+                 verify_tls: bool = True,
+                 on_sample: Callable[[MetricSample], None] | None = None) -> None:
         self.url = url
         self.interval_s = interval_s
         self.verify_tls = verify_tls
+        # Called for every sample as it arrives. A run keeps everything in
+        # memory and writes at the end, which is fine for a run that finishes.
+        # A live lesson is watched for hours and may be killed at any moment,
+        # so `monitor` uses this to put each sample on disk immediately.
+        self.on_sample = on_sample
         self.samples: list[MetricSample] = []
         self.available = False
         self.error: str | None = None
@@ -139,6 +145,13 @@ class MetricsSampler:
             sample = await self._sample_once()
             if sample is not None:
                 self.samples.append(sample)
+                if self.on_sample is not None:
+                    # A failing sink must never take the sampler down with it:
+                    # losing one row beats losing the rest of the measurement.
+                    try:
+                        self.on_sample(sample)
+                    except Exception as exc:  # noqa: BLE001
+                        log(f"metrics: kon monster niet wegschrijven: {exc}", color="amber")
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
             except asyncio.TimeoutError:

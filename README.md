@@ -814,6 +814,47 @@ De kaart moet in beide mappen dezelfde zijn; anders weigert het commando, want
 een rapport dat stilletjes twee kaarten mengt is slechter dan twee rapporten
 die er ieder de helft van dekken.
 
+### Een echte les meten in plaats van een gesimuleerde
+
+Alle commando's hierboven *maken* de belasting die ze meten. `monitor` doet dat
+niet: hij kijkt naar een vLLM waar een echte klas op werkt — via OpenCode of wat
+dan ook — en schrijft dezelfde `server_metrics.csv` die een run schrijft. Daarmee
+kun je een echt lesuur op dezelfde assen leggen als `les_90min`.
+
+```bash
+# op de pod, terwijl de klas werkt
+scripts/pod.sh monitor --label "les 3H woensdag"
+
+# of los, tegen een endpoint ergens anders
+python3 -m stresstest monitor --url http://127.0.0.1:8000/metrics \
+  --label "les 3H woensdag" --interval 2
+```
+
+Elke dertig seconden komt er een statusregel; Ctrl-C stopt de meting en schrijft
+de samenvatting. Het resultaat is een map met twee bestanden:
+
+```
+results/20260916-084500_monitor/
+├── server_metrics.csv     de tijdreeks: KV-bezetting, wachtrij, hit rate
+└── monitor.json           de samenvatting plus de hardware waartegen gemeten is
+```
+
+Drie dingen om te weten:
+
+- **Elk monster gaat meteen naar schijf.** Wordt de pod gestopt, valt de
+  SSH-sessie weg of gaat er een `kill -9` overheen, dan verlies je de laatste
+  twee seconden en niets meer. Alleen `monitor.json` mist dan, want die wordt
+  aan het eind geschreven.
+- **Hij raakt vLLM niet aan.** Starten, stoppen en opnieuw starten mag terwijl
+  twintig studenten aan het werk zijn.
+- **Wat hij niet kan is toerekenen per student.** `/metrics` is serverbreed.
+  Wil je weten wie wat vroeg, dan moet daar een proxy met een sleutel per
+  student voor tussen.
+
+De kolommen zijn een superset van wat een run wegschrijft: metrieken die deze
+vLLM niet aanbiedt blijven leeg, zodat de kolomlijst niet afhangt van wat het
+eerste monster toevallig bevatte.
+
 ---
 
 ## 6. De resultaten lezen
