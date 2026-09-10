@@ -192,6 +192,57 @@ detect_gpu() {
   VRAM_GB="${VRAM_GB:-96.0}"
 }
 
+# torch and the driver have to agree about CUDA, and an image does not
+# guarantee that they do. A torch built against CUDA 13 needs a 580 driver; a
+# pod with 570.144 offers CUDA 12.8, and every worker then dies in
+# torch._C._cuda_init() with "The NVIDIA driver on your system is too old
+# (found version 12080)". vLLM reports that as a background process that went
+# away -- fifteen minutes in, with the model loaded, wrapped in a traceback
+# about worker start-up that names neither torch nor the driver.
+#
+# Asking torch the same question costs a second and answers it in the
+# operator's words. Skipped in silence when torch is not there yet: on a clean
+# pod this runs before vLLM is installed, and cmd_setup asks again afterwards.
+check_driver_matches_torch() {
+  [ "$MOCK" = 1 ] && return 0
+  local probe status=0
+  probe="$("$PY" -c 'import sys
+try:
+    import torch
+except Exception:
+    sys.exit(3)
+built = torch.version.cuda or "onbekend"
+try:
+    torch.cuda.init()
+except Exception as exc:
+    sys.exit("%s|%s" % (built, str(exc).replace("\n", " ")))
+print("%s|ok" % built)' 2>&1)" || status=$?
+  [ "$status" = 3 ] && return 0
+  local built="${probe%%|*}" reason="${probe#*|}"
+  if [ "$status" = 0 ]; then
+    say "torch praat met de kaart (torch is gebouwd tegen CUDA $built)"
+    return 0
+  fi
+  case "$reason" in
+    *"too old"*|*"insufficient"*)
+      die "de driver op deze pod is te oud voor de torch in deze image. torch is gebouwd tegen CUDA $built en de driver hier levert CUDA $(driver_cuda_version); torch zegt: $reason. Dit is niet op te lossen met vlaggen -- elke vLLM-worker sterft in torch._C._cuda_init(), en met --tensor-parallel-size ziet dat eruit als een worker die omvalt. Twee uitwegen: een image met een torch die bij deze driver past (cu128 bij een 570-driver), of een pod met een nieuwere driver (580+ voor CUDA 13). /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
+      ;;
+    *)
+      warn "torch kan de kaart hier niet openen: $reason"
+      warn "vLLM zal dat ook niet kunnen; dit gaat vrijwel zeker mis bij het opstarten."
+      ;;
+  esac
+}
+
+# What CUDA the driver offers, as nvidia-smi reports it ("CUDA Version: 12.8"),
+# or "onbekend". This is the number torch compares against, not the driver
+# version itself -- 570.144 and CUDA 12.8 are the same fact said twice.
+driver_cuda_version() {
+  local found=""
+  found="$(nvidia-smi 2>/dev/null | sed -n 's/.*CUDA Version: *\([0-9.]*\).*/\1/p' | head -1 || true)"
+  printf '%s' "${found:-onbekend}"
+}
+
 # How much shared memory this container has, in megabytes, or empty when the
 # question cannot be answered here. vLLM's workers talk to each other over
 # /dev/shm, and a container started without --shm-size gets 64 MB.
@@ -328,6 +379,7 @@ preflight() {
   detect_gpu
   say "kaart: $GPU_NAME x$GPU_COUNT | pool voor het harnas: ${VRAM_GB} GB | HF_HOME=$HF_HOME"
   check_tensor_parallel
+  check_driver_matches_torch
 }
 
 # --------------------------------------------------------------------------
@@ -441,6 +493,8 @@ fetch_corpus() {
 cmd_setup() {
   preflight
   ensure_vllm
+  # Again: on a clean pod the check above ran before torch existed.
+  check_driver_matches_torch
   ensure_python_deps
   download_model
   fetch_corpus
@@ -556,6 +610,12 @@ WORKER_LOG_PATTERNS='^\([^)]*[Ww]orker[^)]*\)'
 # The API server saying exactly that, and nothing more useful than that.
 WORKER_FAILURE_PATTERNS='WorkerProc initialization failed|exception in a background process|Failed core proc'
 
+# torch refusing to talk to the driver. This one has to be looked for before
+# anything else that a multi-card start can die of: it presents as a worker
+# that went away, and a diagnosis about /dev/shm or NCCL would send the
+# operator after a machine that is fine.
+DRIVER_TOO_OLD_PATTERNS='NVIDIA driver on your system is too old|CUDA driver version is insufficient|no kernel image is available for execution'
+
 # NCCL failing, as opposed to NCCL saying something. Deliberately the error
 # names and not a bare "P2P": vLLM logs "custom allreduce is disabled because
 # your platform lacks GPU P2P capability" on a perfectly healthy start, and
@@ -643,6 +703,11 @@ die_server_start() {
     die "huggingface.co blijft vLLM met 429 (te veel verzoeken) afwijzen. Dit is geen geheugen- of kernelprobleem: vLLM vraagt bij elke start de bestandslijst op bij de Hub, ook als het model al op schijf staat, en die limiet per IP-adres deel je met alle andere containers op deze machine. Uitwegen: haal het model eerst compleet binnen ('scripts/pod.sh setup'), want dan dient dit script de map zelf aan vLLM aan in plaats van de repo-naam; of zet HF_HUB_OFFLINE=1; of zet een HF_TOKEN in de omgeving en probeer het over een kwartier opnieuw."
   fi
   if [ "$status" = 2 ]; then
+    # Before the rest: this dies in every worker, at CUDA initialisation, and
+    # so wears the clothes of whatever executor was starting them.
+    if grep -qE "$DRIVER_TOO_OLD_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      die "torch kan de kaart niet openen: de driver op deze pod is te oud voor de torch in deze image (zie hierboven, 'The NVIDIA driver on your system is too old'). De driver hier levert CUDA $(driver_cuda_version). Geen vlag helpt hiertegen -- ook TENSOR_PARALLEL=1 niet, het is alleen minder zichtbaar. Uitwegen: een image met een torch die bij deze driver past (cu128 bij een 570-driver), of een pod met een nieuwere driver (580+ voor CUDA 13). /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
+    fi
     if grep -qE 'unrecognized arguments:.*--attention-backend' "$SERVER_LOG" 2>/dev/null; then
       die "deze vLLM kent --attention-backend niet (een oudere vLLM dan de 0.28 waar dit script op is afgestemd), en zonder die vlag is er geen weg om FlashInfer heen. Werk vLLM bij, of kies een image met een recente vLLM en een CUDA-toolkit van 12.9 of nieuwer."
     fi

@@ -585,7 +585,8 @@ class StartServerHarness(unittest.TestCase):
         text = script_text()
         bodies = []
         for name in ("model_dir", "model_size_gb", "model_is_complete",
-                     "model_snapshot_dir", "shm_size_mb", "log_suspects",
+                     "model_snapshot_dir", "shm_size_mb", "driver_cuda_version",
+                     "log_suspects",
                      "worker_lines", "show_server_error",
                      "die_server_start", "start_server"):
             found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
@@ -1052,6 +1053,125 @@ class TestCardsThatCannotReachEachOther(StartServerHarness):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(len(self.starts(done)), 1, done.stderr)
         self.assertIn("[ok] NCCL_P2P_OFF=0", done.stdout)
+
+
+# What an image whose torch is built against CUDA 13 does on a pod with a
+# 570 driver: every worker dies at CUDA initialisation, and vLLM reports that
+# as a background process that went away. The real line is in the worker's own
+# output, and it names neither vLLM nor the flag that was used.
+DRIVER_TOO_OLD = """
+cat <<'VLLMEOF'
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944] WorkerProc failed to start.
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944]   File "/dist-packages/vllm/v1/worker/gpu_worker.py", line 412, in init_device
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944]     torch._C._cuda_init()
+(Worker pid=1455) ERROR 09-10 08:13:53 [multiproc_executor.py:944] RuntimeError: The NVIDIA driver on your system is too old (found version 12080). Please update your GPU driver.
+(EngineCore pid=1281) ERROR 09-10 08:13:54 [core.py:1374] Exception: WorkerProc initialization failed due to an exception in a background process.
+(APIServer pid=1000) RuntimeError: Engine core initialization failed. Failed core proc(s): {}
+VLLMEOF
+exit 1
+"""
+
+
+class TestATorchThatCannotOpenTheCard(StartServerHarness):
+    """The measurement of 10 September: two 5090s, driver 570.144, an image
+    whose torch wants CUDA 13. Every worker died in torch._C._cuda_init(), and
+    because --tensor-parallel-size was 2 the failure arrived dressed as a
+    worker that went away -- a machine problem, apparently, on a machine that
+    was fine. No flag helps against this one, so nothing may be retried and
+    nothing may be blamed on /dev/shm or on NCCL."""
+
+    def test_the_driver_is_named_and_not_the_shared_memory(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn("driver", done.stderr)
+        self.assertIn("torch", done.stderr)
+        self.assertNotIn("shm-size", done.stderr)
+        self.assertNotIn("NCCL_P2P_DISABLE", done.stderr)
+
+    def test_nothing_is_retried_because_nothing_would_help(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertEqual(len(self.starts(done)), 1, done.stderr)
+
+    def test_it_does_not_read_as_a_kv_cache_problem_either(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=1)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertNotIn("verlaag --max-model-len", done.stderr)
+        self.assertIn("ook TENSOR_PARALLEL=1 niet", done.stderr,
+                      "a single card hides this failure, it does not fix it")
+
+    def test_the_worker_line_reaches_the_operator(self):
+        done = self._drive_start_server(fake_vllm(DRIVER_TOO_OLD), attempts=3,
+                                        tensor_parallel=2)
+        self.assertIn("The NVIDIA driver on your system is too old", done.stderr)
+
+
+class TestTorchIsAskedBeforeTheModelIsDownloaded(unittest.TestCase):
+    """Fifteen minutes of loading to find out that torch and the driver do not
+    agree about CUDA is fifteen minutes of rent. torch answers the same
+    question in a second, before anything has been fetched or started."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _probe(self, answer: str, status: int) -> subprocess.CompletedProcess:
+        py = os.path.join(self.tmp, "fake-python")
+        with open(py, "w", encoding="utf-8") as handle:
+            handle.write("#!/usr/bin/env bash\n"
+                         f"printf '%s' {shell_quote(answer)}\n"
+                         f"exit {status}\n")
+        os.chmod(py, os.stat(py).st_mode | stat.S_IEXEC)
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            f'MOCK=0; PY="{py}"',
+            function_body("driver_cuda_version"),
+            function_body("check_driver_matches_torch"),
+            "check_driver_matches_torch",
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_a_driver_that_is_too_old_stops_the_run_there(self):
+        done = self._probe("13.0|The NVIDIA driver on your system is too old "
+                           "(found version 12080).", status=1)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("CUDA 13.0", done.stderr)
+        self.assertIn("cu128", done.stderr, "the way out belongs in the message")
+        self.assertNotIn("reached-the-end", done.stdout)
+
+    def test_a_healthy_pod_says_so_and_carries_on(self):
+        done = self._probe("12.8|ok", status=0)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertIn("CUDA 12.8", done.stderr)
+
+    def test_a_pod_without_torch_yet_is_not_an_error(self):
+        """preflight runs before vLLM is installed on a clean pod; cmd_setup
+        asks again once it is."""
+        done = self._probe("", status=3)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertNotIn("[warn]", done.stderr)
+
+    def test_any_other_refusal_warns_instead_of_guessing(self):
+        done = self._probe("12.8|CUDA unknown error", status=1)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("CUDA unknown error", done.stderr)
+
+    def test_the_probe_runs_in_preflight_and_after_the_install(self):
+        self.assertIn("check_driver_matches_torch", function_body("preflight"))
+        self.assertIn("check_driver_matches_torch", function_body("cmd_setup"))
 
 
 class TestPushingResults(unittest.TestCase):

@@ -162,7 +162,34 @@ verkeerde deel zien.
 grep -n '^(VllmWorker' /workspace/.stresstest/vllm.log | tail -30
 ```
 
-Drie oorzaken, in volgorde van hoe vaak ze het zijn:
+Vier oorzaken. De eerste is de enige die niets met de opstelling te maken
+heeft en tegelijk de enige waar geen vlag tegen helpt, dus begin daar:
+
+0. **De driver is te oud voor de torch in de image.** In de regels van de
+   worker staat dan:
+
+   ```
+   File ".../vllm/v1/worker/gpu_worker.py", line 412, in init_device
+       torch._C._cuda_init()
+   RuntimeError: The NVIDIA driver on your system is too old (found version 12080).
+   ```
+
+   `12080` is CUDA 12.8, wat een 570-driver levert. De torch in de image is
+   dan gebouwd tegen CUDA 13, en die wil 580 of nieuwer. Dit gaat *niet* over
+   tensor parallelism: elke worker sterft bij het openen van de kaart, ook met
+   `TENSOR_PARALLEL=1` — daar is het alleen minder zichtbaar, omdat er dan één
+   proces omvalt in plaats van twee.
+
+   Verwarrend is dat `nvidia-smi` er tevreden uitziet en de kaarten gewoon in
+   het log staan. De driver is nieuw genoeg voor de *kaart* (570+ voor
+   Blackwell) en te oud voor de *image*. Twee getallen die allebei kloppen.
+
+   **Oplossing:** een image met een torch die bij de driver past (`cu128` bij
+   een 570-driver), of een pod met een driver van 580 of nieuwer.
+   `/workspace` blijft staan, dus het model hoeft niet opnieuw gedownload.
+   `scripts/pod.sh` vraagt dit nu vóór de download aan torch zelf
+   (`torch.cuda.init()`, kost een seconde) en stopt daar, in plaats van een
+   kwartier later in een worker.
 
 1. **Te weinig gedeeld geheugen.** De workers praten met elkaar over
    `/dev/shm`, en een container die zonder `--shm-size` is gestart krijgt
@@ -184,9 +211,10 @@ Drie oorzaken, in volgorde van hoe vaak ze het zijn:
    zichtbare kaart. Kijk wat `nvidia-smi -L` zegt en of
    `CUDA_VISIBLE_DEVICES` de rest wegfiltert.
 
-`scripts/pod.sh` vangt alle drie af. Het derde geval wordt vóór de meting
-geweigerd (`--force` gaat er langs), een te kleine `/dev/shm` levert een
-waarschuwing op voordat het model geladen wordt, en noemt het log NCCL, dan
+`scripts/pod.sh` vangt alle vier af. Het nulde en het derde geval worden vóór
+de meting geweigerd (bij het derde gaat `--force` er langs), een te kleine
+`/dev/shm` levert een waarschuwing op voordat het model geladen wordt, en
+noemt het log NCCL, dan
 start het script één keer opnieuw met `NCCL_P2P_DISABLE=1` en zegt erbij dat
 dat de getallen raakt. Komt de server ook dan niet omhoog, dan zet het de
 regels van de workers zelf onder de foutmelding — de regels waar de oorzaak
