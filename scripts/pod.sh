@@ -155,7 +155,9 @@ trap 'on_error $LINENO' ERR
 # --------------------------------------------------------------------------
 
 # What nvidia-smi will not tell you on a MIG instance. `--query-gpu=memory.total`
-# answers "[N/A]" there, and `awk 'BEGIN{print m/1024}'` turns that into 0.0
+# answers "[N/A]" there -- and "[Insufficient Permissions]" in a container that
+# was handed the MIG device but not the whole card, which is how RunPod rents
+# one out. `awk 'BEGIN{print m/1024}'` turns either of those into 0.0
 # without a word -- non-empty, so the 96.0 fallback at the end of detect_gpu
 # never gets its turn. torch does know: on a MIG instance it reports the slice,
 # which is exactly the pool vLLM gets to divide.
@@ -185,7 +187,9 @@ detect_gpu() {
       [ "${GPU_NAME}" = "onbekend" ] && GPU_NAME="$(echo "$line" | cut -d, -f1 | sed 's/^ *//;s/ *$//')"
       local mib per_card=""
       mib="$(echo "$line" | cut -d, -f2 | tr -d ' ')"
-      # "[N/A]" on a MIG instance, and awk would silently make that a 0.
+      # "[N/A]" on a MIG instance, "[Insufficient Permissions]" in a container
+      # that only got the slice. Both would become a silent 0 in awk, so
+      # anything that is not a plain number is treated as no answer.
       case "$mib" in
         ""|*[!0-9.]*) : ;;
         *) per_card="$(awk -v m="$mib" 'BEGIN{printf "%.1f", m/1024}')" ;;
@@ -425,7 +429,7 @@ preflight() {
   # that recorded 0.0 GB, and the conclusion said a class of twenty fits on
   # every card in the table. So the pool is either known or the run stops here.
   if [ "$VRAM_SOURCE" = "aanname" ]; then
-    [ "$FORCE" = 1 ] || die "het videogeheugen van deze kaart is niet vast te stellen. nvidia-smi geeft geen bruikbare memory.total (dat doet een MIG-instantie: '[N/A]') en torch kon het ook niet zeggen. Zonder dat getal is elke GB in het rapport een slag in de lucht en is vraag 3 -- past het ook op 72 GB? -- niet te beantwoorden. Geef het mee: VRAM_GB=48 scripts/pod.sh all. Of --force om met de aanname van ${VRAM_GB} GB te meten."
+    [ "$FORCE" = 1 ] || die "het videogeheugen van deze kaart is niet vast te stellen. nvidia-smi geeft geen bruikbare memory.total (een MIG-instantie antwoordt '[N/A]', een container die alleen de plak kreeg '[Insufficient Permissions]') en torch kon het ook niet zeggen. Zonder dat getal is elke GB in het rapport een slag in de lucht en is vraag 3 -- past het ook op 72 GB? -- niet te beantwoorden. Geef het mee: VRAM_GB=48 scripts/pod.sh all. Of --force om met de aanname van ${VRAM_GB} GB te meten."
     warn "pool onbekend, doorgaan met de aanname van ${VRAM_GB} GB vanwege --force"
     warn "elke GB in het rapport staat of valt met dat getal; noteer het bij de uitkomst"
   fi

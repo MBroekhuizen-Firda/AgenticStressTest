@@ -1822,6 +1822,14 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("VRAM_GB=47.5 SOURCE=torch", done.stdout)
 
+    def test_a_container_that_may_not_ask_is_the_same_case(self):
+        """What a RunPod container holding one MIG slice actually answers:
+        not "[N/A]" but "[Insufficient Permissions]". Anything that is not a
+        plain number is no answer."""
+        done = self._detect("[Insufficient Permissions]", torch_gb="47.4")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=47.4 SOURCE=torch", done.stdout)
+
     def test_a_mig_slice_without_torch_is_marked_as_a_guess(self):
         """The number it falls back on is the one from the budget request. It
         may not pass for something the machine said."""
