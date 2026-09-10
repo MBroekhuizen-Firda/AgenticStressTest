@@ -745,11 +745,14 @@ figcaption {
     </p>
     <p>
       Die decodesnelheid is het scharnier. Bij één verzoek op de server haalt een
-      stream 116&nbsp;tok/s, bij acht nog 40,7 en bij elf 33,3. De server levert
-      daarbij méér tokens per seconde naarmate er meer streams zijn &mdash; in totaal
-      256&nbsp;tok/s over het hele lesuur &mdash; maar dat is één taart die in meer
-      punten wordt gesneden. Tijdens dit lesuur liepen er 67&nbsp;% van de tijd vijf
-      of meer verzoeken tegelijk, en 39&nbsp;% van de tijd acht of meer.
+      stream 116&nbsp;tok/s, bij acht nog 40,7 en bij elf 33,3. De kaart als geheel
+      raakt daarbij niet verzadigd &mdash; over de sweep op 32k loopt de totale
+      decodedoorvoer door van 84&nbsp;tok/s bij vijf studenten naar 360 bij dertig
+      &mdash; maar hij schaalt langzamer dan de klas: zes keer zoveel studenten
+      leveren ruim vier keer zoveel tokens per seconde, en dus houdt elke student er
+      minder aan over. Tijdens dit lesuur liepen er 67&nbsp;% van de tijd vijf of meer
+      verzoeken tegelijk, en 39&nbsp;% van de tijd acht of meer; de server kwam
+      daarbij uit op 256&nbsp;tok/s decode.
     </p>
 
     <figure class="wide">

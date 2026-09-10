@@ -1,9 +1,10 @@
 # De vervolgmeting: welke kaart, en wat je aanpast
 
-De meting op de RTX PRO 6000 laat zien dat de 96 GB nergens nodig was, maar
-niet dat een goedkopere kaart volstaat: geheugen bleek niet de beperkende
-factor, en over de rekenkracht van de kleinere kaarten zegt die meting niets.
-Dit bestand is de checklist voor de meting die dat wél beantwoordt.
+De meting op de RTX PRO 6000 laat zien dat de 96 GB in geen enkel realistisch
+scenario nodig was, maar niet dat een goedkopere kaart volstaat: geheugen bleek
+niet de beperkende factor — de doorlooptijd van een instructie wel — en over de
+rekenkracht van de kleinere kaarten zegt die meting niets. Dit bestand is de
+checklist voor de meting die dat wél beantwoordt.
 
 ## De RTX PRO 5000 is niet te huren
 
@@ -59,7 +60,7 @@ meting:
 ```
 
 `--max-model-len 131072` blijft haalbaar. De KV-cache kost op dit model met FP8
-ongeveer 45 kB per token — afgeleid uit de worst-case-run (43,4 GB bij circa
+ongeveer 45 kB per token — afgeleid uit de worst-case-run (46,2 GB bij circa
 1,0 miljoen tokens aan onderscheiden context), en dat komt overeen met wat de
 architectuur voorspelt (48 lagen × 4 KV-heads × 128 × 2). Eén sequentie van
 131k tokens is dus zo'n 5,9 GB, en dat past in de 26,5 GB cachepool. De server
@@ -80,75 +81,67 @@ start; hij zal alleen eerder gaan preempten, en dat is precies wat je meet.
 
 ## Wat je moet regelen, op welke kaart je ook meet
 
-### 1. De tokenizer — dit ging de vorige keer mis
+### 1. De tokenizer — dit ging in de eerste ronde mis
 
-De meting op de RTX PRO 6000 heeft geschatte contextgroottes, niet getelde
-(`"tokenizer_exact": false` in `environment.json`), terwijl `tokenizers` wél
-geïnstalleerd was en `prefer_exact` op `true` stond. De oorzaak: `pod.sh` zet
-`endpoint.model` op de `--served-model-name` (`qwen3-coder`), en het harnas
-zocht de tokenizer onder díé naam. Dat is geen HuggingFace-repo, dus viel het
-stilletjes terug op de schatting van 4,65 tekens per token — op een meting die
-volledig over contextgrootte gaat.
+De eerste meting op de RTX PRO 6000 heeft geschatte contextgroottes, niet
+getelde (`"tokenizer_exact": false` in `environment.json`), terwijl `tokenizers`
+wél geïnstalleerd was en `prefer_exact` op `true` stond. De oorzaak: `pod.sh`
+zette `endpoint.model` op de `--served-model-name` (`qwen3-coder`), en het
+harnas zocht de tokenizer onder díé naam. Dat is geen HuggingFace-repo, dus viel
+het stilletjes terug op de schatting van 4,65 tekens per token — op een meting
+die volledig over contextgrootte gaat.
 
-Dat is nu gerepareerd: `pod.sh` geeft `tokenizer.path` mee, wijzend naar de
+Dat is gerepareerd: `pod.sh` geeft `tokenizer.path` mee, wijzend naar de
 snapshot die toch al gedownload is, en `stresstest doctor` zegt voortaan dát er
 een verkeerd pad staat in plaats van "installeer `tokenizers`" wanneer het
-pakket er al is.
+pakket er al is. De meting waartegen je nu vergelijkt — de lesvalidatie en de
+matrix van 9 september — telt exact.
 
 **Controleer na de eerste run** dat `environment.json` `"tokenizer_exact": true`
 zegt. Zo niet: `stresstest doctor` draaien, die wijst nu het echte probleem aan.
 
-Dit maakt de contextgroottes een paar procent anders dan in de vorige meting.
-Dat is de goede kant op — geteld is beter dan geschat — maar noteer het, want de
-"64k-kolom" van de twee metingen is dan niet exact dezelfde belasting. Wil je
-een strikte A/B in plaats van een betere meting, draai dan met
-`--set tokenizer.prefer_exact=false`; dan blijven beide runs op de schatting.
+De vergelijkingsbasis telt nu ook exact, dus laat `prefer_exact` op `true`
+staan: dan meten beide kanten hetzelfde. (Het verschil bleek klein — de eigen
+telling van het harnas lag 5 à 6 % onder wat vLLM terugrapporteerde, en dat
+restant is de opmaak van het chatsjabloon, die aan clientzijde sowieso niet
+meetelt.)
 
 ### 2. Eén variabele tegelijk — dit is nu het grootste risico
 
-Het gedragsmodel is veranderd sinds de meting op de RTX PRO 6000: er zijn
-werkprofielen bijgekomen, en een Unity-groep met bestanden die twee tot drie
-keer zo groot zijn. Dat is een verbetering — de oude aanname (één klein bestand
-per lees, een paar honderd outputtokens) was de zwakste in het hele harnas —
-maar het betekent wel dat een run op twee 5090's onder het nieuwe model **niet**
-te vergelijken is met de oude 96 GB-meting. Wordt hij langzamer door de kaart of
-door het zwaardere gedragsmodel? Zo weet je dat niet.
+Het gedragsmodel is veranderd sinds de eerste meting op de RTX PRO 6000: er
+zijn werkprofielen bijgekomen, en een Unity-groep met bestanden die twee tot
+drie keer zo groot zijn. Dat is een verbetering — de oude aanname (één klein
+bestand per lees, een paar honderd outputtokens) was de zwakste in het hele
+harnas — maar het betekende wel dat een run op twee 5090's onder het nieuwe
+model niet te vergelijken zou zijn met de oude 96 GB-meting. Wordt hij
+langzamer door de kaart of door het zwaardere gedragsmodel? Zo weet je dat niet.
 
-Er zijn twee uitwegen, en de eerste is de betere:
+Dat risico is inmiddels weggenomen door de hele meting op de RTX PRO 6000 over
+te doen onder het nieuwe model. **Verander vanaf hier niets meer aan het
+gedragsmodel, het corpus of de contexttelling** — dan is het verschil met de
+5090-meting volledig toe te schrijven aan de kaart.
 
-**Draai het nieuwe model ook op de RTX PRO 6000.** Die is te huren voor
-$ 2,09/uur, dus ongeveer € 13 voor de hele matrix. Dan heb je twee metingen
-onder hetzelfde gedragsmodel en is het verschil toe te schrijven aan de kaart.
-Als bonus zie je meteen hoeveel de conclusie over de 96 GB-kaart zelf verschuift
-door het realistischer gedrag — en dat is een uitspraak die de aanvraag direct
-raakt.
-
-> **Half gedaan.** Op 9 september is hiervan alleen de *lesvalidatie* opnieuw
-> gedraaid, in `results-van-de-gpu/20260909-125855_les/`. Die bonus is meteen
-> ingelost en het antwoord is fors: het lesuur gaat van groen naar oranje, met de
-> p90-doorlooptijd van een instructie van 69 s naar 144 s. Zie
-> [CONCLUSIES-TWEEDE-LESVALIDATIE.md](CONCLUSIES-TWEEDE-LESVALIDATIE.md).
+> **Gedaan.** Op 9 september is de lesvalidatie opnieuw gedraaid
+> (`results-van-de-gpu/20260909-125855_les/`) en op 9 op 10 september de hele
+> matrix (`results-van-de-gpu/20260909-185135_matrix/`), allebei op
+> `TRITON_ATTN`. De vergelijkingsbasis voor de 5090-meting is daarmee compleet:
+> 39 runs onder één gedragsmodel.
 >
-> **De matrix staat nog open**, en daarmee ook de vergelijkingsbasis voor de
-> 5090-meting: sweep, klifzoeker, engine-varianten en kaartvergelijking zijn nog
-> allemaal gemeten onder het oude, te lichte model. Draai die eerst, voordat je
-> een andere kaart huurt:
+> De bonus is meteen ingelost en het antwoord is fors. Het lesuur gaat van groen
+> naar oranje, met de p90-doorlooptijd van een instructie van 69 s naar 144 s.
+> En de matrix laat zien dat het aantal studenten niet de as is waar het om
+> draait: dezelfde twintig studenten op 32k gaan van 65 s bij een rustige groep
+> naar 285 s in de deadlineburst. Zie [CONCLUSIES.md](CONCLUSIES.md) en
+> [RAPPORT-RTX-PRO-6000.html](RAPPORT-RTX-PRO-6000.html).
 >
-> ```bash
-> ATTENTION_BACKEND=TRITON_ATTN scripts/pod.sh all --skip-lesson --deadman auto
-> ```
->
-> `--skip-lesson` omdat fase 2 nu net gedraaid is; de backend expliciet omdat de
-> vorige matrix er geen vastlegde (zie punt 8).
+> De oudere runs (de matrix van 8 september en de eerste lesvalidatie) doen
+> daarmee niet meer mee: die draaiden op een lichter corpus en een geschatte
+> contexttelling, en zijn met deze niet te vergelijken.
 
-**Of houd het oude model aan** door in `config/default.json` `corpus.groups` te
-vervangen door de platte `project`-lijst en `behaviour.work_profiles` weg te
-laten. Dan is de vergelijking zuiver, maar meet je opnieuw met de aanname
-waarvan we inmiddels weten dat hij te licht is.
-
-Totaal voor de eerste route: twee keer de matrix, ongeveer € 25. Dat is nog
-steeds een fractie van een tiende procent van de aanvraag, en het levert een
-bandbreedte op in plaats van een punt.
+De helft van dat werk is gedaan en betaald: de matrix op de RTX PRO 6000 kostte
+ongeveer € 13. De 5090-matrix kost er nog eens zoveel, en dan ligt er een
+bandbreedte in plaats van een punt — een fractie van een tiende procent van de
+aanvraag.
 
 ### 3. Het corpus moet hetzelfde zijn
 
@@ -172,8 +165,8 @@ kloon is gigabytes aan textures die niemand leest. De sparse checkout kost
 Wijkt het af, kopieer dan `corpus_cache/` van de vorige pod mee, of zet
 `corpus.local_path` per groep op een eigen map.
 
-De `web`-groep is precies het corpus van de meting op de RTX PRO 6000, dus die
-helft blijft vergelijkbaar.
+Dit is precies het corpus van de huidige meting op de RTX PRO 6000, dus zolang
+het niet verschuift is de vergelijking zuiver.
 
 ### 4. `endpoint.timeout_s` blijft op 300
 
@@ -188,17 +181,23 @@ laten lopen", meet een klas die niemand accepteert.
 matrix — van ruim 76 naar 40 minuten — ten koste van de nauwkeurigheid: het
 antwoord is dan op twee studenten na goed, en het rapport zegt dat er zelf bij.
 
-Op de RTX PRO 6000 kostte die run 76 minuten om níéts te vinden (hij liep tot
-het plafond van 40). Op een kleinere kaart zal hij wél breken, en dan is twee
-studenten resolutie ruim genoeg. Wil je de grens exact weten, draai hem daarna
+Op de RTX PRO 6000 liep hij met stappen van twee in 38 minuten door tot het
+plafond van veertig zonder te breken. Reken die uitslag na voordat je hem
+gelooft: de klifzoeker beoordeelt elk venster alleen op de instructies die op
+dat moment al áf zijn, en dat zijn onder belasting precies de snelle — zie
+[CONCLUSIES.md](CONCLUSIES.md#wat-er-in-het-harnas-nog-niet-klopt). Op een
+kleinere kaart zal hij wél breken, en dan is twee studenten resolutie ruim
+genoeg. Wil je de grens exact weten, draai hem daarna
 nog eens met `--set matrix.rampup.step_students=1` en
 `--set matrix.rampup.start_students=<een paar onder de gevonden grens>`.
 
 ### 6. De engine-varianten worden nu wél belangrijk
 
 Op de RTX PRO 6000 gaven `--max-num-seqs 16`, `32` en `64` en
-`--max-model-len 65536` tegen `131072` identieke getallen tot in de derde
-decimaal, omdat de geheugendruk nergens in de buurt van de grens kwam. Op een
+`--max-model-len 65536` tegen `131072` 99 tot 101 seconden doorlooptijd en 10,5
+tot 10,8 GB cache — ruis, geen signaal — omdat de geheugendruk nergens in de
+buurt van de grens kwam. Alleen `--kv-cache-dtype` deed iets: fp8 tegen auto is
+10,5 tegen 23,2 GB. Op een
 pool van 26,5 GB komt hij daar wel. Sla `--only engine` dus niet over om tijd
 te besparen; dit is de opstelling waarop die vlaggen iets doen.
 
@@ -209,16 +208,17 @@ kant van de schaal.
 
 ### 8. Zet de attention-backend expliciet
 
-De matrix en de eerste lesvalidatie hebben `"attention_backend": null` in hun
+De runs uit de eerste ronde hebben `"attention_backend": null` in hun
 `environment.json`: de operator koos niets en wat vLLM zelf koos is niet
-vastgelegd. De tweede lesvalidatie draaide op `TRITON_ATTN`, omdat FlashInfer op
-die pod niet wilde bouwen en `pod.sh` sindsdien uitwijkt. Dat is een tweede
-verschil tussen twee runs die je juist wilde vergelijken.
+vastgelegd. De huidige meting — lesvalidatie én matrix — draait op
+`TRITON_ATTN`, omdat FlashInfer op die pod niet wilde bouwen en `pod.sh`
+sindsdien uitwijkt.
 
-Voor die ene vergelijking is het nagegaan en het bleek niets uit te maken — de
-decodesnelheid per gelijktijdig verzoek is in beide runs dezelfde, zie
-[CONCLUSIES-TWEEDE-LESVALIDATIE.md §4](CONCLUSIES-TWEEDE-LESVALIDATIE.md#4-de-backend-is-niet-de-verklaring).
-Reken daar niet op bij de volgende. Zet hem vast:
+Voor die ene vergelijking is het destijds nagegaan en het bleek niets uit te
+maken: de decodesnelheid per gelijktijdig verzoek was in beide runs dezelfde.
+Inmiddels staan de lesvalidatie en de matrix allebei op `TRITON_ATTN`, dus voor
+de huidige meting is het geen open punt meer. Reken daar niet op bij de
+volgende. Zet hem vast:
 
 ```bash
 ATTENTION_BACKEND=TRITON_ATTN scripts/pod.sh all
@@ -239,33 +239,36 @@ Afgezet tegen wat elke run op de grote kaart aan cache vroeg:
 
 | Run | Nodig | Past in 26,5 GB? |
 |---|---|---|
-| Lesvalidatie 90 min (20 studenten, 32k, 50 % gedeeld) | 8,5 GB | ja, ruim |
-| Sweep 20 studenten, 100k, 50 % gedeeld | 15,7 GB | ja |
-| Sweep 30 studenten, 100k, 50 % gedeeld | 27,3 GB | **nee**, net niet |
-| Worst case (20 studenten, 100k, niets gedeeld) | 43,4 GB | **nee** |
+| Lesvalidatie 90 min (20 studenten, 32k, 50 % gedeeld) | 14,6 GB | ja, ruim |
+| Sweep 20 studenten, 100k, 50 % gedeeld | 19,1 GB | ja |
+| Sweep 30 studenten, 100k, 50 % gedeeld | 28,2 GB | **nee**, net niet |
+| Worst case (20 studenten, 100k, niets gedeeld) | 46,2 GB | **nee** |
 
-Per student gemeten op de grote kaart: 0,35 GB bij 64k met de helft gedeeld,
-0,79 GB bij 100k met de helft gedeeld, 2,17 GB bij 100k zonder iets gedeeld.
+Per student gemeten op de grote kaart: 0,52 GB bij 64k met de helft gedeeld,
+0,96 GB bij 100k met de helft gedeeld, 2,31 GB bij 100k zonder iets gedeeld.
 Deel dat in de 26,5 GB en je krijgt de bovengrens die geheugen alleen stelt:
-ongeveer 75 studenten, 33 studenten, en **12** studenten. Die laatste ligt onder
+ongeveer 51 studenten, 27 studenten, en **11** studenten. Die laatste ligt onder
 de klas van twintig, dus verwacht bij de worst case preempties, en daarmee rood.
 
 **Dat is geen mislukking van de test, dat is de uitkomst.** De vraag is of dat
 scenario binnen bereik hoort te vallen; zie de kanttekening bij vraag 3 in
 [RESULTATEN.md](RESULTATEN.md).
 
-Wat deze meting moet uitwijzen en de vorige niet kon: hoe de doorlooptijd van
-een instructie zich houdt. Op de RTX PRO 6000 zat de gezamenlijke
-decodesnelheid rond 200–300 tokens/s en werd de klif door rekenkracht bepaald,
-niet door geheugen. Twee 5090's over PCIe schuiven die klif naar links, en met
-hoeveel is precies wat er nog niet gemeten is.
+Wat deze meting moet uitwijzen: hoe de doorlooptijd van een instructie zich
+houdt. Op de RTX PRO 6000 is dat de as die het oordeel bepaalt — geheugen kwam
+er in geen enkele realistische run aan te pas — en de kaart raakt daarbij in
+totale doorvoer niet verzadigd, maar hij schaalt langzamer dan de klas: op 32k
+gaat de gezamenlijke decodesnelheid van 84 tok/s bij vijf studenten naar 360 bij
+dertig, terwijl elke stream van 113 naar 47 tok/s zakt. Twee 5090's over PCIe
+verschuiven die verhouding naar links, en met hoeveel is precies wat er nog niet
+gemeten is.
 
 ### Optioneel: de ondergrens voor $ 1,09/uur
 
 Wil je er goedkoop een derde punt bij, draai dan dezelfde matrix op de
 **RTX PRO 6000 MIG 48 GB**. Zelfde architectuur als de kaart in de aanvraag,
 maar een pool van 48 × 0,90 − 31,1 = **12,1 GB**. Daar past de sweep met twintig
-studenten op 100k (15,7 GB) al niet meer in. Reken op veel rood — en dat is de
+studenten op 100k (19,1 GB) al niet meer in. Reken op veel rood — en dat is de
 waarde ervan: met 96, 64 en 48 GB gemeten ligt de hele geheugenas vast en is
 72 GB een tussenwaarde in plaats van een gok.
 
