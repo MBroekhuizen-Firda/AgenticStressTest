@@ -1689,8 +1689,10 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
             self.skipTest("no bash available")
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.trace = os.path.join(self.tmp, "trace")
+        open(self.trace, "w", encoding="utf-8").close()
 
-    def _push(self, latest: str = "", lesson: str = "", *args: str):
+    def _push(self, latest: str = "", lesson: str = "", *args: str, report_fails: bool = False):
         program = "\n".join([
             "set -Eeuo pipefail",
             'say() { echo "[say] $*" >&2; }',
@@ -1698,7 +1700,11 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
             'die() { echo "[die] $*" >&2; exit 1; }',
             "detect_gpu() { GPU_NAME=test; }",
             'describe_results_dir() { echo "3 runs"; }',
-            'push_results() { echo "[push] $*" >&2; }',
+            'push_results() { echo "[push] $*" >&2; echo "push $*" >> "$TRACE"; }',
+            ('stresstestreport() { echo "report $*" >> "$TRACE"; return 1; }' if report_fails
+             else 'stresstestreport() { echo "report $*" >> "$TRACE"; }'),
+            "PY=stresstestreport",
+            f'TRACE="{self.trace}"',
             f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
             f'STATE_DIR="{self.tmp}"',
             function_body("cmd_push"),
@@ -1732,10 +1738,127 @@ class TestRescuingAMeasurementThatWasLeftBehind(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("[push] results/een results/twee", done.stderr)
 
+    def trace_lines(self) -> list[str]:
+        with open(self.trace, encoding="utf-8") as handle:
+            return [line.strip() for line in handle if line.strip()]
+
+    def test_the_summary_is_rebuilt_before_it_is_pushed(self):
+        """summary.csv and summary.json are written from the memory of the
+        measuring session. A run that is interrupted pushes a summary of the
+        group it happened to be in -- the first rescue push carried 1 of 37
+        runs. Rebuilding from runs/*/run.json needs no GPU."""
+        done = self._push("", "", self.tmp)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.trace_lines(),
+                         [f"report -m stresstest report {self.tmp}", f"push {self.tmp}"],
+                         "the summary has to be rebuilt, and before it is pushed")
+
+    def test_a_summary_that_cannot_be_rebuilt_does_not_cost_the_data(self):
+        """Whatever is wrong with the report, the runs are what must not stay
+        behind on a rented disk."""
+        done = self._push("", "", self.tmp, report_fails=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn(f"push {self.tmp}", self.trace_lines())
+
     def test_nothing_to_push_says_so_instead_of_pushing_nothing(self):
         done = self._push(latest="")
         self.assertEqual(done.returncode, 1)
         self.assertIn("[die]", done.stderr)
+
+
+class TestHowMuchMemoryTheCardHas(unittest.TestCase):
+    """VRAM_GB is what every gigabyte in the report is computed from: the KV
+    percentages are multiplied by it, and vraag 3 -- past het ook op 72 GB? --
+    is nothing else.
+
+    On a MIG instance `nvidia-smi --query-gpu=memory.total` answers "[N/A]".
+    `awk 'BEGIN{printf m/1024}'` makes that a silent 0.0, which is not empty,
+    so the 96.0 fallback never fired. A whole matrix was measured that way: the
+    conclusion opened with "past een klas van 20 op 0 GB" and marked every
+    alternative card as fitting."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+
+    def _detect(self, memory_total: str, torch_gb: str | None = None,
+                vram_gb: str = "", cards: int = 1, tensor_parallel: int = 1):
+        torch = (f'faketorch() {{ printf "%s\\n" "{torch_gb}"; }}' if torch_gb
+                 else "faketorch() { return 1; }")
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            torch,
+            "PY=faketorch; MOCK=0",
+            f"TENSOR_PARALLEL={tensor_parallel}",
+            (f'VRAM_GB="{vram_gb}"' if vram_gb else ":"),
+            # command -v finds shell functions, so this stands in for the tool.
+            'nvidia-smi() {',
+            '  case "$*" in',
+            f'    *name,memory.total*) for _ in $(seq 1 {cards}); do echo "NVIDIA RTX PRO 6000 Blackwell Server Edition, {memory_total}"; done ;;',
+            f'    *--query-gpu=name\ *|*--query-gpu=name) for _ in $(seq 1 {cards}); do echo "NVIDIA RTX PRO 6000"; done ;;',
+            '    *power.default_limit*) echo "600.00" ;;',
+            '    *) echo "" ;;',
+            "  esac",
+            "}",
+            function_body("gpu_memory_gb_from_torch"),
+            function_body("detect_gpu"),
+            "detect_gpu",
+            'echo "VRAM_GB=$VRAM_GB SOURCE=$VRAM_SOURCE COUNT=$GPU_COUNT"',
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
+
+    def test_a_card_that_answers_normally(self):
+        done = self._detect("98304")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=96.0 SOURCE=nvidia-smi", done.stdout)
+
+    def test_a_mig_slice_is_asked_of_torch_instead(self):
+        """torch reports the slice, which is exactly the pool vLLM divides."""
+        done = self._detect("[N/A]", torch_gb="47.5")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=47.5 SOURCE=torch", done.stdout)
+
+    def test_a_mig_slice_without_torch_is_marked_as_a_guess(self):
+        """The number it falls back on is the one from the budget request. It
+        may not pass for something the machine said."""
+        done = self._detect("[N/A]")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("SOURCE=aanname", done.stdout)
+        self.assertNotIn("VRAM_GB=0", done.stdout)
+
+    def test_a_number_from_the_operator_wins_from_both(self):
+        done = self._detect("98304", torch_gb="47.5", vram_gb="48")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=48 SOURCE=opgegeven", done.stdout)
+
+    def test_two_cards_are_added_up(self):
+        done = self._detect("32768", cards=2, tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("VRAM_GB=64.0 SOURCE=nvidia-smi", done.stdout)
+
+    def test_a_resume_is_checked_before_the_server_starts(self):
+        """A directory left on a shared network volume by another card cannot
+        be measured into. Discovering that at the first group means the model
+        is already loaded -- a quarter of an hour of rent for an answer the
+        configuration alone could give."""
+        body = function_body("cmd_all")
+        resume = body.index("hervat in bestaande map")
+        check = body.index("pending_ids rampup")
+        server = body.index("start_server")
+        self.assertLess(resume, check, "the check has to follow the directory it checks")
+        self.assertLess(check, server, "the check has to come before vLLM is started")
+
+    def test_preflight_refuses_to_measure_on_a_guess(self):
+        body = function_body("preflight")
+        self.assertIn('VRAM_SOURCE" = "aanname"', body)
+        self.assertIn("FORCE", body)
+        self.assertIn("VRAM_GB=48", body, "the refusal has to say how to supply the number")
+        self.assertIn("bron: $VRAM_SOURCE", body,
+                      "the pool line has to say where the number came from")
 
 
 if __name__ == "__main__":

@@ -261,6 +261,28 @@ hoort in het rapport genoemd te worden.
 
   Rond 600 W is de volle kaart, rond 300 W een Max-Q. Meet je op een Max-Q en
   rapporteer je dat als de kaart uit de aanvraag, dan klopt het getal niet.
+- **Op een MIG-instantie zegt `nvidia-smi` niets over het geheugen.**
+  `--query-gpu=memory.total` antwoordt daar `[N/A]`, en dat wordt in een
+  awk-berekening een stille `0`. Het hele GB-deel van het rapport draait dan op
+  een pool van nul: *"past een klas van 20 op 0 GB"*, een piek van 0,1 GB en
+  elke alternatieve kaart afgevinkt als "past". Zo is een complete matrix van
+  37 runs gemeten. Het script vraagt het nu aan torch (die geeft de MIG-plak
+  wél terug) en weigert te meten als geen van beide het weet; geef het anders
+  zelf mee: `VRAM_GB=48 scripts/pod.sh all`. Controleer het altijd even:
+
+  ```bash
+  nvidia-smi --query-gpu=memory.total --format=csv          # [N/A] op MIG
+  python3 -c "import torch; print(torch.cuda.get_device_properties(0).total_memory/1024**3)"
+  ```
+- **Een gedeeld netwerkvolume mengt metingen van twee kaarten.** Twee pods, één
+  `/workspace`, één `results/` — en `all` hervat in de map die er staat. Corpus,
+  gedragsmodel en run-namen kloppen dan allemaal; alleen de kaart verschilt, en
+  dat is precies het getal waar elke gigabyte in het rapport op rust. De naam
+  helpt niet: een MIG-plak van 48 GB meldt zich als dezelfde `RTX PRO 6000
+  Blackwell Server Edition` als de hele kaart van 96 GB. Het harnas vergelijkt
+  daarom naam **en** geheugen, en weigert hervatten, `--also` en `--same` over
+  twee kaarten. Dat is de enige weigering die `--resume-anyway` niet opzij zet.
+  Meet in een eigen map: `RESULTS_DIR=results/$(date +%Y%m%d-%H%M%S)_matrix`.
 
 ### De resultaten van de pod halen
 
@@ -356,6 +378,11 @@ disk; controleer bij de pod-instellingen welk volume gekoppeld is.
   één keer, maar met een paar seconden tussenruimte (`scripts/pod.sh` doet dat
   zelf). Let op: `vllm:num_preemptions_created` is een tijdstempel van
   prometheus_client, niet het aantal preempties.
+- **Controleer de pool voordat je gaat meten.** De regel `pool voor het harnas:
+  ... GB (bron: ...)` in de opstartcontrole is geen decoratie: elk
+  GB-getal in het rapport is een KV-percentage maal die pool, en vraag 3 — past
+  het ook op 72 GB? — is niets anders. Staat er `bron: aanname`, dan weet de pod
+  het niet en stopt het script.
 - **Zonder `/metrics` meet je alleen latentie.** De hoofdvraag hangt op
   preempties, prefix-cache-hitrate en KV-bezetting. Ontbreken die reeksen, dan
   is de run zinloos — daarom stopt het script erop.

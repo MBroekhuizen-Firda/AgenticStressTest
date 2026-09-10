@@ -11,6 +11,7 @@ import random
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -1068,6 +1069,179 @@ class TestBehaviourModelInTheReport(unittest.TestCase):
         self.assertIn("les_90min", text, "de bron van de loting hoort in het rapport")
         self.assertIn(str(config["seed"]), text)
         self.assertIn(analyse(results, config)["behaviour_model"]["fingerprint"], text)
+
+
+class TestHardwareNumbersThatCannotBeTrue(unittest.TestCase):
+    """A pool of zero gigabytes is not a measurement, and must not read as one.
+
+    `scripts/pod.sh` recorded `vram_gb: 0.0` on a MIG instance, where
+    nvidia-smi answers "[N/A]" for memory.total. Zero is not None, so it beat
+    the default, and the report answered vraag 1 with "past een klas van 20 op
+    0 GB", put the peak at 0.1 GB (the clamp in analyse) and marked every
+    alternative card as fitting. 37 runs of rented GPU time, and the half of
+    the report the budget request hangs on was nonsense."""
+
+    def resolve(self, hardware: dict):
+        from stresstest.report import resolve_hardware
+        return resolve_hardware({"hardware": hardware})
+
+    def defaults_used(self, hardware: dict):
+        from stresstest.report import MEASURED_NUMBERS, usable
+        return sorted(key for key in MEASURED_NUMBERS
+                      if not usable(key, hardware.get(key)))
+
+    def test_a_pool_of_zero_is_treated_as_unknown(self):
+        self.assertEqual(self.resolve({"vram_gb": 0.0})["vram_gb"], 96.0)
+        self.assertIn("vram_gb", self.defaults_used({"vram_gb": 0.0}))
+
+    def test_the_report_says_it_fell_back_on_the_assumption(self):
+        """Silently substituting 96 GB for a 48 GB slice is the same mistake
+        one step later. The note is what makes it visible."""
+        self.assertEqual(self.defaults_used({"vram_gb": 0.0, "gpu_memory_utilization": 0.9,
+                                             "model_weights_gb": 31.1}), ["vram_gb"])
+
+    def test_a_real_measurement_is_left_alone(self):
+        self.assertEqual(self.resolve({"vram_gb": 47.5})["vram_gb"], 47.5)
+        self.assertEqual(self.defaults_used({"vram_gb": 47.5, "gpu_memory_utilization": 0.9,
+                                             "model_weights_gb": 31.1}), [])
+
+    def test_the_other_two_numbers_are_held_to_the_same_rule(self):
+        self.assertEqual(self.resolve({"gpu_memory_utilization": 0})["gpu_memory_utilization"], 0.9)
+        from stresstest.report import DEFAULT_HARDWARE
+        self.assertEqual(self.resolve({"model_weights_gb": -1})["model_weights_gb"],
+                         DEFAULT_HARDWARE["model_weights_gb"])
+
+    def test_something_that_is_not_a_number_does_not_crash_the_report(self):
+        self.assertEqual(self.resolve({"vram_gb": "[N/A]"})["vram_gb"], 96.0)
+
+    def test_names_and_lists_are_not_numbers(self):
+        """`usable` guards the three measured numbers, not everything: a card
+        name of "0" is a name."""
+        self.assertEqual(self.resolve({"gpu_name": "0"})["gpu_name"], "0")
+
+
+class TestTwoCardsNeverEndUpInOneMeasurement(unittest.TestCase):
+    """A shared network volume is how runs from two cards meet.
+
+    Two pods, one `/workspace`, one `results/` -- and `all` resumes into
+    whatever directory is there. The corpus matches, the behaviour model
+    matches, the run ids match, so nothing objected. Only the card differs, and
+    that is the one thing every gigabyte in the report is computed from: a KV
+    percentage times that card's pool. Worse, a 48 GB MIG slice of an RTX PRO
+    6000 reports the same name as the whole 96 GB card, so the name alone
+    catches nothing."""
+
+    FULL = {"gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)", "vram_gb": 95.6}
+    MIG = {"gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)", "vram_gb": 47.5}
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def directory(self, hardware: dict, runs: dict | None = None) -> str:
+        from stresstest import fingerprint
+        d = os.path.join(self.tmp, f"m{len(os.listdir(self.tmp))}")
+        os.makedirs(d)
+        mark = fingerprint.from_config({"hardware": hardware})
+        with open(os.path.join(d, "environment.json"), "w", encoding="utf-8") as handle:
+            json.dump({"hardware": hardware, "fingerprint": mark,
+                       "fingerprint_digest": fingerprint.digest(mark)}, handle)
+        for run_id, (kind, run_hardware) in (runs or {}).items():
+            os.makedirs(os.path.join(d, "runs", run_id))
+            with open(os.path.join(d, "runs", run_id, "run.json"), "w", encoding="utf-8") as handle:
+                json.dump({"spec": {"run_id": run_id, "kind": kind},
+                           "fingerprint": fingerprint.from_config({"hardware": run_hardware})},
+                          handle)
+        return d
+
+    def test_the_name_alone_does_not_tell_a_mig_slice_from_the_card(self):
+        from stresstest.fingerprint import card_of
+        self.assertEqual(card_of(self.FULL)["gpu_name"], card_of(self.MIG)["gpu_name"])
+        self.assertNotEqual(card_of(self.FULL)["vram_gb"], card_of(self.MIG)["vram_gb"])
+
+    def test_the_wattage_is_not_part_of_the_identity(self):
+        """A driver reporting 599.99 one boot and 600.00 the next is the same
+        machine, and must not read as a second card."""
+        from stresstest.fingerprint import card_of
+        self.assertEqual(card_of({"gpu_name": "NVIDIA RTX PRO 6000 (599W)", "vram_gb": 95.6}),
+                         card_of({"gpu_name": "NVIDIA RTX PRO 6000 (600W)", "vram_gb": 95.6}))
+
+    def test_a_number_that_is_not_known_is_left_out(self):
+        """Absent is 'cannot tell', which is not a difference -- that is what
+        lets a directory measured before this existed still be resumed."""
+        from stresstest.fingerprint import card_of
+        self.assertEqual(card_of({"vram_gb": 0.0}), {})
+        self.assertEqual(card_of({"gpu_name": None, "vram_gb": None}), {})
+        self.assertEqual(card_of(None), {})
+
+    def test_resuming_on_another_card_is_refused(self):
+        from stresstest import fingerprint
+        d = self.directory(self.FULL)
+        with self.assertRaises(fingerprint.CardMismatch) as caught:
+            fingerprint.guard(d, fingerprint.from_config({"hardware": self.MIG}))
+        self.assertIn("andere kaart", caught.exception.message())
+        self.assertIn("95.6", caught.exception.message())
+        self.assertIn("47.5", caught.exception.message())
+
+    def test_resume_anyway_does_not_wave_a_card_through(self):
+        """--resume-anyway is for an operator who knows why the corpus changed.
+        Two cards in one directory is not a setup choice, it is two
+        measurements whose numbers cannot be compared."""
+        from stresstest import fingerprint
+        d = self.directory(self.FULL)
+        with self.assertRaises(fingerprint.CardMismatch):
+            fingerprint.guard(d, fingerprint.from_config({"hardware": self.MIG}),
+                              allow_mismatch=True)
+
+    def test_the_same_card_resumes_normally(self):
+        from stresstest import fingerprint
+        d = self.directory(self.FULL)
+        self.assertEqual(fingerprint.guard(d, fingerprint.from_config({"hardware": self.FULL})), {})
+
+    def test_a_directory_from_before_this_existed_is_still_resumable(self):
+        """Older measurements carry no card. Refusing those would strand every
+        directory already on the volume."""
+        from stresstest import fingerprint
+        d = os.path.join(self.tmp, "oud")
+        os.makedirs(d)
+        with open(os.path.join(d, "environment.json"), "w", encoding="utf-8") as handle:
+            json.dump({"model": "qwen3-coder"}, handle)
+        self.assertEqual(fingerprint.guard(d, fingerprint.from_config({"hardware": self.FULL})), {})
+
+    def test_an_engine_run_does_not_smuggle_another_card_in(self):
+        """The engine group varies --kv-cache-dtype on purpose, so `hardware`
+        drops out of the comparison for those runs. The card is kept outside
+        that block precisely so it cannot fall through the hole."""
+        from stresstest import fingerprint
+        d = self.directory(self.FULL, runs={"engine_kv_fp8": ("engine", self.MIG)})
+        offenders = fingerprint.check(d, fingerprint.from_config({"hardware": self.FULL}),
+                                      adding_engine_runs=True)
+        self.assertIn("engine_kv_fp8", offenders)
+        self.assertTrue(any(path.startswith("card") for path, _, _ in offenders["engine_kv_fp8"]))
+
+    def test_adding_the_card_did_not_rename_earlier_measurements(self):
+        """The digest is printed in every report as the setup it belongs to.
+        Putting the card in it would make two identical measurements from
+        before and after this change look like different setups."""
+        from stresstest.fingerprint import digest, from_config
+        self.assertEqual(digest(from_config({"hardware": self.FULL})),
+                         digest(from_config({"hardware": self.MIG})))
+
+    def _same(self, *directories: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "stresstest", "fingerprint", "--same",
+                               *directories], capture_output=True, text=True,
+                              cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def test_folding_two_cards_into_one_report_is_refused(self):
+        """`--same` is what decides whether the lesson directory may be folded
+        into the matrix report. Same corpus, same behaviour, other card."""
+        done = self._same(self.directory(self.FULL), self.directory(self.MIG))
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("kaart", done.stderr)
+
+    def test_two_directories_from_the_same_card_still_fold(self):
+        done = self._same(self.directory(self.FULL), self.directory(self.FULL))
+        self.assertEqual(done.returncode, 0, done.stderr)
 
 
 if __name__ == "__main__":
