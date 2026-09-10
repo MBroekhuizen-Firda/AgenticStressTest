@@ -1,9 +1,9 @@
 {
-  "kv_pool_gb": 0.1,
+  "kv_pool_gb": 11.559999999999995,
   "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
   "hardware": {
     "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
-    "vram_gb": 0.0,
+    "vram_gb": 47.4,
     "gpu_memory_utilization": 0.9,
     "model_weights_gb": 31.1,
     "alternatives": [
@@ -27,22 +27,65 @@
     "kv_cache_dtype": "fp8"
   },
   "hardware_defaults_used": [],
-  "runs": 1,
-  "kv_peak_overall_fraction": 0.9973032606030889,
-  "kv_peak_overall_gb": 0.0997303260603089,
-  "kv_peak_overall_run": "engine_seqs_64",
-  "kv_peak_overall_label": "vLLM-variant seqs_64",
-  "cliff_per_context": {},
+  "runs": 37,
+  "class_size": 20,
+  "class_grades": {
+    "100k": "rood",
+    "32k": "oranje",
+    "64k": "rood",
+    "8k": "oranje"
+  },
+  "class_worst_context": 100000,
+  "class_worst_grade": "rood",
+  "kv_peak_fraction": 0.9969564158753348,
+  "kv_peak_gb": 11.524816167518866,
+  "kv_headroom_gb": 0.03518383248112933,
+  "kv_headroom_fraction": 0.0030435841246652107,
+  "class_worst_run": "sweep_s20_c64k",
+  "kv_peak_overall_fraction": 0.9995738982225468,
+  "kv_peak_overall_gb": 11.555074263452637,
+  "kv_peak_overall_run": "sweep_s30_c64k",
+  "kv_peak_overall_label": "30 studenten, 64k context",
+  "cliff_students": 37,
+  "cliff_broke_at": 39,
+  "cliff_reasons": [
+    "p90 TTFT 50.7s > 45s"
+  ],
+  "cliff_ceiling": 40,
+  "cliff_found": true,
+  "cliff_context_tokens": 32000,
+  "cliff_step_students": 2,
+  "cliff_per_context": {
+    "8k": {
+      "eerste_oranje": 10,
+      "eerste_rood": 30
+    },
+    "32k": {
+      "eerste_oranje": 10,
+      "eerste_rood": 30
+    },
+    "64k": {
+      "eerste_oranje": 10,
+      "eerste_rood": 20
+    },
+    "100k": {
+      "eerste_oranje": 5,
+      "eerste_rood": 10
+    }
+  },
   "alternatives": [
     {
       "name": "RTX PRO 5000 (72 GB)",
       "vram_gb": 72.0,
       "price_eur": 7602,
       "kv_pool_gb": 33.7,
-      "needed_kv_gb": 0.1,
+      "needed_kv_class_gb": 11.5,
+      "fits_class": true,
+      "margin_class_gb": 22.2,
+      "needed_kv_gb": 11.6,
       "fits": true,
-      "margin_gb": 33.6,
-      "utilisation_on_alternative": 0.003,
+      "margin_gb": 22.1,
+      "utilisation_on_alternative": 0.343,
       "exceeded_by": []
     },
     {
@@ -50,10 +93,13 @@
       "vram_gb": 64.0,
       "price_eur": 10000,
       "kv_pool_gb": 26.5,
-      "needed_kv_gb": 0.1,
+      "needed_kv_class_gb": 11.5,
+      "fits_class": true,
+      "margin_class_gb": 15.0,
+      "needed_kv_gb": 11.6,
       "fits": true,
-      "margin_gb": 26.4,
-      "utilisation_on_alternative": 0.004,
+      "margin_gb": 14.9,
+      "utilisation_on_alternative": 0.436,
       "exceeded_by": []
     },
     {
@@ -61,15 +107,45 @@
       "vram_gb": 96.0,
       "price_eur": 37400,
       "kv_pool_gb": 55.3,
-      "needed_kv_gb": 0.1,
+      "needed_kv_class_gb": 11.5,
+      "fits_class": true,
+      "margin_class_gb": 43.8,
+      "needed_kv_gb": 11.6,
       "fits": true,
-      "margin_gb": 55.2,
-      "utilisation_on_alternative": 0.002,
+      "margin_gb": 43.7,
+      "utilisation_on_alternative": 0.209,
       "exceeded_by": []
     }
   ],
   "alternatives_basis": "kv_peak_overall_fraction",
   "engine": [
+    {
+      "name": "kv_auto",
+      "flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+      "grade": "rood",
+      "ttft_p90_s": 95.08345612846315,
+      "kv_peak": 0.9928223844282238,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.4553986901550974
+    },
+    {
+      "name": "kv_fp8",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+      "grade": "rood",
+      "ttft_p90_s": 2.141123179346323,
+      "kv_peak": 0.9979606106514393,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9494542417947927
+    },
+    {
+      "name": "seqs_16",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072",
+      "grade": "rood",
+      "ttft_p90_s": 3.6972082182765043,
+      "kv_peak": 0.9890016920473773,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9399652249574295
+    },
     {
       "name": "seqs_64",
       "flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
@@ -80,13 +156,169 @@
       "prefix_cache_hit_rate": 0.9309088782142675
     }
   ],
-  "engine_best": "seqs_64",
-  "engine_best_flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+  "engine_best": "kv_fp8",
+  "engine_best_flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
   "engine_ttft_noise_s": 1.0,
   "engine_equivalent": [
-    "seqs_64"
+    "kv_fp8"
   ],
-  "scenarios": [],
+  "shared": [
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9196719515959336,
+      "ttft_p90_s": 1.109397154301405,
+      "kv_peak": 0.8268809349890431,
+      "grade": "rood"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9434196504274368,
+      "ttft_p90_s": 0.7841180291026831,
+      "kv_peak": 0.5975773070367665,
+      "grade": "oranje"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9531907391087975,
+      "ttft_p90_s": 1.6835905816406012,
+      "kv_peak": 0.49397370343316294,
+      "grade": "oranje"
+    },
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.04102467890840584,
+      "ttft_p90_s": 70.12675351016223,
+      "kv_peak": 0.997991234477721,
+      "grade": "rood"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9392256315638595,
+      "ttft_p90_s": 3.3773925058543695,
+      "kv_peak": 0.995982468955442,
+      "grade": "rood"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9829273262890956,
+      "ttft_p90_s": 1.1600570639595387,
+      "kv_peak": 0.7185293401509618,
+      "grade": "rood"
+    }
+  ],
+  "scenarios": [
+    {
+      "run_id": "scen_deadline",
+      "label": "Deadline, 20 studenten in burst",
+      "grade": "rood",
+      "ttft_p90_s": 9.76655853092671,
+      "burst_p90_s": 407.92597714532167,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.8767308661120331,
+      "reasons": [
+        "p90 doorlooptijd instructie 408s"
+      ]
+    },
+    {
+      "run_id": "scen_koudestart_s20",
+      "label": "Koude start, 20 studenten",
+      "grade": "oranje",
+      "ttft_p90_s": 0.6160314630717039,
+      "burst_p90_s": 139.0547806896269,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.8474316264880664,
+      "reasons": [
+        "p90 doorlooptijd instructie 139s"
+      ]
+    },
+    {
+      "run_id": "scen_koudestart_s30",
+      "label": "Koude start, 30 studenten",
+      "grade": "rood",
+      "ttft_p90_s": 0.6432093132287262,
+      "burst_p90_s": 213.61071195956325,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.8605862790050433,
+      "reasons": [
+        "p90 doorlooptijd instructie 214s"
+      ]
+    },
+    {
+      "run_id": "scen_lange_sessies",
+      "label": "Lange sessies, weinig studenten, zeer grote context",
+      "grade": "rood",
+      "ttft_p90_s": 2.293461108207704,
+      "burst_p90_s": 220.2987348420545,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9708007825634436,
+      "reasons": [
+        "p90 doorlooptijd instructie 220s"
+      ]
+    },
+    {
+      "run_id": "scen_na_de_stilte",
+      "label": "Na de stilte: tien minuten niets, dan hervat iedereen tegelijk",
+      "grade": "rood",
+      "ttft_p90_s": 3.268971902877108,
+      "burst_p90_s": 253.99864536337554,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9213712769177219,
+      "reasons": [
+        "p90 doorlooptijd instructie 254s"
+      ]
+    },
+    {
+      "run_id": "scen_worst_case",
+      "label": "Worst case: 20 studenten, maximale context, geen gedeelde prefix",
+      "grade": "rood",
+      "ttft_p90_s": NaN,
+      "burst_p90_s": 428.0561517119408,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.021966107784046986,
+      "reasons": [
+        "p90 TTFT niet gemeten",
+        "p90 doorlooptijd instructie 428s",
+        "decodesnelheid niet gemeten",
+        "100.0% van de verzoeken faalde"
+      ]
+    }
+  ],
+  "context_pressure": [
+    {
+      "context_tokens": 8000,
+      "compactions_per_100_steps": 12.482793196698456,
+      "compactions": 74,
+      "context_tokens_peak": 52879,
+      "fill_fraction": 6.609875
+    },
+    {
+      "context_tokens": 32000,
+      "compactions_per_100_steps": 3.7984117331943423,
+      "compactions": 17,
+      "context_tokens_peak": 57235,
+      "fill_fraction": 1.78859375
+    },
+    {
+      "context_tokens": 64000,
+      "compactions_per_100_steps": 1.6352513227513226,
+      "compactions": 5,
+      "context_tokens_peak": 63323,
+      "fill_fraction": 0.989421875
+    },
+    {
+      "context_tokens": 100000,
+      "compactions_per_100_steps": 0.0,
+      "compactions": 0,
+      "context_tokens_peak": 85584,
+      "fill_fraction": 0.85584
+    }
+  ],
   "behaviour_model": {
     "personas": {
       "doorpakker": 0.15,
@@ -102,7 +334,48 @@
     "seed": 20250908,
     "fingerprint": "0389659f7efb"
   },
+  "class_mix": {
+    "run_id": "sweep_s20_c100k",
+    "students": 20,
+    "activity": "normaal",
+    "personas": {
+      "worstelaar": 5,
+      "gemiddelde": 9,
+      "doorpakker": 3,
+      "afhaker": 3
+    },
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
   "grading_disagreements": [
-    "engine_seqs_64"
+    "act_intensief_s10",
+    "act_intensief_s20",
+    "act_rustig_s20",
+    "engine_kv_fp8",
+    "engine_seqs_16",
+    "engine_seqs_64",
+    "scen_deadline",
+    "scen_koudestart_s20",
+    "scen_koudestart_s30",
+    "scen_lange_sessies",
+    "scen_na_de_stilte",
+    "shared_00_c32k",
+    "shared_50_c32k",
+    "shared_50_c64k",
+    "shared_90_c32k",
+    "shared_90_c64k",
+    "sweep_s10_c100k",
+    "sweep_s10_c32k",
+    "sweep_s10_c64k",
+    "sweep_s10_c8k",
+    "sweep_s20_c32k",
+    "sweep_s20_c64k",
+    "sweep_s20_c8k",
+    "sweep_s30_c32k",
+    "sweep_s30_c8k",
+    "sweep_s5_c100k"
   ]
 }

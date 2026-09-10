@@ -10,7 +10,7 @@
   },
   "hardware": {
     "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
-    "vram_gb": 0.0,
+    "vram_gb": 47.4,
     "gpu_memory_utilization": 0.9,
     "model_weights_gb": 31.1,
     "attention_backend": "TRITON_ATTN",
