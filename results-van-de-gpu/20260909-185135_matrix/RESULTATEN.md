@@ -1,9 +1,9 @@
 # Resultaten stresstest agentic coding
 
 Gemeten op **NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)** (96 GB videogeheugen) met **qwen3-coder** via vLLM.
-Uitgevoerd op 2026-09-10, 39 runs, seed 20250908.
+Uitgevoerd op 2026-09-10, 38 runs, seed 20250908.
 
-> Dit bestand is automatisch gegenereerd uit de meetgegevens in `results-van-de-gpu/20260909-185135_matrix`, `results-van-de-gpu/20260909-125855_les`. De onderliggende getallen staan daar in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
+> Dit bestand is automatisch gegenereerd uit de meetgegevens in deze map. De onderliggende getallen staan in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
 
 ## De korte versie
 
@@ -55,8 +55,8 @@ Er zijn twee getallen in omloop, en ze geven een ander antwoord. Een klas van 20
 
 Welke runs er op welke kaart niet passen:
 
-- **RTX PRO 5000 (72 GB)**: 1 van 39 runs — `scen_worst_case`.
-- **2x RTX 5090 (64 GB)**: 2 van 39 runs — `scen_worst_case`, `sweep_s30_c100k`.
+- **RTX PRO 5000 (72 GB)**: 1 van 38 runs — `scen_worst_case`.
+- **2x RTX 5090 (64 GB)**: 2 van 38 runs — `scen_worst_case`, `sweep_s30_c100k`.
 
 Of die runs binnen bereik horen te vallen, is een keuze en geen meting: de worst case is met opzet extreem en komt bij een klas die aan dezelfde opdracht werkt niet voor. Maar hij staat wel in de opdracht, dus wie hem meerekent koopt een andere kaart dan wie hem weglaat. Zet die keuze expliciet op papier.
 
@@ -97,10 +97,10 @@ Twee assen, los van elkaar geloot. Een *persona* is een tempo: hoe lang iemand n
 
 | Persona | Studenten | Werkprofiel | Studenten |
 |---|---|---|---|
-| gemiddelde | 9 | klein | 10 |
-| worstelaar | 5 | middel | 6 |
-| doorpakker | 3 | doorspitten | 4 |
-| afhaker | 3 |  |  |
+| gemiddelde | 5 | klein | 5 |
+| doorpakker | 2 | middel | 3 |
+| worstelaar | 2 | doorspitten | 2 |
+| afhaker | 1 |  |  |
 
 Het werkprofiel bepaalt hoeveel werk één modelaanroep is, en dat is het getal waar de doorlooptijd het gevoeligst voor is. De gebruikte waarden staan in `environment.json` naast dit bestand.
 
@@ -132,14 +132,6 @@ Deze zijn belangrijker dan het gemiddelde, want dit is wat er misgaat.
 | Na de stilte: tien minuten niets, dan hervat iedereen tegelijk | oranje | 0.9 s | 166 s | 0 | p90 doorlooptijd instructie 166s |
 | Worst case: 20 studenten, maximale context, geen gedeelde prefix | rood | 1.0 s | 401 s | 0 | p90 doorlooptijd instructie 401s |
 
-## Fase 2: de lesvalidatie van negentig minuten
-
-Oordeel over het volledige lesuur: **oranje**. p90 TTFT 0.7 s, p90 doorlooptijd van een instructie 144 s, 0 preempties, prefix cache hit rate 94%, KV-piek 27%.
-
-Contextdruk over het hele lesuur: 250 compacties, 6.4 per 100 agentstappen, hoogste bereikte context 81631 tokens.
-
-De grafiek `04_cache_en_kv_over_tijd.svg`, in de `charts`-map van de resultatenmap van de lesvalidatie, laat zien wat er tijdens de tien minuten klassikale uitleg met de cache gebeurt, en hoe duur de eerste stap daarna is.
-
 ## Hoe de kleuren zijn bepaald
 
 - **Groen**: p90 TTFT onder 20 s, p90 doorlooptijd van een instructie onder 90 s, decodesnelheid boven 12 tokens/s per stream, geen preempties, geen afgelopen verzoeken.
@@ -151,7 +143,7 @@ Twee afwijkingen ten opzichte van de oorspronkelijke opzet, allebei bewust:
 1. **De doorlooptijd van een hele instructie telt mee.** Time to first token is de eerste van drie tot vijftien modelaanroepen die de agent doet voor een enkele opdracht van de student. Een run kan een prima TTFT hebben en toch twee minuten over een instructie doen; dat is wat de student wacht.
 2. **De prefix cache hit rate is gerapporteerd maar geen groen-eis.** Die hangt af van het scenario, niet van de hardware: in de runs met 0% gedeelde basis en in de koude start is 60% per definitie onhaalbaar. Een lage hit rate waar we een hoge verwachtten staat als waarschuwing bij de run.
 
-Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 23 van de 39 runs: act_intensief_s20, engine_kv_auto, engine_kv_fp8, engine_len_65k, engine_seqs_16, engine_seqs_64, rampup, scen_deadline, scen_koudestart_s30, scen_lange_sessies ....
+Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 22 van de 38 runs: act_intensief_s20, engine_kv_auto, engine_kv_fp8, engine_len_65k, engine_seqs_16, engine_seqs_64, rampup, scen_deadline, scen_koudestart_s30, scen_lange_sessies ....
 
 ## Wat deze test niet zegt
 

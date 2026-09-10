@@ -1,0 +1,160 @@
+{
+  "spec": {
+    "run_id": "shared_00_c32k",
+    "label": "20 studenten, 32k, 0% gedeelde projectbasis",
+    "kind": "shared",
+    "students": 20,
+    "context_tokens": 32000,
+    "activity": "normaal",
+    "shared_fraction": 0.0,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": false,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "shared_fraction"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-09T22:18:48Z",
+  "finished": "2026-09-09T22:25:28Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "doorpakker": 3,
+    "afhaker": 3,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "aggregate": {
+    "requests_total": 202,
+    "requests_ok": 202,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 34,
+    "ttft": {
+      "count": 202,
+      "mean": 0.3138649488723201,
+      "p50": 0.17302703449968249,
+      "p90": 0.5841678879922257,
+      "p99": 2.463075523881715,
+      "max": 4.08819377492182
+    },
+    "burst_duration": {
+      "count": 34,
+      "mean": 37.37084681083284,
+      "p50": 31.909176532994024,
+      "p90": 76.8582593379775,
+      "p99": 115.89463392422074,
+      "max": 126.2496897210367
+    },
+    "decode_tps": {
+      "count": 202,
+      "mean": 65.03998374424839,
+      "p50": 59.80378589924625,
+      "p90": 98.3825697895214,
+      "p99": 144.1131325992497,
+      "max": 164.0802486744406
+    },
+    "request_total_s": {
+      "count": 202,
+      "mean": 6.475278339582717,
+      "p50": 4.253533527604304,
+      "p90": 13.08057506987825,
+      "p99": 31.326477023104683,
+      "max": 40.88368649315089
+    },
+    "output_tokens_total": 71105,
+    "prompt_tokens_total": 4215025,
+    "client_output_tokens_per_s": 237.01666666666668,
+    "requests_per_minute": 40.4,
+    "compactions": 13,
+    "restarts": 3,
+    "context_tokens_peak": 42497,
+    "compactions_per_burst": 0.38235294117647056,
+    "compactions_per_100_steps": 6.5,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 0.26675183363258836,
+        "burst_p90": 24.695130882086232,
+        "decode_tps_p50": 50.48044350908182
+      },
+      "doorpakker": {
+        "requests": 98,
+        "ttft_p90": 0.5214671354042366,
+        "burst_p90": 50.60824942216277,
+        "decode_tps_p50": 67.14362526881621
+      },
+      "gemiddelde": {
+        "requests": 86,
+        "ttft_p90": 0.7780394760193303,
+        "burst_p90": 83.97463453202509,
+        "decode_tps_p50": 56.415735890832835
+      },
+      "worstelaar": {
+        "requests": 15,
+        "ttft_p90": 0.35722917201928794,
+        "burst_p90": 59.12196288909763,
+        "decode_tps_p50": 50.824156847562286
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9259767380373479,
+    "prefix_cache_queries": 4243666.0,
+    "prefix_cache_hits": 3929536.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.07759650092519295,
+    "kv_cache_usage_peak": 0.16644142637318526,
+    "requests_running_avg": 4.23489932885906,
+    "requests_running_peak": 9.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 14145.553333333333,
+    "server_prompt_tokens": 4243666.0,
+    "server_decode_tokens_per_s": 253.45333333333335,
+    "server_generation_tokens": 76036.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "93%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

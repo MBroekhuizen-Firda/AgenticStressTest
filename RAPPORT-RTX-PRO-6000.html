@@ -1,0 +1,1677 @@
+<title>Meting RTX PRO 6000</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Roboto+Condensed:wght@600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root {
+  color-scheme: light;
+
+  --ground:        #f4f4f8;
+  --surface:       #ffffff;
+  --surface-sunk:  #eeeef4;
+  --ink:           #14141f;
+  --ink-2:         #55556a;
+  --ink-3:         #85859a;
+  --rule:          #e0e0ea;
+  --rule-strong:   #c9c9d8;
+
+  --accent:        #4a3aa7;
+  --accent-soft:   #ece9f8;
+
+  --s-green:       #0f7a43;
+  --s-green-bg:    #e2f2e8;
+  --s-amber:       #a86400;
+  --s-amber-bg:    #fbeed6;
+  --s-red:         #bd2f2a;
+  --s-red-bg:      #fbe4e2;
+
+  --run-a:         #2a78d6;
+  --run-b:         #4a3aa7;
+  --band:          #eaeaf2;
+  --band-quiet:    #f5f2e6;
+
+  --shadow: 0 1px 2px rgba(20,20,31,.05), 0 8px 24px -16px rgba(20,20,31,.28);
+
+  --display: "Roboto Condensed", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground:       #131319;
+    --surface:      #1b1b23;
+    --surface-sunk: #23232d;
+    --ink:          #f0f0f5;
+    --ink-2:        #b2b2c4;
+    --ink-3:        #83839a;
+    --rule:         #2d2d39;
+    --rule-strong:  #414152;
+    --accent:       #9c92ee;
+    --accent-soft:  #262238;
+    --s-green:      #4fb37c;
+    --s-green-bg:   #17301f;
+    --s-amber:      #e0a02a;
+    --s-amber-bg:   #33260c;
+    --s-red:        #ef7a75;
+    --s-red-bg:     #341a1a;
+    --run-a:        #3987e5;
+    --run-b:        #9085e9;
+    --band:         #22222c;
+    --band-quiet:   #2a2718;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:       #131319;
+  --surface:      #1b1b23;
+  --surface-sunk: #23232d;
+  --ink:          #f0f0f5;
+  --ink-2:        #b2b2c4;
+  --ink-3:        #83839a;
+  --rule:         #2d2d39;
+  --rule-strong:  #414152;
+  --accent:       #9c92ee;
+  --accent-soft:  #262238;
+  --s-green:      #4fb37c;
+  --s-green-bg:   #17301f;
+  --s-amber:      #e0a02a;
+  --s-amber-bg:   #33260c;
+  --s-red:        #ef7a75;
+  --s-red-bg:     #341a1a;
+  --run-a:        #3987e5;
+  --run-b:        #9085e9;
+  --band:         #22222c;
+  --band-quiet:   #2a2718;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.page {
+  --measure: 34rem;
+  --wide: 56rem;
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns:
+    minmax(1.25rem, 1fr)
+    minmax(0, var(--measure))
+    minmax(1.25rem, 1fr);
+  row-gap: 0;
+}
+.page > * { grid-column: 2; }
+.wide { --w: min(100cqw - 2.5rem, var(--wide)); }
+.page > .wide {
+  grid-column: 1 / -1;
+  width: var(--w);
+  margin-inline: auto;
+}
+/* Break a wide block out of the reading column it is nested in. The measure
+   column is centred in the page, so centring on 50 % of it centres on the page. */
+section .wide {
+  width: var(--w);
+  margin-inline: calc(50% - var(--w) / 2);
+}
+.page > .bleed {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-inline: 0;
+}
+
+/* ---------------------------------------------------------------- header */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+  padding-block: 3.5rem 2.5rem;
+}
+.masthead-inner {
+  width: min(100cqw - 2.5rem, 56rem);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.kicker {
+  font-family: var(--mono);
+  font-size: .72rem;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+}
+h1 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(2.3rem, 6vw, 3.6rem);
+  line-height: 1.02;
+  letter-spacing: -.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.standfirst {
+  font-size: 1.15rem;
+  color: var(--ink-2);
+  max-width: 38rem;
+  margin: 0;
+}
+.byline {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--ink-3);
+  line-height: 1.7;
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+}
+.byline a { color: var(--accent); }
+
+/* -------------------------------------------------------------- verdicts */
+
+.verdict-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin-block: 2.5rem 0;
+}
+.vcell {
+  background: var(--surface);
+  padding: 1.1rem 1.15rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.vcell .lab {
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.vcell .num {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 2.1rem;
+  line-height: 1;
+  letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+}
+.vcell .sub {
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.num.amber { color: var(--s-amber); }
+.num.green { color: var(--s-green); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .2rem .55rem .25rem;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.pill::before {
+  content: "";
+  width: .5rem; height: .5rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.pill.groen { color: var(--s-green); background: var(--s-green-bg); }
+.pill.oranje { color: var(--s-amber); background: var(--s-amber-bg); }
+.pill.rood  { color: var(--s-red);   background: var(--s-red-bg); }
+
+/* -------------------------------------------------------------- sections */
+
+section { padding-block: 2.75rem 0; }
+section:last-of-type { padding-bottom: 4rem; }
+
+h2 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.75rem;
+  line-height: 1.14;
+  letter-spacing: -.01em;
+  margin: 0 0 .85rem;
+  text-wrap: balance;
+  display: flex;
+  gap: .7rem;
+  align-items: baseline;
+}
+h2 .n {
+  font-family: var(--mono);
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: .04em;
+  flex: none;
+  padding-top: .1rem;
+}
+h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: .01em;
+  margin: 2rem 0 .6rem;
+}
+p { margin: 0 0 1.05rem; }
+strong { font-weight: 600; }
+em { font-style: italic; }
+code {
+  font-family: var(--mono);
+  font-size: .84em;
+  background: var(--surface-sunk);
+  padding: .1em .34em;
+  border-radius: 2px;
+  word-break: break-word;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+ol.lead {
+  counter-reset: lead;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+ol.lead > li {
+  counter-increment: lead;
+  position: relative;
+  padding-left: 2.5rem;
+}
+ol.lead > li::before {
+  content: counter(lead, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: .32rem;
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--accent);
+}
+ul.plain { padding-left: 1.1rem; margin: 0 0 1.05rem; }
+ul.plain li { margin-bottom: .55rem; }
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 1rem 1.15rem;
+  margin: 0 0 1.3rem;
+  font-size: .95rem;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .tag {
+  font-family: var(--mono);
+  font-size: .68rem;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: .3rem;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.tablewrap {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  margin-bottom: 1.4rem;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+caption {
+  caption-side: top;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: .75rem 1rem .55rem;
+  border-bottom: 1px solid var(--rule);
+}
+th, td {
+  text-align: right;
+  padding: .5rem .85rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  font-weight: 500;
+  color: var(--ink-3);
+  font-size: .7rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--rule-strong);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.hi { color: var(--ink); font-weight: 600; }
+td.dim { color: var(--ink-3); }
+tr.accented td { background: var(--surface-sunk); }
+
+/* --------------------------------------------------------------- figures */
+
+figure {
+  margin: 0 0 1.6rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+}
+figure .fighead {
+  padding: 1rem 1.15rem .35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+figure .figtitle {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  letter-spacing: .005em;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .9rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--ink-2);
+}
+.legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.swatch { width: .8rem; height: .8rem; border-radius: 2px; flex: none; }
+.swatch.line { height: .2rem; border-radius: 1px; }
+.plot { padding: .25rem .5rem .6rem; overflow-x: auto; }
+.plot svg { display: block; width: 100%; height: auto; min-width: 22rem; }
+figcaption {
+  padding: .1rem 1.15rem 1.05rem;
+  font-size: .87rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.tick { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--ink-3); }
+.axlab { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--ink-2); }
+.vallab { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 500; fill: var(--ink); }
+.rowlab { font-family: "Roboto Condensed", sans-serif; font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+
+.tip {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--shadow);
+  padding: .45rem .6rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre;
+  opacity: 0;
+  transition: opacity .09s linear;
+}
+.tip.on { opacity: 1; }
+
+/* ----------------------------------------------------------------- misc */
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 2.75rem 0 0; }
+
+.footer {
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+  margin-top: 3rem;
+  padding-block: 2rem 3rem;
+  font-family: var(--mono);
+  font-size: .76rem;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+.footer-inner { width: min(100cqw - 2.5rem, 56rem); margin-inline: auto; }
+.footer strong { color: var(--ink-2); font-weight: 500; }
+
+.grades {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin-bottom: 1.4rem;
+}
+.grades > div {
+  background: var(--surface);
+  padding: .85rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.grades .body {
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+@media (max-width: 40rem) {
+  body { font-size: 16px; }
+  .masthead { padding-block: 2.5rem 2rem; }
+}
+
+/* ---------------------------------------------------------- matrixraster */
+
+.gridtable td { text-align: center; }
+.gridtable td:first-child { text-align: left; }
+.gridtable td.g-groen  { background: var(--s-green-bg); color: var(--s-green); font-weight: 600; }
+.gridtable td.g-oranje { background: var(--s-amber-bg); color: var(--s-amber); font-weight: 600; }
+.gridtable td.g-rood   { background: var(--s-red-bg);   color: var(--s-red);   font-weight: 600; }
+.gridtable td .g {
+  display: block;
+  font-size: .62rem;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.num.red { color: var(--s-red); }
+
+</style>
+
+<div class="page">
+
+  <header class="masthead bleed">
+    <div class="masthead-inner">
+      <div class="kicker">
+        <span>Stresstest agentic coding</span>
+        <span>NVIDIA RTX PRO 6000 Blackwell SE (600W)</span>
+        <span>9 &ndash; 10 september 2026</span>
+      </div>
+      <h1>Niet hoeveel studenten, maar hoe hard ze duwen</h1>
+      <p class="standfirst">
+        Eén meetsessie, negenendertig runs, één gedragsmodel: een lesuur van
+        negentig minuten plus de volledige matrix met sweep, klifzoeker,
+        engine-varianten en de benoemde momenten. Het geheugen blijkt driekwart
+        leeg te blijven; het oordeel hangt aan de rekenkracht, en die hangt vooral
+        aan de intensiteit van de klas.
+      </p>
+      <div class="byline">
+        Meetgegevens: <code>results-van-de-gpu/20260909-125855_les/</code> (3.891 verzoeken,
+        483 instructies) en <code>results-van-de-gpu/20260909-185135_matrix/</code>
+        (38 runs, 8.361 verzoeken, 1.291 instructies).<br>
+        Model qwen3-coder via vLLM &middot; seed 20250908 &middot; corpus web+unity, 559 bestanden &middot;
+        exacte tokenizer &middot; <code>--attention-backend TRITON_ATTN</code>.<br>
+        Alles hieronder is terug te rekenen uit <code>summary.csv</code> en
+        <code>runs/&lt;run_id&gt;/requests.csv</code>, <code>bursts.csv</code>,
+        <code>server_metrics.csv</code>.
+      </div>
+    </div>
+  </header>
+
+  <div class="verdict-row wide">
+    <div class="vcell">
+      <span class="lab">Lesuur, 20 studenten</span>
+      <span class="num amber">oranje</span>
+      <span class="sub">p90 instructie 144 s &middot; groen &lt; 90 &middot; rood &gt; 180</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Rustige klas van 20</span>
+      <span class="num green">65 <span style="font-size:.55em">s</span></span>
+      <span class="sub">groen &middot; normaal 76 s &middot; deadline 285 s</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Piek KV-cache, 39 runs</span>
+      <span class="num">46,2 <span style="font-size:.55em">GB</span></span>
+      <span class="sub">84 % van 54,9 GB &middot; alleen in de worst case</span>
+    </div>
+    <div class="vcell">
+      <span class="lab">Fouten &middot; preempties</span>
+      <span class="num green">0 &middot; 0</span>
+      <span class="sub">12.252 verzoeken, alle geslaagd</span>
+    </div>
+  </div>
+
+  <section>
+    <h2><span class="n">00</span>De korte versie</h2>
+
+    <ol class="lead">
+      <li><strong>De klas past ruim in het geheugen en niet ruim in de rekenkracht.</strong>
+        Een klas van twintig op 32k context vraagt 8,0&nbsp;GB van de 54,9&nbsp;GB
+        cachepool. Het lesuur van negentig minuten komt niettemin op oranje uit, op
+        doorlooptijd. In geen enkele van de 39 runs is er ook maar één preemptie of
+        één mislukt verzoek geweest.</li>
+      <li><strong>Hoe hard de klas duwt weegt zwaarder dan hoe groot hij is.</strong>
+        Twintig studenten op 32k context met dezelfde opdrachten leveren 65&nbsp;s als
+        het een rustige groep is, 76&nbsp;s bij een normale, 120&nbsp;s bij een gedreven
+        groep en 285&nbsp;s in de deadlineburst. Dat is groen tot rood zonder dat er één
+        student bijkomt.</li>
+      <li><strong>De contextgrootte is de tweede as, en die kost wél geheugen.</strong>
+        Bij twintig studenten loopt de p90-doorlooptijd van 65&nbsp;s op 8k naar
+        164&nbsp;s op 100k, en de cachepiek van 4,4 naar 19,1&nbsp;GB. De twee assen
+        versterken elkaar: bij 8k kost dertig studenten in plaats van vijf 71&nbsp;%
+        extra doorlooptijd, bij 100k 444&nbsp;%.</li>
+      <li><strong>Er is geen klif op de studenten-as, maar wel een helling &mdash; en
+        de klifzoeker meldt hem te laat.</strong> De live-uitslag zegt &ldquo;tot 40
+        studenten niets gebroken&rdquo;. Nagerekend op alle instructies uit dezelfde
+        vensters loopt de p90 van 34&nbsp;s (tot en met 19 studenten) naar 92&nbsp;s
+        (21&ndash;27) en 125&nbsp;s (29&ndash;35). De grens tussen groen en oranje
+        ligt op deze kaart rond de twintig studenten. Sectie 04 laat zien waar het
+        verschil vandaan komt; het is een meetfout in het harnas, geen ruis.</li>
+      <li><strong>De vlaggen van vLLM doen bijna niets &mdash; op één na.</strong>
+        <code>--max-num-seqs</code> en <code>--max-model-len</code> zijn binnen de
+        meetruis niet van elkaar te onderscheiden. <code>--kv-cache-dtype fp8</code>
+        brengt de cachebezetting terug tot minder dan de helft van wat
+        <code>auto</code> vraagt: 10,5&nbsp;GB tegen 23,2&nbsp;GB bij dezelfde
+        belasting.</li>
+      <li><strong>Time to first token zegt niets meer op deze schaal.</strong> In alle
+        39 runs blijft de p90 onder 1,1&nbsp;s, tegen een groen-grens van 20&nbsp;s.
+        Volgens de oorspronkelijke definitie uit de opdracht is elke run groen; volgens
+        de aangescherpte definitie is 18 keer oranje en 4 keer rood. Wie op TTFT stuurt,
+        meet niets.</li>
+    </ol>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">01</span>Wat er gemeten is</h2>
+
+    <div class="callout">
+      <span class="tag">Waarom hier maar één meetsessie in staat</span>
+      <p>
+        Er zijn eerdere metingen op deze kaart, en die staan hier niet in. Sinds die
+        runs is de belasting veranderd: het corpus ging van 187 naar 559 bestanden
+        (332k naar 2,02M tekens), de contexttelling ging van een schatting naar de
+        tokenizer van het model, en het gedragsmodel kreeg een tweede as. Dezelfde
+        kaart met een andere belasting levert geen vergelijking op, alleen verwarring.
+        Alles hieronder komt uit één sessie met één gedragsmodel: de lesvalidatie van
+        9 september en de matrix van 9 op 10 september.
+      </p>
+    </div>
+
+    <p>
+      De opstelling: één RTX PRO 6000 Blackwell Server Edition van 600&nbsp;W met
+      95,6&nbsp;GB bruikbaar videogeheugen, qwen3-coder via vLLM met
+      <code>--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072
+      --enable-prefix-caching</code> en <code>--attention-backend TRITON_ATTN</code>.
+      Bij <code>--gpu-memory-utilization 0.9</code> en 31,1&nbsp;GB modelgewichten
+      blijft er een KV-cachepool van 54,9&nbsp;GB over. Dat is het getal waartegen
+      alle geheugenpercentages hieronder gemeten zijn.
+    </p>
+
+    <h3>Twee assen in het gedragsmodel</h3>
+    <p>
+      Een <em>persona</em> bepaalt tempo &mdash; hoe lang iemand nadenkt, hoeveel
+      stappen een instructie kost, of hij afhaakt. Een <em>werkprofiel</em> bepaalt
+      gewicht &mdash; op welke codebase iemand werkt, hoeveel bestanden de agent per
+      keer leest, hoeveel het model per stap schrijft. De twee worden onafhankelijk
+      geloot en dan gepaard, zodat de zware codebase niet automatisch bij de
+      doorpakkers terechtkomt.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>De klas van twintig, zoals hij in elke run van twintig zat</caption>
+        <thead>
+          <tr><th>Persona</th><th>Studenten</th><th>Werkprofiel</th><th>Studenten</th><th>Codebase</th><th>Bestanden per leesactie</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>gemiddelde</td><td>9</td><td>klein</td><td>10</td><td>web</td><td>1</td></tr>
+          <tr><td>worstelaar</td><td>5</td><td>middel</td><td>6</td><td>web</td><td>1&ndash;3</td></tr>
+          <tr><td>doorpakker</td><td>3</td><td class="hi">doorspitten</td><td class="hi">4</td><td class="hi">unity</td><td class="hi">2&ndash;5</td></tr>
+          <tr><td>afhaker</td><td>3</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Wat er gedraaid is: één lesuur van 5.400&nbsp;seconden in vijf fasen, en
+      daarnaast 38 matrixruns van elk vier tot achtendertig minuten &mdash; een sweep over
+      vier klasgroottes en vier contextgroottes, een klifzoeker die van vijf naar
+      veertig studenten oploopt, vijf engine-varianten, zes verdelingen van de
+      gedeelde projectbasis, vier activiteitsniveaus en zes benoemde momenten.
+      Samen 12.252 verzoeken en 1.774 instructies, in ruim zes uur rekentijd.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">02</span>Het lesuur komt op oranje uit</h2>
+    <p>
+      Dit is de run die het dichtst bij de werkelijkheid ligt: twintig studenten,
+      32k doelcontext, de helft van de projectbasis gedeeld, negentig minuten met
+      een opstartpiek, een rustige opbouw, tien minuten klassikale uitleg waarin
+      niemand iets vraagt, een eindpiek van vijfendertig minuten en een afbouw.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Lesuur van negentig minuten &mdash; run <code>les_90min</code></caption>
+        <thead>
+          <tr><th>&nbsp;</th><th>Gemeten</th><th>Grens</th><th>&nbsp;</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>p90 doorlooptijd instructie</td><td class="hi">144,4 s</td><td>groen &lt; 90 &middot; rood &gt; 180</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>p50 doorlooptijd instructie</td><td>51,0 s</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td></tr>
+          <tr><td>p99 doorlooptijd instructie</td><td>267,9 s</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td></tr>
+          <tr><td>p90 TTFT</td><td>0,75 s</td><td>groen &lt; 20 s</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>p99 TTFT</td><td>4,03 s</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Decodesnelheid per stream (p50)</td><td>41,0 tok/s</td><td>groen &gt; 12 tok/s</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>Mislukte verzoeken</td><td>0 van 3.891</td><td>geen</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>Preempties</td><td>0</td><td>geen</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>Prefix cache hit rate</td><td>94,0 %</td><td class="dim">gerapporteerd</td><td class="dim">&mdash;</td></tr>
+          <tr><td>KV-piek</td><td>14,6 GB (26,6 %)</td><td class="dim">van 54,9 GB</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Wachtrijpiek</td><td>9 verzoeken</td><td class="dim">waarschuwing</td><td class="dim">&mdash;</td></tr>
+          <tr><td>Serverdoorvoer (decode)</td><td>256 tok/s</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Eén criterium kleurt het oordeel, en het is niet het geheugen en niet de eerste
+      token. De cachepool bleef voor driekwart leeg, geen verzoek mislukte, en de
+      eerste token kwam gemiddeld binnen 0,21&nbsp;seconde. Wat oploopt is de tijd tot
+      het antwoord af is: één op de tien instructies duurde langer dan twee en een
+      halve minuut.
+    </p>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">Doorlooptijd van een instructie, per lesfase</span>
+        <span class="legend">
+          <span><i class="swatch" style="background:var(--s-green);opacity:.55"></i>groen &lt; 90 s</span>
+          <span><i class="swatch" style="background:var(--s-amber);opacity:.55"></i>oranje &lt; 180 s</span>
+          <span><i class="swatch" style="background:var(--s-red);opacity:.55"></i>rood</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-fases"></div>
+      <figcaption>
+        p90 per fase, in seconden, over de 483 instructies van de meetfasen. De
+        eindpiek komt tot op één seconde van de rood-grens: vijfendertig minuten lang
+        duurt één op de tien instructies bijna drie minuten. In de rustige afbouw is
+        dezelfde klas op dezelfde kaart ruim groen. Tijdens de tien minuten klassikale
+        uitleg wordt niet gemeten &mdash; er zijn dan geen instructies.
+      </figcaption>
+    </figure>
+
+    <h3>Waar de tijd blijft</h3>
+    <p>
+      Een instructie is een reeks agentstappen en verder niets: de mediane instructie
+      bestaat voor 100&nbsp;% van zijn wachttijd uit modelaanroepen, er zit geen
+      denkpauze in. Gemiddeld zijn dat 8,1 stappen. De mediane stap schrijft 217
+      outputtokens en de mediane stream decodeert 41,0&nbsp;tok/s; een mediane stap
+      duurt daarmee 5,8&nbsp;seconden, en acht daarvan achter elkaar verklaren de
+      mediane instructie van 51&nbsp;seconden.
+    </p>
+    <p>
+      Die decodesnelheid is het scharnier. Bij één verzoek op de server haalt een
+      stream 116&nbsp;tok/s, bij acht nog 40,7 en bij elf 33,3. De server levert
+      daarbij méér tokens per seconde naarmate er meer streams zijn &mdash; in totaal
+      256&nbsp;tok/s over het hele lesuur &mdash; maar dat is één taart die in meer
+      punten wordt gesneden. Tijdens dit lesuur liepen er 67&nbsp;% van de tijd vijf
+      of meer verzoeken tegelijk, en 39&nbsp;% van de tijd acht of meer.
+    </p>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">KV-cachebezetting over het lesuur</span>
+      </div>
+      <div class="plot" id="plot-kv"></div>
+      <figcaption>
+        Percentage van de 54,9&nbsp;GB cachepool, hoogste waarde per halve minuut. De
+        tien minuten klassikale uitleg zijn goed te zien: de bezetting valt vrijwel
+        naar nul. Ook op zijn piek gebruikt dit lesuur maar iets meer dan een kwart
+        van de pool. De hervatting daarna is goedkoop &mdash; de mediane TTFT in de
+        eerste twee minuten na de stilte is 0,21&nbsp;s, gelijk aan de rest van de
+        les, en de duurste eerste stap kostte 9,98&nbsp;s tegen een groen-grens van
+        20&nbsp;s. De prefix cache overleeft tien minuten niets-doen ruimschoots.
+      </figcaption>
+    </figure>
+
+    <h3>Vier studenten veroorzaken bijna een derde van de belasting</h3>
+    <p>
+      Het werkprofiel verklaart het oordeel bijna alleen. Op zichzelf beoordeeld is
+      <code>klein</code> oranje (net boven 90&nbsp;s), <code>middel</code> oranje en
+      <code>doorspitten</code> rood. Er is geen deel van deze klas dat nog groen is
+      &mdash; ook de tien studenten op de kleinste opdracht niet.
+    </p>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">Doorlooptijd per werkprofiel, p50 tot p90</span>
+        <span class="legend">
+          <span><i class="swatch" style="background:var(--s-green);opacity:.55"></i>groen &lt; 90 s</span>
+          <span><i class="swatch" style="background:var(--s-amber);opacity:.55"></i>oranje &lt; 180 s</span>
+          <span><i class="swatch" style="background:var(--s-red);opacity:.55"></i>rood</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-profiel"></div>
+      <figcaption>
+        De balk loopt van de mediaan naar de p90; het cijfer rechts is de p90, waarop
+        het oordeel valt. Over alle 483 instructies van de meetfasen.
+      </figcaption>
+    </figure>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Wat elk werkprofiel kost</caption>
+        <thead>
+          <tr>
+            <th>Werkprofiel</th><th>Studenten</th><th>Instructies</th>
+            <th>Aandeel stappen</th><th>Aandeel rekentijd</th>
+            <th>Outputtokens per stap</th><th>Met compactie</th><th>p90 context</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>klein <span class="dim">(web)</span></td><td>10</td><td>288</td><td>64 %</td><td>43 %</td><td>211</td><td>38 %</td><td>32.166</td></tr>
+          <tr><td>middel <span class="dim">(web)</span></td><td>6</td><td>119</td><td>24 %</td><td>28 %</td><td>392</td><td>64 %</td><td>35.926</td></tr>
+          <tr class="accented"><td>doorspitten <span class="dim">(unity)</span></td><td>4</td><td>76</td><td>12 %</td><td class="hi">29 %</td><td class="hi">758</td><td class="hi">86 %</td><td class="hi">63.318</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Een student op de Unity-codebase kost ongeveer 1,7 keer zoveel rekentijd als een
+      student op de kleine webopdracht, terwijl hij mínder vaak iets vraagt. Dat is het
+      getal om te onthouden bij het inrichten van een les: <strong>de zwaarte van de
+      opdracht weegt zwaarder dan het aantal studenten.</strong> Twintig studenten die
+      allemaal aan een klein project werken zijn iets heel anders dan twintig studenten
+      van wie er vier in een grote codebase graven.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">03</span>De matrix: twee assen, en hoe ze elkaar versterken</h2>
+    <p>
+      De sweep draait dezelfde belasting op zestien combinaties van klasgrootte en
+      contextgrootte, elk zo'n zeven minuten op normaal tempo met de helft van de
+      projectbasis gedeeld. Dit is het raster waarop een opleiding haar keuze maakt.
+    </p>
+
+    <div class="tablewrap wide">
+      <table class="gridtable">
+        <caption>p90 doorlooptijd van een instructie, in seconden &mdash; sweep</caption>
+        <thead>
+          <tr><th>Studenten</th><th>8k context</th><th>32k context</th><th>64k context</th><th>100k context</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>5</td>
+            <td class="g-groen">41<span class="g">groen</span></td>
+            <td class="g-groen">49<span class="g">groen</span></td>
+            <td class="g-groen">60<span class="g">groen</span></td>
+            <td class="g-groen">59<span class="g">groen</span></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td class="g-groen">62<span class="g">groen</span></td>
+            <td class="g-groen">76<span class="g">groen</span></td>
+            <td class="g-oranje">97<span class="g">oranje</span></td>
+            <td class="g-oranje">105<span class="g">oranje</span></td>
+          </tr>
+          <tr>
+            <td>20</td>
+            <td class="g-groen">65<span class="g">groen</span></td>
+            <td class="g-groen">76<span class="g">groen</span></td>
+            <td class="g-oranje">102<span class="g">oranje</span></td>
+            <td class="g-oranje">164<span class="g">oranje</span></td>
+          </tr>
+          <tr>
+            <td>30</td>
+            <td class="g-groen">70<span class="g">groen</span></td>
+            <td class="g-oranje">131<span class="g">oranje</span></td>
+            <td class="g-rood">196<span class="g">rood</span></td>
+            <td class="g-rood">321<span class="g">rood</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Lees het raster in twee richtingen. Naar rechts, bij twintig studenten: van
+      65&nbsp;s naar 164&nbsp;s, ruim een verdubbeling door alleen de context te
+      vergroten. Naar beneden, bij 8k: van 41&nbsp;s naar 70&nbsp;s, een klas zes keer
+      zo groot voor 71&nbsp;% meer wachttijd. Maar bij 100k kost diezelfde stap van
+      vijf naar dertig studenten 444&nbsp;%. <strong>De assen tellen niet op, ze
+      vermenigvuldigen.</strong>
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Dezelfde sweep, in cachegeheugen (GB) en decodesnelheid per stream (tok/s)</caption>
+        <thead>
+          <tr><th>Studenten</th><th>8k</th><th>32k</th><th>64k</th><th>100k</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5</td><td>1,5 &middot; 138</td><td>2,9 &middot; 113</td><td>4,3 &middot; 83</td><td>6,6 &middot; 64</td></tr>
+          <tr><td>10</td><td>3,5 &middot; 92</td><td>4,5 &middot; 72</td><td>8,9 &middot; 65</td><td>11,7 &middot; 52</td></tr>
+          <tr><td>20</td><td>4,4 &middot; 77</td><td>8,0 &middot; 60</td><td>10,4 &middot; 47</td><td class="hi">19,1 &middot; 33</td></tr>
+          <tr><td>30</td><td>5,8 &middot; 58</td><td>9,3 &middot; 47</td><td>15,7 &middot; 36</td><td class="hi">28,2 &middot; 24</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De zwaarste cel van het hele raster &mdash; dertig studenten op 100k, rood op
+      doorlooptijd &mdash; gebruikt 28,2&nbsp;GB van de 54,9&nbsp;GB pool. Het geheugen
+      raakt dus zelfs daar niet op. Wat opraakt is de decodesnelheid: 24&nbsp;tok/s per
+      stream is nog altijd boven de groen-grens van 12, maar bij een instructie van acht
+      stappen van elk een paar honderd tokens telt dat op tot ruim vijf minuten.
+    </p>
+    <p>
+      De p90-TTFT komt in geen enkele cel van dit raster boven 1,1&nbsp;seconde uit.
+      Dat is geen prestatie van deze kaart maar een eigenschap van de belasting: de
+      prompt is er al, de prefill is snel (17.795&nbsp;tok/s tijdens het lesuur) en de
+      wachtrij is vrijwel altijd leeg. <strong>Op deze schaal is TTFT geen maat voor
+      iets.</strong>
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">04</span>De klifzoeker: geen klif, wel een helling</h2>
+    <p>
+      De klifzoeker begint met vijf studenten en zet er elke twee minuten twee bij, tot
+      het plafond van veertig. Hij stopt zodra de p90-doorlooptijd boven 180&nbsp;s
+      komt, de p90-TTFT boven 45&nbsp;s of het foutpercentage boven 2&nbsp;%. Dat
+      gebeurde niet: de run haalde het plafond van veertig.
+    </p>
+
+    <div class="callout">
+      <span class="tag">Let op deze</span>
+      <p>
+        &ldquo;Niets gebroken tot veertig studenten&rdquo; is niet hetzelfde als
+        &ldquo;tot veertig studenten groen&rdquo;, en in dit geval is het ook nog te
+        rooskleurig. De klifzoeker beoordeelt elk venster van twee minuten op de
+        instructies die op dat moment <em>af</em> zijn. Instructies die nog lopen
+        tellen niet mee &mdash; en dat zijn precies de trage. Vanaf 23 studenten valt
+        daardoor bijna de helft van de instructies buiten de beoordeling: 87 van de
+        183.
+      </p>
+    </div>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">p90 doorlooptijd per stap van de klifzoeker</span>
+        <span class="legend">
+          <span><i class="swatch line" style="background:var(--accent)"></i>alle instructies die in het venster begonnen</span>
+          <span><i class="swatch line" style="background:var(--ink-3)"></i>alleen wat de klifzoeker live zag</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-klif"></div>
+      <figcaption>
+        Elke stap is een venster van twee minuten met een vast aantal studenten. De
+        doorgetrokken lijn telt elke instructie die in dat venster begon, ook als hij
+        pas later klaar was; de stippellijn telt alleen wat op het beoordelingsmoment
+        af was &mdash; het criterium waarop de klifzoeker besluit door te gaan. Het
+        verschil is systematisch en loopt op met de belasting, want alleen de trage
+        instructies vallen weg. Per stap gaat het om vijf tot drieëntwintig
+        instructies, dus de losse punten zijn ruis; de tabel hieronder bundelt ze.
+      </figcaption>
+    </figure>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Klifzoeker, gebundeld per groep van vier stappen</caption>
+        <thead>
+          <tr><th>Studenten</th><th>Instructies</th><th>p50</th><th>p90</th><th>Boven 90 s</th><th>Oordeel</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>5 &ndash; 11</td><td>27</td><td>12,1 s</td><td>30,2 s</td><td>0 %</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>13 &ndash; 19</td><td>53</td><td>18,4 s</td><td>34,4 s</td><td>0 %</td><td><span class="pill groen">groen</span></td></tr>
+          <tr class="accented"><td>21 &ndash; 27</td><td>63</td><td>29,4 s</td><td class="hi">92,0 s</td><td>13 %</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>29 &ndash; 35</td><td>74</td><td>49,5 s</td><td>125,2 s</td><td>22 %</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>37 &ndash; 40</td><td>63</td><td>46,7 s</td><td>114,3 s</td><td>17 %</td><td><span class="pill oranje">oranje</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Zo gelezen geeft de klifzoeker een bruikbaar antwoord: <strong>op 32k context en
+      normaal tempo ligt de omslag van groen naar oranje rond de twintig
+      studenten</strong>, en daarna wordt het niet zozeer erger als wel grilliger. Van
+      29 tot 40 studenten blijft de p90 tussen 114 en 125&nbsp;s hangen zonder ooit
+      rood te worden. De verklaring staat in de servermetingen: bij 23 studenten
+      meer dan verdubbelt de cachebezetting van 6,7&nbsp;% naar 14,7&nbsp;% en loopt het aantal
+      gelijktijdig lopende verzoeken van vijf à zes naar tien. Daarboven verdeelt vLLM
+      dezelfde doorvoer over meer streams; de wachtrij komt niet verder dan twee
+      verzoeken.
+    </p>
+    <p>
+      Er is dus geen klif in de zin van een punt waarop het omvalt. Er is een helling,
+      en de kaart glijdt er langzaam vanaf. Dat is voor een opleiding het gunstigere
+      geval: een klas die te groot wordt levert langzaam ongemak op, geen storing.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">05</span>De intensiteit bepaalt het oordeel</h2>
+    <p>
+      Dit is het belangrijkste resultaat van de hele matrix, en het staat in geen enkele
+      tabel van de opdracht. Zeven runs, allemaal met twintig studenten op 32k context
+      met de helft van de projectbasis gedeeld, op dezelfde kaart met dezelfde vlaggen
+      en met exact dezelfde verdeling van werkprofielen: tien keer <code>klein</code>,
+      zes keer <code>middel</code>, vier keer <code>doorspitten</code>. Wat verschilt is
+      alleen hoe hard er geduwd wordt &mdash; en dat gebeurt in de matrix op twee
+      manieren.
+    </p>
+    <p>
+      De eerste drie runs verschillen in de <em>samenstelling</em> van de klas: het
+      activiteitsniveau verschuift de personaverdeling van 5&nbsp;% doorpakkers en
+      30&nbsp;% afhakers (rustig) via 15/15 (normaal) naar 40&nbsp;% doorpakkers en
+      3&nbsp;% afhakers (intensief). Een doorpakker denkt korter na en maakt langere
+      instructies. De laatste vier verschillen in de <em>fase-intensiteit</em>: een
+      vermenigvuldiger die de denktijd van iedereen deelt, 1,0 in een gewone fase en
+      2,0 in de deadlineburst.
+    </p>
+
+    <div class="callout">
+      <span class="tag">Kanttekening bij de eerste drie</span>
+      <p>
+        Het harnas definieert voor <code>rustig</code>, <code>normaal</code> en
+        <code>intensief</code> óók een denktijdfactor (0,7 / 1,0 / 1,6), maar past die
+        nergens toe: <code>ACTIVITY_INTENSITY</code> in <code>stresstest/personas.py</code>
+        wordt nergens gelezen. Het verschil tussen 65 en 120&nbsp;seconden komt dus
+        volledig uit de personaverdeling. Wie die factor alsnog aanzet, maakt het
+        verschil groter, niet kleiner &mdash; de conclusie hieronder wordt er sterker
+        van, niet zwakker.
+      </p>
+    </div>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">Dezelfde klas van twintig, zeven belastingen</span>
+        <span class="legend">
+          <span><i class="swatch" style="background:var(--s-green);opacity:.55"></i>groen &lt; 90 s</span>
+          <span><i class="swatch" style="background:var(--s-amber);opacity:.55"></i>oranje &lt; 180 s</span>
+          <span><i class="swatch" style="background:var(--s-red);opacity:.55"></i>rood</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-ladder"></div>
+      <figcaption>
+        p90 doorlooptijd van een instructie, in seconden. Alle zeven runs draaien
+        twintig studenten op 32k context met 50&nbsp;% gedeelde projectbasis en
+        dezelfde verdeling van werkprofielen. Van groen naar rood zonder dat er één
+        student bijkomt.
+      </figcaption>
+    </figure>
+
+    <p>
+      De praktische betekenis: <strong>de vraag &ldquo;past een klas van twintig?&rdquo;
+      heeft geen antwoord zonder de vraag &ldquo;wat doet die klas?&rdquo;</strong> Een
+      werkcollege waarin studenten om beurten iets vragen zit ruim in het groen. Hetzelfde
+      lokaal in het laatste half uur voor de inlevering zit in het rood, met dezelfde
+      hardware en dezelfde opdracht.
+    </p>
+    <p>
+      Twee van de zeven verdienen aandacht. De <em>deadline</em>-run is met opzet extreem
+      &mdash; iedereen tegelijk in burstmodus, intensiteit 2,0 &mdash; en is de enige
+      belasting op 32k waarin de decodesnelheid onder de 30&nbsp;tok/s per stream zakt
+      (28,9). De <em>hervatting na tien minuten stilte</em> is niet extreem bedoeld: die
+      test de cache, en de cache doorstaat hem moeiteloos (hit rate 93,8&nbsp;%, p90 TTFT
+      0,94&nbsp;s). Dat hij toch op 166&nbsp;s uitkomt en de langste wachtrij van alle
+      32k-runs oplevert &mdash; acht verzoeken &mdash; komt puur doordat twintig
+      studenten tegelijk hervatten. Het is gelijktijdigheid, niet een koude cache. Dat is
+      precies het beeld van de klassikale uitleg in het lesuur: goedkoop om uit te komen,
+      duur om samen weer in te stappen.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>De benoemde momenten, buiten de sweep om</caption>
+        <thead>
+          <tr><th>Moment</th><th>Studenten</th><th>Context</th><th>Oordeel</th><th>p90 TTFT</th><th>p90 instructie</th><th>KV-piek</th><th>Wachtrij</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Koude start</td><td>20</td><td>12k</td><td><span class="pill groen">groen</span></td><td>0,32 s</td><td>87 s</td><td>4,6 GB</td><td>0</td></tr>
+          <tr><td>Koude start</td><td>30</td><td>12k</td><td><span class="pill oranje">oranje</span></td><td>0,34 s</td><td>144 s</td><td>9,1 GB</td><td>0</td></tr>
+          <tr><td>Lange sessies, grote context</td><td>6</td><td>110k</td><td><span class="pill oranje">oranje</span></td><td>1,09 s</td><td>146 s</td><td>12,0 GB</td><td>0</td></tr>
+          <tr><td>Na de stilte, iedereen hervat</td><td>20</td><td>32k</td><td><span class="pill oranje">oranje</span></td><td>0,94 s</td><td>166 s</td><td>10,9 GB</td><td>8</td></tr>
+          <tr><td>Deadline, iedereen in burst</td><td>20</td><td>32k</td><td><span class="pill rood">rood</span></td><td>0,72 s</td><td>285 s</td><td>15,4 GB</td><td>3</td></tr>
+          <tr class="accented"><td>Worst case, geen gedeelde prefix</td><td>20</td><td>100k</td><td><span class="pill rood">rood</span></td><td>0,96 s</td><td class="hi">401 s</td><td class="hi">46,2 GB</td><td>9</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      De worst case is met opzet onrealistisch: maximale context, burstmodus, en geen
+      enkele gedeelde projectbasis, wat bij een klas die aan dezelfde opdracht werkt niet
+      voorkomt. Hij staat er als harde bovengrens, en hij is de enige run in de hele
+      meting die het geheugen echt aanspreekt.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">06</span>Geheugen is de verkeerde zorg</h2>
+    <p>
+      Zevenendertig van de negenendertig runs blijven onder de helft van de cachepool.
+      Dertig blijven onder een kwart. De enige run die er echt in bijt is de worst
+      case, en die is met opzet extreem.
+    </p>
+
+    <figure class="wide">
+      <div class="fighead">
+        <span class="figtitle">Piek in de KV-cache, per run</span>
+        <span class="legend">
+          <span><i class="swatch line" style="background:var(--s-red)"></i>cachepool per kaart</span>
+        </span>
+      </div>
+      <div class="plot" id="plot-kvruns"></div>
+      <figcaption>
+        Hoogste gemeten cachebezetting per run, in GB, gesorteerd van hoog naar laag.
+        De verticale lijnen zijn de cachepools van de kaarten uit de aanvraag &mdash;
+        26,5&nbsp;GB voor twee RTX 5090's, 33,7&nbsp;GB voor de RTX PRO 5000, 54,9&nbsp;GB
+        voor deze kaart. Alleen twee van de negenendertig runs steken boven de kleinste
+        pool uit; het lesuur zit op 14,6&nbsp;GB.
+      </figcaption>
+    </figure>
+
+    <h3>Eén vlag doet iets, de rest niet</h3>
+    <div class="tablewrap wide">
+      <table>
+        <caption>Engine-varianten, alle bij 20 studenten op 64k context &mdash; vermeld is alleen de vlag die van de basis afwijkt (<code>--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072</code>)</caption>
+        <thead>
+          <tr><th>Variant</th><th>Vlaggen</th><th>Oordeel</th><th>p90 TTFT</th><th>p90 instructie</th><th>KV-piek</th><th>Cache hit</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>kv_auto</td><td><code>--kv-cache-dtype auto</code></td><td><span class="pill oranje">oranje</span></td><td>0,68 s</td><td>166 s</td><td class="hi">23,2 GB</td><td>97,0 %</td></tr>
+          <tr><td>kv_fp8</td><td><code>--kv-cache-dtype fp8</code></td><td><span class="pill oranje">oranje</span></td><td>0,72 s</td><td>99 s</td><td>10,5 GB</td><td>96,9 %</td></tr>
+          <tr><td>len_65k</td><td><code>--max-model-len 65536</code></td><td><span class="pill oranje">oranje</span></td><td>0,67 s</td><td>99 s</td><td>10,6 GB</td><td>96,9 %</td></tr>
+          <tr><td>seqs_16</td><td><code>--max-num-seqs 16</code></td><td><span class="pill oranje">oranje</span></td><td>0,71 s</td><td>101 s</td><td>10,8 GB</td><td>96,9 %</td></tr>
+          <tr><td>seqs_64</td><td><code>--max-num-seqs 64</code></td><td><span class="pill oranje">oranje</span></td><td>0,66 s</td><td>99 s</td><td>10,7 GB</td><td>96,9 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Vier van de vijf varianten zijn niet van elkaar te onderscheiden: 99 tot
+      101&nbsp;seconden, 10,5 tot 10,8&nbsp;GB, identieke cache hit rate. Alleen
+      <code>--kv-cache-dtype auto</code> springt eruit, en precies zoals verwacht: de
+      cache in fp16 in plaats van fp8 kost 2,2 keer zoveel geheugen. Dat het bij
+      <em>auto</em> ook 166&nbsp;s duurt in plaats van 99, is één meting en geen bewezen
+      patroon &mdash; maar er is geen reden om fp8 níét te gebruiken.
+      <strong>Op deze kaart is dat de enige vlag die er in het geheugen toe doet.</strong>
+      Op een kleinere kaart is hij het verschil tussen passen en niet passen.
+    </p>
+
+    <h3>De gedeelde projectbasis scheelt geheugen, geen tijd</h3>
+    <div class="tablewrap wide">
+      <table>
+        <caption>Twintig studenten, naar hoeveel van de projectbasis gedeeld is</caption>
+        <thead>
+          <tr><th>Gedeeld</th><th>Context</th><th>Cache hit rate</th><th>p90 TTFT</th><th>KV-piek</th><th>Oordeel</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>0 %</td><td>32k</td><td>92,6 %</td><td>0,58 s</td><td>9,1 GB</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>50 %</td><td>32k</td><td>93,9 %</td><td>0,60 s</td><td>8,0 GB</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>90 %</td><td>32k</td><td>95,5 %</td><td>0,68 s</td><td>6,9 GB</td><td><span class="pill groen">groen</span></td></tr>
+          <tr><td>0 %</td><td>64k</td><td>96,0 %</td><td>0,70 s</td><td>15,8 GB</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>50 %</td><td>64k</td><td>96,9 %</td><td>0,78 s</td><td>10,6 GB</td><td><span class="pill oranje">oranje</span></td></tr>
+          <tr><td>90 %</td><td>64k</td><td>97,7 %</td><td>0,78 s</td><td>9,3 GB</td><td><span class="pill oranje">oranje</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Van niets delen naar bijna alles delen scheelt op 64k ruim veertig procent
+      cachegeheugen, en op het oordeel niets. Dat is logisch: het oordeel valt op
+      doorlooptijd, en de gedeelde prefix bespaart prefill, niet decode. Het is dus een
+      argument bij het kiezen van een kaart, niet bij het inrichten van een les.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">07</span>Contextdruk: wat een vol venster kost</h2>
+    <p>
+      Een sessie die over zijn doelcontext heen groeit, gooit op de grens van een
+      instructie het oudste stuk werkgeschiedenis weg en houdt de kop en de laatste
+      beurten. De gedeelde projectbasis blijft staan, anders zou hij geen prefix meer
+      zijn. Wat dat kost is de cache-ingang van alles achter de bewaarde kop: de eerste
+      stap daarna moet opnieuw voorgerekend worden.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>Compactie per contextgrootte, over de sweep</caption>
+        <thead>
+          <tr><th>Doelcontext</th><th>Compacties per 100 stappen</th><th>Compacties</th><th>Hoogst bereikte context</th><th>Van het doel</th></tr>
+        </thead>
+        <tbody>
+          <tr class="accented"><td>8k</td><td class="hi">12,1</td><td>94</td><td>53.045</td><td class="hi">663 %</td></tr>
+          <tr><td>32k</td><td>5,3</td><td>36</td><td>57.853</td><td>181 %</td></tr>
+          <tr><td>64k</td><td>2,5</td><td>13</td><td>67.571</td><td>106 %</td></tr>
+          <tr><td>100k</td><td>0,6</td><td>3</td><td>90.261</td><td>90 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Die laatste kolom ziet eruit als een fout en is het niet. Compactie gebeurt alleen
+      op een instructiegrens, nooit middenin. Een student die in één instructie vijf
+      Unity-bestanden laat lezen, groeit binnen die instructie ver over zijn doel heen
+      en wordt pas bij de volgende opdracht teruggesnoeid. In het lesuur gebeurde dat
+      250 keer, 6,4 keer per honderd agentstappen, met een hoogst bereikte context van
+      81.631&nbsp;tokens tegen een doel van 32k &mdash; en 86&nbsp;% van de instructies
+      van de <code>doorspitten</code>-studenten begon met een compactie, tegen 38&nbsp;%
+      bij <code>klein</code>.
+    </p>
+    <p>
+      Daar zit ook de daling van de prefix cache hit rate: 94,0&nbsp;% in het lesuur
+      tegen 96,9&nbsp;% in de rustiger matrixruns, en daar zit de hogere p99-TTFT van
+      4,0&nbsp;s. Het is geen storing; het is wat een echte agent op een volle context
+      ook doet.
+    </p>
+    <p>
+      De praktische keuze die hieruit volgt: <strong>een krappe context is niet gratis.</strong>
+      8k geeft de beste doorlooptijden van het hele raster, maar tegen 12 compacties per
+      honderd stappen &mdash; werk dat opnieuw gedaan moet worden en dat in een echte
+      agent ook informatie kost. 32k is in deze meting het punt waar beide nog meevallen.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">08</span>Wat dit met de aankoopvraag doet</h2>
+    <p>
+      De aanvraag gaat over 96&nbsp;GB tegen 72&nbsp;GB of twee 5090's. Deze meting
+      verschuift daar één ding in, en het is niet het geheugen.
+    </p>
+
+    <div class="tablewrap wide">
+      <table>
+        <caption>De kaarten uit de aanvraag, afgemeten op deze meting</caption>
+        <thead>
+          <tr><th>Kaart</th><th>Cachepool</th><th>Nodig (lesuur)</th><th>Nodig (klas van 20, 100k)</th><th>Nodig (worst case)</th><th>Past?</th><th>Prijs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>2&times; RTX 5090 (64 GB)</td><td>26,5 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td>2 runs niet</td><td>&euro; 10.000</td></tr>
+          <tr><td>RTX PRO 5000 (72 GB)</td><td>33,7 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td>1 run niet</td><td>&euro; 7.602</td></tr>
+          <tr class="accented"><td>RTX PRO 6000 (96 GB)</td><td>54,9 GB</td><td>14,6 GB</td><td>19,1 GB</td><td>46,2 GB</td><td class="hi">alle 39</td><td>&euro; 37.400</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="plain">
+      <li><strong>Op geheugen is het verschil klein en het gaat om twee runs.</strong>
+        De twee die niet passen op de goedkoopste opstelling zijn de worst case
+        (46,2&nbsp;GB, met opzet onrealistisch) en dertig studenten op 100k context
+        (28,2&nbsp;GB, in deze meting al rood op doorlooptijd). Of die binnen bereik
+        horen te vallen is een keuze en geen meting &mdash; maar wie ze weglaat, koopt
+        op geheugengronden een andere kaart. Voor het echte lesuur is 14,6&nbsp;GB
+        genoeg, en dat past bijna twee keer in de kleinste pool.</li>
+      <li><strong>Op rekenkracht wordt het argument sterker in plaats van zwakker.</strong>
+        Het oranje van dit lesuur is gehaald op de snelste kaart uit de vergelijking,
+        met de cachepool voor driekwart leeg. Een kaart met minder rekenkracht en
+        minder bandbreedte doet dit niet beter. Dat maakt de meting op twee 5090's niet
+        minder nodig maar méér: de kans dat die opstelling onder dit gedragsmodel rood
+        kleurt, is aanzienlijk.</li>
+      <li><strong>De eerlijke samenvatting.</strong> Deze meting weerlegt de
+        onderbouwing van &euro;&nbsp;37.400 op <em>geheugen</em>gronden, tenzij de
+        worst case meetelt. Ze onderbouwt hem niet op rekenkrachtgronden &mdash;
+        daarvoor moet je weten wat het alternatief doet, en dat is nog steeds niet
+        gemeten. Wat ze wél laat zien is dat er op de rekenkracht-as veel minder marge
+        is dan op de geheugen-as, en dat de aanvraag over de verkeerde as gaat.</li>
+    </ul>
+
+    <h3>Hoe de kleuren zijn bepaald</h3>
+    <div class="grades wide">
+      <div>
+        <span class="pill groen">groen</span>
+        <span class="body">p90 TTFT &lt; 20 s &middot; p90 doorlooptijd instructie &lt; 90 s &middot; decode &gt; 12 tok/s per stream &middot; geen preempties &middot; geen fouten</span>
+      </div>
+      <div>
+        <span class="pill oranje">oranje</span>
+        <span class="body">p90 TTFT tot 45 s, of doorlooptijd tot 180 s, of incidentele preempties</span>
+      </div>
+      <div>
+        <span class="pill rood">rood</span>
+        <span class="body">daarboven, of aanhoudende preempties, of verzoeken die aflopen</span>
+      </div>
+    </div>
+    <p style="font-size:.93rem;color:var(--ink-2)">
+      Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht,
+      die alleen naar time to first token kijkt. Volgens die definitie zijn alle 39 runs
+      groen &mdash; de worst case met instructies van bijna zeven minuten incluis. Dat is
+      precies waarom de definitie is aangescherpt: TTFT is de eerste van drie tot vijftien
+      modelaanroepen die de agent doet voor één opdracht van de student, en de student
+      wacht op de laatste.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="n">09</span>Wat deze meting niet zegt</h2>
+    <ul class="plain">
+      <li><strong>Niets over andere hardware.</strong> Eén kaart. De kaartvergelijking
+        hierboven rekent alleen met geheugen; over de rekenkracht van de alternatieven
+        is niets gemeten. Dat is de eerstvolgende meting, en zonder die meting is de
+        aankoopvraag niet te beantwoorden.</li>
+      <li><strong>Niets over de kwaliteit van de gegenereerde code.</strong> Gemeten zijn
+        capaciteit en latentie.</li>
+      <li><strong>Niets hards over de verdeling van de werkprofielen.</strong> 50/30/20
+        is een keuze in <code>config.json</code>, geen waarneming aan een echte klas.
+        Sectie 02 laat zien hoe gevoelig het oordeel daarvoor is: vier van de twintig
+        studenten dragen 29&nbsp;% van de rekentijd.</li>
+      <li><strong>Niets hards over de intensiteiten.</strong> Dat de eindpiek van een
+        lesuur op 1,6 zit en een deadline op 2,0 zijn aannames. Sectie 05 laat zien dat
+        het oordeel bijna volledig aan die aanname hangt &mdash; zonder de eindpiek is
+        het lesuur groen.</li>
+      <li><strong>Eén run per cel.</strong> Er is geen herhaling, dus geen spreiding
+        tussen runs bekend. De grote verschillen (65 tegen 285&nbsp;s over de
+        intensiteitsladder) zijn te groot om toeval te zijn; de kleine (99 tegen
+        101&nbsp;s tussen engine-varianten) zijn dat niet, en zijn hierboven ook als ruis
+        behandeld.</li>
+      <li><strong>Niets over de agent die de school werkelijk gebruikt.</strong> Het
+        gedragsmodel gaat uit van kleine stappen: een gelezen bestand uit dit corpus is
+        een paar honderd tokens. Een agent die complete testlogs in de context kiepert,
+        vult hetzelfde venster een orde van grootte sneller en verschuift de hele
+        contextdruktabel uit sectie 07.</li>
+    </ul>
+  </section>
+
+  <footer class="footer bleed">
+    <div class="footer-inner">
+      <strong>Bronnen.</strong>
+      <code>results-van-de-gpu/20260909-125855_les/</code> &mdash; run <code>les_90min</code>,
+      gestart 2026-09-09T12:58:59Z, geëindigd 14:29:06Z, duur 5.407 s.<br>
+      <code>results-van-de-gpu/20260909-185135_matrix/</code> &mdash; 38 runs,
+      gestart 2026-09-09T18:51:35Z, geëindigd 2026-09-10T00:08:58Z.<br>
+      Cachepool 54,9 GB = 95,6 GB × 0,90 − 31,1 GB modelgewichten.
+      Alle percentages van de cache zijn van dat getal.<br>
+      <strong>Machinaal gegenereerde samenvatting.</strong> <code>RESULTATEN.md</code> in
+      dezelfde repository, opnieuw gemaakt uit deze twee mappen.
+    </div>
+  </footer>
+
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+const KV_LES = [[15.0, 3.3], [45.0, 8.51], [75.0, 9.87], [105.0, 10.06], [135.0, 12.51], [165.0, 12.34], [195.0, 12.28], [225.0, 12.02], [255.0, 12.63], [285.0, 13.28], [315.0, 13.7], [345.0, 13.4], [375.0, 12.02], [405.0, 11.4], [435.0, 12.87], [465.0, 15.83], [495.0, 15.36], [525.0, 12.87], [555.0, 13.7], [585.0, 13.28], [615.0, 12.28], [645.0, 12.06], [675.0, 13.83], [705.0, 13.7], [735.0, 12.85], [765.0, 11.72], [795.0, 11.28], [825.0, 12.4], [855.0, 12.51], [885.0, 12.28], [915.0, 10.36], [945.0, 9.72], [975.0, 9.68], [1005.0, 10.36], [1035.0, 12.34], [1065.0, 12.72], [1095.0, 12.51], [1125.0, 14.19], [1155.0, 15.06], [1185.0, 12.51], [1215.0, 11.4], [1245.0, 11.53], [1275.0, 12.09], [1305.0, 12.02], [1335.0, 10.87], [1365.0, 12.85], [1395.0, 13.06], [1425.0, 13.83], [1455.0, 15.36], [1485.0, 13.36], [1515.0, 12.09], [1545.0, 13.7], [1575.0, 14.19], [1605.0, 13.83], [1635.0, 12.63], [1665.0, 11.87], [1695.0, 10.55], [1725.0, 12.02], [1755.0, 13.53], [1785.0, 14.36], [1815.0, 15.06], [1845.0, 14.87], [1875.0, 14.19], [1905.0, 15.06], [1935.0, 14.36], [1965.0, 13.53], [1995.0, 13.19], [2025.0, 11.28], [2055.0, 12.34], [2085.0, 20.11], [2115.0, 9.72], [2145.0, 0.0], [2175.0, 0.0], [2205.0, 0.0], [2235.0, 0.0], [2265.0, 0.0], [2295.0, 0.0], [2325.0, 0.0], [2355.0, 0.0], [2385.0, 0.0], [2415.0, 0.0], [2445.0, 0.0], [2475.0, 0.0], [2505.0, 0.0], [2535.0, 0.0], [2565.0, 0.0], [2595.0, 0.0], [2625.0, 0.0], [2655.0, 0.0], [2685.0, 2.05], [2715.0, 12.4], [2745.0, 14.6], [2775.0, 14.06], [2805.0, 14.19], [2835.0, 13.87], [2865.0, 14.55], [2895.0, 15.36], [2925.0, 14.28], [2955.0, 14.19], [2985.0, 15.7], [3015.0, 15.83], [3045.0, 14.55], [3075.0, 14.36], [3105.0, 16.72], [3135.0, 16.4], [3165.0, 14.63], [3195.0, 16.06], [3225.0, 17.7], [3255.0, 15.87], [3285.0, 14.19], [3315.0, 15.55], [3345.0, 16.02], [3375.0, 18.4], [3405.0, 17.06], [3435.0, 15.19], [3465.0, 17.28], [3495.0, 18.06], [3525.0, 15.7], [3555.0, 18.06], [3585.0, 20.55], [3615.0, 20.28], [3645.0, 19.87], [3675.0, 18.7], [3705.0, 17.06], [3735.0, 18.83], [3765.0, 19.6], [3795.0, 18.51], [3825.0, 20.06], [3855.0, 21.36], [3885.0, 20.4], [3915.0, 20.55], [3945.0, 19.28], [3975.0, 21.06], [4005.0, 22.28], [4035.0, 26.6], [4065.0, 22.02], [4095.0, 19.28], [4125.0, 18.4], [4155.0, 20.28], [4185.0, 21.02], [4215.0, 19.87], [4245.0, 19.87], [4275.0, 19.36], [4305.0, 17.53], [4335.0, 17.28], [4365.0, 18.7], [4395.0, 19.06], [4425.0, 18.87], [4455.0, 19.28], [4485.0, 17.87], [4515.0, 16.7], [4545.0, 17.4], [4575.0, 17.63], [4605.0, 17.02], [4635.0, 16.7], [4665.0, 17.02], [4695.0, 16.34], [4725.0, 15.7], [4755.0, 14.6], [4785.0, 15.28], [4815.0, 16.7], [4845.0, 16.02], [4875.0, 13.87], [4905.0, 12.02], [4935.0, 11.02], [4965.0, 10.36], [4995.0, 9.87], [5025.0, 8.98], [5055.0, 6.87], [5085.0, 8.51], [5115.0, 9.87], [5145.0, 9.55], [5175.0, 7.63], [5205.0, 6.51], [5235.0, 6.19], [5265.0, 5.98], [5295.0, 4.94], [5325.0, 3.55], [5355.0, 3.13], [5385.0, 2.29], [5400.0, 1.63]];
+
+const KLIF = {
+  studenten: [5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 40],
+  gemeten:   [24.9, 23.5, 33.9, 23.5, 33.1, 37.6, 29.1, 33.4, 36.6, 84.6, 183.0, 65.2, 149.6, 108.3, 129.1, 125.4, 155.0, 130.0, 78.8],
+  live:      [24.9, 23.5, 25.5, 22.0, 33.1, 35.3, 26.4, 32.3, 31.1, 43.6, 53.3, 46.7, 64.2, 65.2, 52.6, 98.0, 63.2, 60.1, 72.6],
+  nGemeten:  [7, 5, 9, 6, 10, 15, 13, 15, 17, 17, 15, 14, 19, 21, 14, 20, 22, 18, 23],
+  nLive:     [7, 5, 7, 4, 10, 12, 10, 14, 16, 7, 6, 11, 12, 10, 8, 13, 9, 9, 11]
+};
+
+const KVRUNS = [["scen_worst_case", 46.2], ["sweep_s30_c100k", 28.2], ["engine_kv_auto", 23.2], ["sweep_s20_c100k", 19.1], ["rampup", 17.3], ["shared_00_c64k", 15.8], ["sweep_s30_c64k", 15.7], ["scen_deadline", 15.4], ["les_90min", 14.6], ["scen_lange_sessies", 12.0], ["sweep_s10_c100k", 11.7], ["scen_na_de_stilte", 10.9], ["engine_seqs_16", 10.8], ["engine_seqs_64", 10.7], ["engine_len_65k", 10.6], ["shared_50_c64k", 10.6], ["engine_kv_fp8", 10.5], ["sweep_s20_c64k", 10.4], ["act_intensief_s20", 9.9], ["shared_90_c64k", 9.3], ["sweep_s30_c32k", 9.3], ["scen_koudestart_s30", 9.1], ["shared_00_c32k", 9.1], ["sweep_s10_c64k", 8.9], ["shared_50_c32k", 8.0], ["sweep_s20_c32k", 8.0], ["shared_90_c32k", 6.9], ["sweep_s5_c100k", 6.6], ["act_intensief_s10", 6.0], ["sweep_s30_c8k", 5.8], ["act_rustig_s20", 5.2], ["scen_koudestart_s20", 4.6], ["sweep_s10_c32k", 4.5], ["sweep_s20_c8k", 4.4], ["sweep_s5_c64k", 4.3], ["sweep_s10_c8k", 3.5], ["sweep_s5_c32k", 2.9], ["act_rustig_s10", 2.5], ["sweep_s5_c8k", 1.5]];
+
+const NS = "http://www.w3.org/2000/svg";
+const tip = document.getElementById("tip");
+
+function el(name, attrs, text) {
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function svg(w, h) { return el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img" }); }
+function nl(v, d) { return v.toFixed(d === undefined ? 1 : d).replace(".", ","); }
+function showTip(evt, text) {
+  tip.textContent = text;
+  tip.classList.add("on");
+  const pad = 14;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  const r = tip.getBoundingClientRect();
+  if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad;
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+}
+function hideTip() { tip.classList.remove("on"); }
+function hoverable(node, text) {
+  node.addEventListener("pointerenter", e => showTip(e, text));
+  node.addEventListener("pointermove", e => showTip(e, text));
+  node.addEventListener("pointerleave", hideTip);
+}
+function kleurVoor(v) {
+  return v < 90 ? "var(--s-green)" : v <= 180 ? "var(--s-amber)" : "var(--s-red)";
+}
+function oordeelVoor(v) { return v < 90 ? "groen" : v <= 180 ? "oranje" : "rood"; }
+
+/* Banden voor groen / oranje / rood achter een liggende staafgrafiek. */
+function banden(s, x, yTop, yBot, max) {
+  const spans = [[0, Math.min(90, max), "var(--s-green)", ".07"],
+                 [90, Math.min(180, max), "var(--s-amber)", ".07"],
+                 [180, max, "var(--s-red)", ".13"]];
+  spans.forEach(([a, b, col, op]) => {
+    if (b <= a) return;
+    s.appendChild(el("rect", { x: x(a), y: yTop, width: x(b) - x(a), height: yBot - yTop,
+                               fill: col, opacity: op }));
+  });
+  [90, 180].forEach(v => {
+    if (v > max) return;
+    s.appendChild(el("line", { x1: x(v), x2: x(v), y1: yTop, y2: yBot,
+                               stroke: v === 90 ? "var(--s-green)" : "var(--s-red)",
+                               "stroke-width": 1, "stroke-dasharray": "3 3", opacity: ".7" }));
+  });
+}
+
+/* ------------------------------------------------- 1. doorlooptijd per fase */
+(function () {
+  const rows = [
+    { naam: "opstartpiek", meta: "8 min · intensiteit 1,5 · 62 instructies", v: 129.0 },
+    { naam: "opbouw", meta: "27 min · intensiteit 1,0 · 159 instructies", v: 96.2 },
+    { naam: "eindpiek", meta: "35 min · intensiteit 1,6 · 208 instructies", v: 179.0 },
+    { naam: "afbouw", meta: "10 min · intensiteit 0,6 · 53 instructies", v: 49.0 }
+  ];
+  const W = 760, L = 200, R = 62, T = 30, rowH = 50, barH = 17;
+  const H = T + rows.length * rowH + 30;
+  const max = 200;
+  const x = v => L + (v / max) * (W - L - R);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "p90 doorlooptijd van een instructie per lesfase"));
+
+  banden(s, x, T - 10, H - 26, max);
+  [[90, "90 s", "var(--s-green)"], [180, "180 s", "var(--s-red)"]].forEach(([v, lab, col]) => {
+    s.appendChild(el("text", { x: x(v), y: T - 15, class: "tick", "text-anchor": "middle", style: "fill:" + col }, lab));
+  });
+  [0, 50, 100, 150, 200].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - 10, class: "tick", "text-anchor": "middle" }, v + " s"));
+  });
+  s.appendChild(el("line", { x1: L, x2: W - R, y1: H - 26, y2: H - 26, stroke: "var(--rule-strong)", "stroke-width": 1 }));
+
+  rows.forEach((r, i) => {
+    const yTop = T + i * rowH;
+    s.appendChild(el("text", { x: 0, y: yTop + 12, class: "rowlab" }, r.naam));
+    s.appendChild(el("text", { x: 0, y: yTop + 27, class: "tick" }, r.meta));
+    const w = Math.max(2, x(r.v) - L);
+    const bar = el("rect", { x: L, y: yTop + 2, width: w, height: barH, rx: 4, fill: kleurVoor(r.v) });
+    hoverable(bar, `${r.naam}\np90 ${nl(r.v)} s — ${oordeelVoor(r.v)}\n${r.meta}`);
+    s.appendChild(bar);
+    s.appendChild(el("text", { x: L + w + 7, y: yTop + 2 + barH - 4, class: "vallab" }, nl(r.v)));
+  });
+  document.getElementById("plot-fases").appendChild(s);
+})();
+
+/* ------------------------------------------------------- 2. KV over de tijd */
+(function () {
+  const W = 760, L = 44, R = 26, T = 26, B = 46, H = 290;
+  const maxY = 28, maxX = 5400;
+  const x = v => L + (v / maxX) * (W - L - R);
+  const y = v => H - B - (v / maxY) * (H - T - B);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "KV-cachebezetting over het lesuur van negentig minuten"));
+
+  [["opstartpiek", 0, 480, "var(--band)"], ["opbouw", 480, 2100, "transparent"],
+   ["uitleg", 2100, 2700, "var(--band-quiet)"], ["eindpiek", 2700, 4800, "var(--band)"],
+   ["afbouw", 4800, 5400, "transparent"]].forEach(([naam, a, b, fill]) => {
+    if (fill !== "transparent")
+      s.appendChild(el("rect", { x: x(a), y: T, width: x(b) - x(a), height: H - B - T, fill: fill }));
+    s.appendChild(el("text", { x: (x(a) + x(b)) / 2, y: T - 9, class: "tick", "text-anchor": "middle" }, naam));
+  });
+  [0, 7, 14, 21, 28].forEach(v => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--rule)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: L - 7, y: y(v) + 3.5, class: "tick", "text-anchor": "end" }, v + "%"));
+  });
+  [0, 900, 1800, 2700, 3600, 4500, 5400].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - B + 17, class: "tick", "text-anchor": "middle" }, (v / 60) + " min"));
+  });
+  s.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, class: "axlab", "text-anchor": "middle" }, "tijd sinds start van de les"));
+
+  const d = KV_LES.map((p, i) => (i ? "L" : "M") + x(p[0]).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
+  s.appendChild(el("path", { d: d, fill: "none", stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+
+  const pk = KV_LES.reduce((m, p) => (p[1] > m[1] ? p : m), [0, 0]);
+  s.appendChild(el("circle", { cx: x(pk[0]), cy: y(pk[1]), r: 4.5, fill: "var(--accent)", stroke: "var(--surface)", "stroke-width": 2 }));
+  s.appendChild(el("line", { x1: x(pk[0]) + 5, x2: x(pk[0]) + 16, y1: y(pk[1]) + 3, y2: y(pk[1]) + 14, stroke: "var(--accent)", "stroke-width": 1 }));
+  s.appendChild(el("text", { x: x(pk[0]) + 19, y: y(pk[1]) + 18, class: "vallab" }, "piek 26,6 % · 14,6 GB"));
+
+  const hair = el("line", { x1: 0, x2: 0, y1: T, y2: H - B, stroke: "var(--rule-strong)", "stroke-width": 1, opacity: "0" });
+  s.appendChild(hair);
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - B - T, fill: "transparent" });
+  hit.style.cursor = "crosshair";
+  hit.addEventListener("pointermove", e => {
+    const box = s.getBoundingClientRect();
+    const px = (e.clientX - box.left) / box.width * W;
+    const t = Math.max(0, Math.min(maxX, (px - L) / (W - L - R) * maxX));
+    const idx = Math.min(KV_LES.length - 1, Math.round(t / 30));
+    hair.setAttribute("x1", x(KV_LES[idx][0]));
+    hair.setAttribute("x2", x(KV_LES[idx][0]));
+    hair.setAttribute("opacity", "1");
+    showTip(e, `minuut ${Math.floor(KV_LES[idx][0] / 60)}\n${nl(KV_LES[idx][1])} % · ${nl(KV_LES[idx][1] * 0.5494)} GB`);
+  });
+  hit.addEventListener("pointerleave", () => { hair.setAttribute("opacity", "0"); hideTip(); });
+  s.appendChild(hit);
+  document.getElementById("plot-kv").appendChild(s);
+})();
+
+/* --------------------------------------------------- 3. per werkprofiel */
+(function () {
+  const rows = [
+    { naam: "klein", meta: "10 studenten · web · 288 instructies", p50: 42.0, p90: 100.0 },
+    { naam: "middel", meta: "6 studenten · web · 119 instructies", p50: 60.6, p90: 158.8 },
+    { naam: "doorspitten", meta: "4 studenten · unity · 76 instructies", p50: 107.2, p90: 237.5 }
+  ];
+  const W = 760, L = 200, R = 74, T = 30, rowH = 56, H = T + rows.length * rowH + 28;
+  const max = 260;
+  const x = v => L + (v / max) * (W - L - R);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "Doorlooptijd van een instructie per werkprofiel, mediaan tot p90"));
+
+  banden(s, x, T - 10, H - 24, max);
+  [[90, "90 s", "var(--s-green)"], [180, "180 s", "var(--s-red)"]].forEach(([v, lab, col]) => {
+    s.appendChild(el("text", { x: x(v), y: T - 15, class: "tick", "text-anchor": "middle", style: "fill:" + col }, lab));
+  });
+  [0, 50, 100, 150, 200, 250].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - 8, class: "tick", "text-anchor": "middle" }, v + " s"));
+  });
+  s.appendChild(el("line", { x1: L, x2: W - R, y1: H - 24, y2: H - 24, stroke: "var(--rule-strong)", "stroke-width": 1 }));
+
+  rows.forEach((r, i) => {
+    const yc = T + i * rowH + 16;
+    const col = kleurVoor(r.p90);
+    s.appendChild(el("text", { x: 0, y: yc - 1, class: "rowlab" }, r.naam));
+    s.appendChild(el("text", { x: 0, y: yc + 14, class: "tick" }, r.meta));
+    const bar = el("rect", { x: x(r.p50), y: yc - 8, width: x(r.p90) - x(r.p50), height: 16, rx: 4, fill: col, opacity: ".9" });
+    hoverable(bar, `${r.naam}\nmediaan ${nl(r.p50)} s\np90     ${nl(r.p90)} s — ${oordeelVoor(r.p90)}`);
+    s.appendChild(bar);
+    s.appendChild(el("circle", { cx: x(r.p50), cy: yc, r: 4.5, fill: "var(--surface)", stroke: col, "stroke-width": 2.5 }));
+    s.appendChild(el("text", { x: x(r.p50) - 8, y: yc + 4, class: "tick", "text-anchor": "end" }, "p50 " + nl(r.p50)));
+    s.appendChild(el("text", { x: x(r.p90) + 8, y: yc + 4.5, class: "vallab" }, nl(r.p90) + " s"));
+  });
+  document.getElementById("plot-profiel").appendChild(s);
+})();
+
+/* -------------------------------------------------------- 4. de klifzoeker */
+(function () {
+  const xs = KLIF.studenten;
+  const W = 760, L = 46, R = 118, T = 26, B = 48, H = 320;
+  const maxY = 200;
+  const x = i => L + (i / (xs.length - 1)) * (W - L - R);
+  const y = v => H - B - (Math.min(v, maxY) / maxY) * (H - T - B);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "p90 doorlooptijd per stap van de klifzoeker, nagerekend tegen de live-uitslag"));
+
+  [[0, 90, "var(--s-green)", ".07"], [90, 180, "var(--s-amber)", ".07"],
+   [180, maxY, "var(--s-red)", ".13"]].forEach(([a, b, col, op]) => {
+    s.appendChild(el("rect", { x: L, y: y(b), width: W - L - R, height: y(a) - y(b), fill: col, opacity: op }));
+  });
+  [0, 50, 100, 150, 200].forEach(v => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--rule)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: L - 7, y: y(v) + 3.5, class: "tick", "text-anchor": "end" }, v));
+  });
+  [[90, "groen-grens 90 s", "var(--s-green)"], [180, "rood-grens 180 s", "var(--s-red)"]].forEach(([v, lab, col]) => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: col, "stroke-width": 1, "stroke-dasharray": "3 3", opacity: ".8" }));
+    s.appendChild(el("text", { x: L + 5, y: y(v) - 5, class: "tick", style: "fill:" + col }, lab));
+  });
+  xs.forEach((v, i) => {
+    if (i % 2 === 0 || i === xs.length - 1)
+      s.appendChild(el("text", { x: x(i), y: H - B + 17, class: "tick", "text-anchor": "middle" }, v));
+  });
+  s.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, class: "axlab", "text-anchor": "middle" }, "actieve studenten in dat venster van twee minuten"));
+  s.appendChild(el("text", { x: L - 7, y: T - 10, class: "axlab", "text-anchor": "end" }, "s"));
+
+  [["live", "var(--ink-3)", "4 3", "wat de klifzoeker live zag", KLIF.nLive],
+   ["gemeten", "var(--accent)", null, "alle instructies uit het venster", KLIF.nGemeten]].forEach(([key, col, dash, label, ns]) => {
+    const vals = KLIF[key];
+    const d = vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+    const path = el("path", { d: d, fill: "none", stroke: col, "stroke-width": 2, "stroke-linejoin": "round" });
+    if (dash) path.setAttribute("stroke-dasharray", dash);
+    s.appendChild(path);
+    vals.forEach((v, i) => {
+      const c = el("circle", { cx: x(i), cy: y(v), r: 4, fill: col, stroke: "var(--surface)", "stroke-width": 2 });
+      hoverable(c, `${xs[i]} studenten — ${label}\np90 ${nl(v)} s over ${ns[i]} instructies`);
+      s.appendChild(c);
+    });
+  });
+  // Directe labels rechts, zodat identiteit niet alleen aan de kleur hangt.
+  const xEnd = x(xs.length - 1);
+  [["gemeten", KLIF.gemeten[18], -14, "var(--accent)"],
+   ["live gezien", KLIF.live[18], 22, "var(--ink-3)"]].forEach(([lab, v, dy, col]) => {
+    s.appendChild(el("line", { x1: xEnd + 5, x2: xEnd + 13, y1: y(v), y2: y(v) + dy * 0.6,
+                               stroke: col, "stroke-width": 1 }));
+    s.appendChild(el("text", { x: xEnd + 16, y: y(v) + dy, class: "vallab", style: "fill:" + col }, lab));
+  });
+  // De uitschieter benoemen; hij hoort bij het venster met 25 studenten.
+  const iPk = KLIF.gemeten.indexOf(183.0);
+  s.appendChild(el("text", { x: x(iPk), y: y(183.0) - 9, class: "vallab", "text-anchor": "middle" }, "183 s"));
+  document.getElementById("plot-klif").appendChild(s);
+})();
+
+/* ------------------------------------------------- 5. de intensiteitsladder */
+(function () {
+  const rows = [
+    { naam: "rustige klas", meta: "act_rustig_s20 · 1 doorpakker, 6 afhakers", v: 65.0 },
+    { naam: "normale klas", meta: "sweep_s20_c32k · 3 doorpakkers, 3 afhakers", v: 76.3 },
+    { naam: "gedreven klas", meta: "act_intensief_s20 · 8 doorpakkers, 1 afhaker", v: 120.1 },
+    { naam: "heel het lesuur", meta: "les_90min · fasen 1,5 / 1,0 / 1,6 / 0,6", v: 144.4 },
+    { naam: "hervatten na stilte", meta: "scen_na_de_stilte · fase-intensiteit 1,5", v: 165.5 },
+    { naam: "eindpiek van het lesuur", meta: "les_90min fase 4 · intensiteit 1,6", v: 179.0 },
+    { naam: "deadline", meta: "scen_deadline · intensiteit 2,0", v: 284.7 }
+  ];
+  const W = 760, L = 198, R = 62, T = 30, rowH = 48, barH = 17;
+  const H = T + rows.length * rowH + 30;
+  const max = 300;
+  const x = v => L + (v / max) * (W - L - R);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "p90 doorlooptijd van een instructie bij zeven belastingen van dezelfde klas van twintig"));
+
+  banden(s, x, T - 10, H - 26, max);
+  [[90, "90 s", "var(--s-green)"], [180, "180 s", "var(--s-red)"]].forEach(([v, lab, col]) => {
+    s.appendChild(el("text", { x: x(v), y: T - 15, class: "tick", "text-anchor": "middle", style: "fill:" + col }, lab));
+  });
+  [0, 100, 200, 300].forEach(v => {
+    s.appendChild(el("text", { x: x(v), y: H - 10, class: "tick", "text-anchor": "middle" }, v + " s"));
+  });
+  s.appendChild(el("line", { x1: L, x2: W - R, y1: H - 26, y2: H - 26, stroke: "var(--rule-strong)", "stroke-width": 1 }));
+
+  rows.forEach((r, i) => {
+    const yTop = T + i * rowH;
+    s.appendChild(el("text", { x: 0, y: yTop + 12, class: "rowlab" }, r.naam));
+    s.appendChild(el("text", { x: 0, y: yTop + 26, class: "tick" }, r.meta));
+    const w = Math.max(2, x(r.v) - L);
+    const bar = el("rect", { x: L, y: yTop + 1, width: w, height: barH, rx: 4, fill: kleurVoor(r.v) });
+    hoverable(bar, `${r.naam}\np90 ${nl(r.v)} s — ${oordeelVoor(r.v)}\n${r.meta}`);
+    s.appendChild(bar);
+    s.appendChild(el("text", { x: L + w + 7, y: yTop + 1 + barH - 4, class: "vallab" }, nl(r.v)));
+  });
+  document.getElementById("plot-ladder").appendChild(s);
+})();
+
+/* ------------------------------------------------------- 6. KV-piek per run */
+(function () {
+  const W = 760, L = 34, R = 152, T = 22, B = 62, H = 310;
+  const maxY = 58;
+  const n = KVRUNS.length;
+  const bw = (W - L - R) / n;
+  const y = v => H - B - (v / maxY) * (H - T - B);
+  const s = svg(W, H);
+  s.appendChild(el("title", {}, "Hoogste KV-cachebezetting per run, tegen de cachepools van de alternatieven"));
+
+  [0, 10, 20, 30, 40, 50].forEach(v => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--rule)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: L - 6, y: y(v) + 3.5, class: "tick", "text-anchor": "end" }, v));
+  });
+  s.appendChild(el("text", { x: L - 6, y: T - 4, class: "axlab", "text-anchor": "end" }, "GB"));
+
+  KVRUNS.forEach(([naam, v], i) => {
+    const isLes = naam === "les_90min";
+    const bar = el("rect", { x: L + i * bw + 1, y: y(v), width: Math.max(1, bw - 2),
+                             height: y(0) - y(v), rx: 2,
+                             fill: isLes ? "var(--accent)" : "var(--ink-3)",
+                             opacity: isLes ? "1" : ".5" });
+    hoverable(bar, `${naam}\npiek ${nl(v)} GB — ${nl(100 * v / 54.94, 0)} % van de pool`);
+    s.appendChild(bar);
+  });
+
+  [[54.9, "RTX PRO 6000"], [33.7, "RTX PRO 5000"], [26.5, "2× RTX 5090"]].forEach(([v, lab]) => {
+    s.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--s-red)",
+                               "stroke-width": 1.2, "stroke-dasharray": "5 3" }));
+    s.appendChild(el("text", { x: W - R + 7, y: y(v) + 3.5, class: "tick", style: "fill:var(--s-red)" },
+                    lab + " · " + nl(v) + " GB"));
+  });
+
+  // De twee runs die boven de kleinste cachepool uitkomen, direct benoemen.
+  const labX = L + 5 * bw + 8;
+  [[0, "worst case · 46,2 GB", 51.0], [1, "30 studenten op 100k · 28,2 GB", 43.5]].forEach(([i, lab, at]) => {
+    const v = KVRUNS[i][1];
+    const cx = L + i * bw + bw / 2;
+    s.appendChild(el("line", { x1: cx, x2: labX - 5, y1: y(v) - 3, y2: y(at) - 4,
+                               stroke: "var(--ink-3)", "stroke-width": 1 }));
+    s.appendChild(el("text", { x: labX, y: y(at), class: "vallab" }, lab));
+  });
+
+  s.appendChild(el("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: "var(--rule-strong)", "stroke-width": 1 }));
+  s.appendChild(el("text", { x: L, y: H - B + 18, class: "tick" }, "← zwaarste run"));
+  s.appendChild(el("text", { x: W - R, y: H - B + 18, class: "tick", "text-anchor": "end" }, "lichtste run →"));
+  s.appendChild(el("text", { x: (L + W - R) / 2, y: H - B + 40, class: "axlab", "text-anchor": "middle" },
+                  "39 runs, gesorteerd op piekbezetting — de gemarkeerde staaf is het lesuur"));
+  document.getElementById("plot-kvruns").appendChild(s);
+})();
+</script>

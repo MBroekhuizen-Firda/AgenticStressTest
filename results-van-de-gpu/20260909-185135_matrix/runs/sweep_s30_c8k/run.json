@@ -1,0 +1,154 @@
+{
+  "spec": {
+    "run_id": "sweep_s30_c8k",
+    "label": "30 studenten, 8k context",
+    "kind": "sweep",
+    "students": 30,
+    "context_tokens": 8000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "sweep"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-09T20:59:53Z",
+  "finished": "2026-09-09T21:06:48Z",
+  "composition": {
+    "worstelaar": 7,
+    "gemiddelde": 14,
+    "afhaker": 4,
+    "doorpakker": 5,
+    "werk": {
+      "klein": 15,
+      "middel": 9,
+      "doorspitten": 6
+    }
+  },
+  "aggregate": {
+    "requests_total": 302,
+    "requests_ok": 302,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 47,
+    "ttft": {
+      "count": 302,
+      "mean": 0.2144757345733572,
+      "p50": 0.13184298400301486,
+      "p90": 0.36085110513959084,
+      "p99": 1.5306617838214163,
+      "max": 1.9886247168760747
+    },
+    "burst_duration": {
+      "count": 47,
+      "mean": 35.247141899942285,
+      "p50": 29.009990436024964,
+      "p90": 69.95001378408632,
+      "p99": 117.75047820602543,
+      "max": 120.4707013850566
+    },
+    "decode_tps": {
+      "count": 302,
+      "mean": 63.28021136242547,
+      "p50": 58.13464331310978,
+      "p90": 88.5563370915624,
+      "p99": 129.93013191145025,
+      "max": 155.83926561404974
+    },
+    "request_total_s": {
+      "count": 302,
+      "mean": 5.811465918595304,
+      "p50": 3.9404951945180073,
+      "p90": 11.669313591881656,
+      "p99": 27.24393645854903,
+      "max": 41.09132815501653
+    },
+    "output_tokens_total": 99878,
+    "prompt_tokens_total": 2845068,
+    "client_output_tokens_per_s": 332.9266666666667,
+    "requests_per_minute": 60.4,
+    "compactions": 39,
+    "restarts": 2,
+    "context_tokens_peak": 36284,
+    "compactions_per_burst": 0.8297872340425532,
+    "compactions_per_100_steps": 13.494809688581316,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 169,
+        "ttft_p90": 0.2316014131996782,
+        "burst_p90": 79.04373711943629,
+        "decode_tps_p50": 59.662047182826925
+      },
+      "gemiddelde": {
+        "requests": 123,
+        "ttft_p90": 0.677001929236576,
+        "burst_p90": 70.5826443695696,
+        "decode_tps_p50": 56.988929233065335
+      },
+      "worstelaar": {
+        "requests": 10,
+        "ttft_p90": 0.12561317274812608,
+        "burst_p90": 17.94436016220134,
+        "decode_tps_p50": 54.133085998604514
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.8760149711493476,
+    "prefix_cache_queries": 3077920.0,
+    "prefix_cache_hits": 2696304.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.05458481264674332,
+    "kv_cache_usage_peak": 0.10608148792399807,
+    "requests_running_avg": 5.74496644295302,
+    "requests_running_peak": 9.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 10215.263333333334,
+    "server_prompt_tokens": 3064579.0,
+    "server_decode_tokens_per_s": 369.4033333333333,
+    "server_generation_tokens": 110821.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "88%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

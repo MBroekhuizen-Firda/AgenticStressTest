@@ -1,0 +1,149 @@
+{
+  "spec": {
+    "run_id": "scen_lange_sessies",
+    "label": "Lange sessies, weinig studenten, zeer grote context",
+    "kind": "scenario",
+    "students": 6,
+    "context_tokens": 110000,
+    "activity": "intensief",
+    "shared_fraction": 0.3,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "scenario": "lange_sessies"
+    },
+    "notes": "Test geheugen in plaats van rekenkracht: de geheugenklif zonder ruis van gelijktijdigheid."
+  },
+  "started": "2026-09-09T21:45:43Z",
+  "finished": "2026-09-09T21:52:21Z",
+  "composition": {
+    "gemiddelde": 3,
+    "worstelaar": 1,
+    "doorpakker": 2,
+    "werk": {
+      "middel": 2,
+      "klein": 3,
+      "doorspitten": 1
+    }
+  },
+  "aggregate": {
+    "requests_total": 78,
+    "requests_ok": 78,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 8,
+    "ttft": {
+      "count": 78,
+      "mean": 0.6325300093799925,
+      "p50": 0.40829173603560776,
+      "p90": 1.090298757562414,
+      "p99": 3.7004844369646186,
+      "max": 4.217903231969103
+    },
+    "burst_duration": {
+      "count": 8,
+      "mean": 74.52456473690108,
+      "p50": 57.743138335994445,
+      "p90": 146.39151528906075,
+      "p99": 172.38676839036398,
+      "max": 175.27512984606437
+    },
+    "decode_tps": {
+      "count": 78,
+      "mean": 50.77850318551774,
+      "p50": 49.79751274024047,
+      "p90": 67.5716972076194,
+      "p99": 73.11128423918754,
+      "max": 73.13696759896307
+    },
+    "request_total_s": {
+      "count": 78,
+      "mean": 8.099011655532731,
+      "p50": 5.644089039997198,
+      "p90": 19.25345201164018,
+      "p99": 26.802222409111017,
+      "max": 33.88382650795393
+    },
+    "output_tokens_total": 28683,
+    "prompt_tokens_total": 5754077,
+    "client_output_tokens_per_s": 95.61,
+    "requests_per_minute": 15.600000000000001,
+    "compactions": 0,
+    "restarts": 0,
+    "context_tokens_peak": 114418,
+    "compactions_per_burst": 0.0,
+    "compactions_per_100_steps": 0.0,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 54,
+        "ttft_p90": 1.4155055319191898,
+        "burst_p90": 158.77020724206233,
+        "decode_tps_p50": 53.06567099838649
+      },
+      "gemiddelde": {
+        "requests": 24,
+        "ttft_p90": 0.5045231226133182,
+        "burst_p90": 64.55911255227402,
+        "decode_tps_p50": 41.6744704379871
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9907179608523524,
+    "prefix_cache_queries": 5722234.0,
+    "prefix_cache_hits": 5669120.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.12510386811925628,
+    "kv_cache_usage_peak": 0.21909413260185995,
+    "requests_running_avg": 2.087248322147651,
+    "requests_running_peak": 5.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 19074.113333333335,
+    "server_prompt_tokens": 5722234.0,
+    "server_decode_tokens_per_s": 103.08333333333333,
+    "server_generation_tokens": 30925.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 146s"
+    ],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "99%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

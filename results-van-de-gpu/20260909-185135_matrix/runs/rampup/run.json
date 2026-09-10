@@ -1,0 +1,360 @@
+{
+  "spec": {
+    "run_id": "rampup",
+    "label": "Klifzoeker: 5 studenten, +2 per 120s tot het breekt",
+    "kind": "rampup",
+    "students": 40,
+    "context_tokens": 32000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 0.0,
+    "expects_shared_prefix": true,
+    "duration_s": 2400.0,
+    "phases": [
+      {
+        "name": "ramp",
+        "duration_s": 2400.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": {
+      "start_students": 5,
+      "max_students": 40,
+      "step_interval_s": 120.0,
+      "step_students": 2,
+      "error_rate_limit": 0.02
+    },
+    "tags": {
+      "axis": "rampup"
+    },
+    "notes": "Waarschijnlijk het meest bruikbare enkele getal dat de test oplevert."
+  },
+  "started": "2026-09-09T18:55:38Z",
+  "finished": "2026-09-09T19:33:49Z",
+  "composition": {
+    "gemiddelde": 18,
+    "worstelaar": 10,
+    "afhaker": 6,
+    "doorpakker": 6,
+    "werk": {
+      "klein": 20,
+      "middel": 12,
+      "doorspitten": 8
+    }
+  },
+  "aggregate": {
+    "requests_total": 1661,
+    "requests_ok": 1661,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 280,
+    "ttft": {
+      "count": 1661,
+      "mean": 0.394572580720885,
+      "p50": 0.22095934487879276,
+      "p90": 0.7473890329711139,
+      "p99": 3.8130696306471252,
+      "max": 10.316413005115464
+    },
+    "burst_duration": {
+      "count": 280,
+      "mean": 49.32030439059932,
+      "p50": 30.745936451945454,
+      "p90": 104.03416595694142,
+      "p99": 282.9940895226075,
+      "max": 477.1323627480306
+    },
+    "decode_tps": {
+      "count": 1661,
+      "mean": 53.282154766857836,
+      "p50": 38.56790762605872,
+      "p90": 101.4462607778694,
+      "p99": 139.95926401364298,
+      "max": 179.87727265083586
+    },
+    "request_total_s": {
+      "count": 1661,
+      "mean": 8.312026644944483,
+      "p50": 5.359760869061574,
+      "p90": 18.53866687696427,
+      "p99": 51.52479920703935,
+      "max": 94.46727673104033
+    },
+    "output_tokens_total": 487629,
+    "prompt_tokens_total": 34341478,
+    "client_output_tokens_per_s": 203.17875,
+    "requests_per_minute": 41.525000000000006,
+    "compactions": 89,
+    "restarts": 24,
+    "context_tokens_peak": 84069,
+    "compactions_per_burst": 0.31785714285714284,
+    "compactions_per_100_steps": 5.358217940999397,
+    "by_persona": {
+      "afhaker": {
+        "requests": 26,
+        "ttft_p90": 0.4910781349753961,
+        "burst_p90": 29.120389722986147,
+        "decode_tps_p50": 25.98593409761063
+      },
+      "doorpakker": {
+        "requests": 685,
+        "ttft_p90": 0.9407933001872155,
+        "burst_p90": 216.45895036784924,
+        "decode_tps_p50": 43.985654578592886
+      },
+      "gemiddelde": {
+        "requests": 765,
+        "ttft_p90": 0.6859024607110773,
+        "burst_p90": 83.63228041911498,
+        "decode_tps_p50": 35.825304410641166
+      },
+      "worstelaar": {
+        "requests": 185,
+        "ttft_p90": 0.4036785114556548,
+        "burst_p90": 47.29552093509119,
+        "decode_tps_p50": 33.596444111394725
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9407125861499265,
+    "prefix_cache_queries": 36201714.0,
+    "prefix_cache_hits": 34055408.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.10230195814685573,
+    "kv_cache_usage_peak": 0.3143507058272563,
+    "requests_running_avg": 5.891228070175439,
+    "requests_running_peak": 19.0,
+    "queue_depth_avg": 0.008771929824561403,
+    "queue_depth_peak": 2.0,
+    "server_prefill_tokens_per_s": 15084.0475,
+    "server_prompt_tokens": 36201714.0,
+    "server_decode_tokens_per_s": 226.72166666666666,
+    "server_generation_tokens": 544132.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 104s"
+    ],
+    "warnings": [
+      "wachtrij piekte op 2 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "94%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": {
+    "max_students_ok": 40,
+    "broke_at": null,
+    "reasons": [],
+    "steps": [
+      {
+        "students": 5,
+        "ttft_p90_s": 0.6144100499805063,
+        "burst_p90_s": 24.94593264847063,
+        "error_rate": 0.0,
+        "samples": 46,
+        "bursts": 7,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 7,
+        "ttft_p90_s": 0.2882017596624792,
+        "burst_p90_s": 23.47044335124083,
+        "error_rate": 0.0,
+        "samples": 33,
+        "bursts": 5,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 9,
+        "ttft_p90_s": 0.25108429179526864,
+        "burst_p90_s": 25.53913728827611,
+        "error_rate": 0.0,
+        "samples": 43,
+        "bursts": 7,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 11,
+        "ttft_p90_s": 0.3352233481127769,
+        "burst_p90_s": 22.04632771324832,
+        "error_rate": 0.0,
+        "samples": 41,
+        "bursts": 4,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 13,
+        "ttft_p90_s": 0.32328169639222326,
+        "burst_p90_s": 33.132220437168144,
+        "error_rate": 0.0,
+        "samples": 57,
+        "bursts": 10,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 15,
+        "ttft_p90_s": 0.2613543459679932,
+        "burst_p90_s": 35.33649654751644,
+        "error_rate": 0.0,
+        "samples": 87,
+        "bursts": 12,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 17,
+        "ttft_p90_s": 0.2960864553693686,
+        "burst_p90_s": 26.422818162757903,
+        "error_rate": 0.0,
+        "samples": 77,
+        "bursts": 10,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 19,
+        "ttft_p90_s": 0.3774567962856962,
+        "burst_p90_s": 32.28171957514714,
+        "error_rate": 0.0,
+        "samples": 98,
+        "bursts": 14,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 21,
+        "ttft_p90_s": 0.5282517081592237,
+        "burst_p90_s": 31.079988191951998,
+        "error_rate": 0.0,
+        "samples": 99,
+        "bursts": 16,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 23,
+        "ttft_p90_s": 0.8446553927380592,
+        "burst_p90_s": 43.57616334236228,
+        "error_rate": 0.0,
+        "samples": 89,
+        "bursts": 7,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 25,
+        "ttft_p90_s": 0.6558544904692098,
+        "burst_p90_s": 53.326216248446144,
+        "error_rate": 0.0,
+        "samples": 76,
+        "bursts": 6,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 27,
+        "ttft_p90_s": 0.9738431937294083,
+        "burst_p90_s": 46.74219562090002,
+        "error_rate": 0.0,
+        "samples": 102,
+        "bursts": 11,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 29,
+        "ttft_p90_s": 0.4164236631011592,
+        "burst_p90_s": 64.21153920206707,
+        "error_rate": 0.0,
+        "samples": 80,
+        "bursts": 12,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 31,
+        "ttft_p90_s": 0.4570734719745817,
+        "burst_p90_s": 65.19068264025262,
+        "error_rate": 0.0,
+        "samples": 115,
+        "bursts": 10,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 33,
+        "ttft_p90_s": 0.5193363160360605,
+        "burst_p90_s": 52.55929920109919,
+        "error_rate": 0.0,
+        "samples": 91,
+        "bursts": 8,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 35,
+        "ttft_p90_s": 1.1963906335644432,
+        "burst_p90_s": 97.9556664759759,
+        "error_rate": 0.0,
+        "samples": 115,
+        "bursts": 13,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 37,
+        "ttft_p90_s": 1.1750272233504804,
+        "burst_p90_s": 63.229432117566475,
+        "error_rate": 0.0,
+        "samples": 99,
+        "bursts": 9,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 39,
+        "ttft_p90_s": 0.8074744094628841,
+        "burst_p90_s": 60.11630624779501,
+        "error_rate": 0.0,
+        "samples": 103,
+        "bursts": 9,
+        "thin_sample": false,
+        "broke": []
+      },
+      {
+        "students": 40,
+        "ttft_p90_s": 0.8797343051061035,
+        "burst_p90_s": 72.64848739397712,
+        "error_rate": 0.0,
+        "samples": 95,
+        "bursts": 11,
+        "thin_sample": false,
+        "broke": []
+      }
+    ],
+    "step_students": 2
+  }
+}
