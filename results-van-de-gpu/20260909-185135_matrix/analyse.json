@@ -1,0 +1,367 @@
+{
+  "kv_pool_gb": 54.93999999999999,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 38,
+  "class_size": 20,
+  "class_grades": {
+    "100k": "oranje",
+    "32k": "groen",
+    "64k": "oranje",
+    "8k": "groen"
+  },
+  "class_worst_context": 100000,
+  "class_worst_grade": "oranje",
+  "kv_peak_fraction": 0.3478423763966013,
+  "kv_peak_gb": 19.110460159229273,
+  "kv_headroom_gb": 35.82953984077072,
+  "kv_headroom_fraction": 0.6521576236033987,
+  "class_worst_run": "sweep_s20_c100k",
+  "kv_peak_overall_fraction": 0.8409179099484847,
+  "kv_peak_overall_gb": 46.200029972569745,
+  "kv_peak_overall_run": "scen_worst_case",
+  "kv_peak_overall_label": "Worst case: 20 studenten, maximale context, geen gedeelde prefix",
+  "cliff_students": 40,
+  "cliff_broke_at": null,
+  "cliff_reasons": [],
+  "cliff_ceiling": 40,
+  "cliff_found": false,
+  "cliff_context_tokens": 32000,
+  "cliff_step_students": 2,
+  "cliff_per_context": {
+    "8k": {
+      "eerste_oranje": null,
+      "eerste_rood": null
+    },
+    "32k": {
+      "eerste_oranje": 30,
+      "eerste_rood": null
+    },
+    "64k": {
+      "eerste_oranje": 10,
+      "eerste_rood": 30
+    },
+    "100k": {
+      "eerste_oranje": 10,
+      "eerste_rood": 30
+    }
+  },
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7,
+      "needed_kv_class_gb": 19.1,
+      "fits_class": true,
+      "margin_class_gb": 14.6,
+      "needed_kv_gb": 46.2,
+      "fits": false,
+      "margin_gb": -12.5,
+      "utilisation_on_alternative": 1.371,
+      "exceeded_by": [
+        "scen_worst_case"
+      ]
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5,
+      "needed_kv_class_gb": 19.1,
+      "fits_class": true,
+      "margin_class_gb": 7.4,
+      "needed_kv_gb": 46.2,
+      "fits": false,
+      "margin_gb": -19.7,
+      "utilisation_on_alternative": 1.743,
+      "exceeded_by": [
+        "scen_worst_case",
+        "sweep_s30_c100k"
+      ]
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3,
+      "needed_kv_class_gb": 19.1,
+      "fits_class": true,
+      "margin_class_gb": 36.2,
+      "needed_kv_gb": 46.2,
+      "fits": true,
+      "margin_gb": 9.1,
+      "utilisation_on_alternative": 0.835,
+      "exceeded_by": []
+    }
+  ],
+  "alternatives_basis": "kv_peak_overall_fraction",
+  "engine": [
+    {
+      "name": "kv_auto",
+      "flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072",
+      "grade": "oranje",
+      "ttft_p90_s": 0.6799339713063092,
+      "kv_peak": 0.4223363980530016,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9695927443766988
+    },
+    {
+      "name": "kv_fp8",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+      "grade": "oranje",
+      "ttft_p90_s": 0.7198466889094561,
+      "kv_peak": 0.1918110657657055,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9690776137340312
+    },
+    {
+      "name": "len_65k",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 65536",
+      "grade": "oranje",
+      "ttft_p90_s": 0.6727890269830823,
+      "kv_peak": 0.19338793825858946,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.968942130048352
+    },
+    {
+      "name": "seqs_16",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 16 --max-model-len 131072",
+      "grade": "oranje",
+      "ttft_p90_s": 0.7108448468381544,
+      "kv_peak": 0.19573112284159788,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.969053506049123
+    },
+    {
+      "name": "seqs_64",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+      "grade": "oranje",
+      "ttft_p90_s": 0.6553898919373751,
+      "kv_peak": 0.19458244778059053,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9688818057753538
+    }
+  ],
+  "engine_best": "kv_fp8",
+  "engine_best_flags": "--kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072",
+  "engine_ttft_noise_s": 1.0,
+  "engine_equivalent": [
+    "kv_fp8",
+    "len_65k",
+    "seqs_16",
+    "seqs_64"
+  ],
+  "shared": [
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9259767380373479,
+      "ttft_p90_s": 0.5841678879922257,
+      "kv_peak": 0.16644142637318526,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.939388374368268,
+      "ttft_p90_s": 0.5992603245424108,
+      "kv_peak": 0.14587542650699137,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 32000,
+      "prefix_cache_hit_rate": 0.9546892544075642,
+      "ttft_p90_s": 0.6821844058576971,
+      "kv_peak": 0.12524252358332777,
+      "grade": "groen"
+    },
+    {
+      "shared_fraction": 0.0,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9596794070152407,
+      "ttft_p90_s": 0.6970653377706189,
+      "kv_peak": 0.28753596039339,
+      "grade": "oranje"
+    },
+    {
+      "shared_fraction": 0.5,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9687541223876287,
+      "ttft_p90_s": 0.7793802071362737,
+      "kv_peak": 0.1923864320599451,
+      "grade": "oranje"
+    },
+    {
+      "shared_fraction": 0.9,
+      "context_tokens": 64000,
+      "prefix_cache_hit_rate": 0.9774279217185188,
+      "ttft_p90_s": 0.7760340677807109,
+      "kv_peak": 0.1688766976650833,
+      "grade": "oranje"
+    }
+  ],
+  "scenarios": [
+    {
+      "run_id": "scen_deadline",
+      "label": "Deadline, 20 studenten in burst",
+      "grade": "rood",
+      "ttft_p90_s": 0.724525164347142,
+      "burst_p90_s": 284.6690111380303,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9480692485308144,
+      "reasons": [
+        "p90 doorlooptijd instructie 285s"
+      ]
+    },
+    {
+      "run_id": "scen_koudestart_s20",
+      "label": "Koude start, 20 studenten",
+      "grade": "groen",
+      "ttft_p90_s": 0.3221219282131642,
+      "burst_p90_s": 87.45016485182566,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.8687130870270456,
+      "reasons": []
+    },
+    {
+      "run_id": "scen_koudestart_s30",
+      "label": "Koude start, 30 studenten",
+      "grade": "oranje",
+      "ttft_p90_s": 0.34462562485132364,
+      "burst_p90_s": 144.10697065610438,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.889189637372219,
+      "reasons": [
+        "p90 doorlooptijd instructie 144s"
+      ]
+    },
+    {
+      "run_id": "scen_lange_sessies",
+      "label": "Lange sessies, weinig studenten, zeer grote context",
+      "grade": "oranje",
+      "ttft_p90_s": 1.090298757562414,
+      "burst_p90_s": 146.39151528906075,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9907179608523524,
+      "reasons": [
+        "p90 doorlooptijd instructie 146s"
+      ]
+    },
+    {
+      "run_id": "scen_na_de_stilte",
+      "label": "Na de stilte: tien minuten niets, dan hervat iedereen tegelijk",
+      "grade": "oranje",
+      "ttft_p90_s": 0.9439682266674945,
+      "burst_p90_s": 165.5412147051655,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9383279843501259,
+      "reasons": [
+        "p90 doorlooptijd instructie 166s"
+      ]
+    },
+    {
+      "run_id": "scen_worst_case",
+      "label": "Worst case: 20 studenten, maximale context, geen gedeelde prefix",
+      "grade": "rood",
+      "ttft_p90_s": 0.9577642680611463,
+      "burst_p90_s": 401.2986193674151,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9455471076783993,
+      "reasons": [
+        "p90 doorlooptijd instructie 401s"
+      ]
+    }
+  ],
+  "context_pressure": [
+    {
+      "context_tokens": 8000,
+      "compactions_per_100_steps": 12.135423853837272,
+      "compactions": 94,
+      "context_tokens_peak": 53045,
+      "fill_fraction": 6.630625
+    },
+    {
+      "context_tokens": 32000,
+      "compactions_per_100_steps": 5.304114445746519,
+      "compactions": 36,
+      "context_tokens_peak": 57853,
+      "fill_fraction": 1.80790625
+    },
+    {
+      "context_tokens": 64000,
+      "compactions_per_100_steps": 2.549649577521339,
+      "compactions": 13,
+      "context_tokens_peak": 67571,
+      "fill_fraction": 1.055796875
+    },
+    {
+      "context_tokens": 100000,
+      "compactions_per_100_steps": 0.575617313803455,
+      "compactions": 3,
+      "context_tokens_peak": 90261,
+      "fill_fraction": 0.90261
+    }
+  ],
+  "class_mix": {
+    "doorpakker": 2,
+    "worstelaar": 2,
+    "gemiddelde": 5,
+    "afhaker": 1,
+    "werk": {
+      "klein": 5,
+      "middel": 3,
+      "doorspitten": 2
+    }
+  },
+  "grading_disagreements": [
+    "act_intensief_s20",
+    "engine_kv_auto",
+    "engine_kv_fp8",
+    "engine_len_65k",
+    "engine_seqs_16",
+    "engine_seqs_64",
+    "rampup",
+    "scen_deadline",
+    "scen_koudestart_s30",
+    "scen_lange_sessies",
+    "scen_na_de_stilte",
+    "scen_worst_case",
+    "shared_00_c64k",
+    "shared_50_c64k",
+    "shared_90_c64k",
+    "sweep_s10_c100k",
+    "sweep_s10_c64k",
+    "sweep_s20_c100k",
+    "sweep_s20_c64k",
+    "sweep_s30_c100k",
+    "sweep_s30_c32k",
+    "sweep_s30_c64k"
+  ]
+}

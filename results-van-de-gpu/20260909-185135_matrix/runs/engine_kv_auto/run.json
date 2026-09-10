@@ -1,0 +1,163 @@
+{
+  "spec": {
+    "run_id": "engine_kv_auto",
+    "label": "vLLM-variant kv_auto",
+    "kind": "engine",
+    "students": 20,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "engine",
+      "server_flags": "--kv-cache-dtype auto --max-num-seqs 32 --max-model-len 131072"
+    },
+    "notes": "Referentie zonder FP8-cache."
+  },
+  "started": "2026-09-09T23:41:07Z",
+  "finished": "2026-09-09T23:47:53Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "doorpakker": 3,
+    "afhaker": 3,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "aggregate": {
+    "requests_total": 152,
+    "requests_ok": 152,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 26,
+    "ttft": {
+      "count": 152,
+      "mean": 0.5354053062543053,
+      "p50": 0.256895896862261,
+      "p90": 0.6799339713063092,
+      "p99": 5.811285014743921,
+      "max": 8.46725274110213
+    },
+    "burst_duration": {
+      "count": 26,
+      "mean": 71.565489042416,
+      "p50": 52.769639375968836,
+      "p90": 165.66932361689396,
+      "p99": 205.38299751468003,
+      "max": 207.86996609019116
+    },
+    "decode_tps": {
+      "count": 152,
+      "mean": 33.74999836520096,
+      "p50": 32.49285342110247,
+      "p90": 45.49559217719185,
+      "p99": 62.772372748788435,
+      "max": 66.06809674891232
+    },
+    "request_total_s": {
+      "count": 152,
+      "mean": 11.779894211404576,
+      "p50": 7.394715108559467,
+      "p90": 23.670453436858956,
+      "p99": 61.0541918894626,
+      "max": 66.00798490806483
+    },
+    "output_tokens_total": 56570,
+    "prompt_tokens_total": 5772845,
+    "client_output_tokens_per_s": 188.56666666666666,
+    "requests_per_minute": 30.400000000000002,
+    "compactions": 4,
+    "restarts": 2,
+    "context_tokens_peak": 58347,
+    "compactions_per_burst": 0.15384615384615385,
+    "compactions_per_100_steps": 2.941176470588235,
+    "by_persona": {
+      "afhaker": {
+        "requests": 3,
+        "ttft_p90": 3.939600537484512,
+        "burst_p90": 37.20305758086033,
+        "decode_tps_p50": 30.601970880042476
+      },
+      "doorpakker": {
+        "requests": 73,
+        "ttft_p90": 0.5829237770754844,
+        "burst_p90": 116.54883005262815,
+        "decode_tps_p50": 34.233789543181246
+      },
+      "gemiddelde": {
+        "requests": 63,
+        "ttft_p90": 0.8716134590562435,
+        "burst_p90": 176.52733340905982,
+        "decode_tps_p50": 32.5908264803836
+      },
+      "worstelaar": {
+        "requests": 13,
+        "ttft_p90": 0.5854653974063695,
+        "burst_p90": 102.8635619554436,
+        "decode_tps_p50": 28.539478887381552
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9695927443766988,
+    "prefix_cache_queries": 5852123.0,
+    "prefix_cache_hits": 5674176.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.2787216513430683,
+    "kv_cache_usage_peak": 0.4223363980530016,
+    "requests_running_avg": 6.213333333333333,
+    "requests_running_peak": 11.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 19507.076666666668,
+    "server_prompt_tokens": 5852123.0,
+    "server_decode_tokens_per_s": 208.43333333333334,
+    "server_generation_tokens": 62530.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 166s"
+    ],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "97%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

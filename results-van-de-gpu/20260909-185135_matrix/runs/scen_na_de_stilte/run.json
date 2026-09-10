@@ -1,0 +1,171 @@
+{
+  "spec": {
+    "run_id": "scen_na_de_stilte",
+    "label": "Na de stilte: tien minuten niets, dan hervat iedereen tegelijk",
+    "kind": "scenario",
+    "students": 20,
+    "context_tokens": 32000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 30.0,
+    "expects_shared_prefix": true,
+    "duration_s": 1080.0,
+    "phases": [
+      {
+        "name": "opbouw",
+        "duration_s": 240.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "stilte",
+        "duration_s": 600.0,
+        "intensity": 1.0,
+        "active_fraction": 0.0,
+        "measure": false
+      },
+      {
+        "name": "hervatten",
+        "duration_s": 240.0,
+        "intensity": 1.5,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "scenario": "na_de_stilte"
+    },
+    "notes": "Zijn de sessies uit de cache gegooid tijdens de klassikale uitleg, en hoe duur is de eerste stap daarna?"
+  },
+  "started": "2026-09-09T21:52:51Z",
+  "finished": "2026-09-09T22:11:16Z",
+  "composition": {
+    "worstelaar": 5,
+    "gemiddelde": 9,
+    "doorpakker": 3,
+    "afhaker": 3,
+    "werk": {
+      "doorspitten": 4,
+      "klein": 10,
+      "middel": 6
+    }
+  },
+  "aggregate": {
+    "requests_total": 247,
+    "requests_ok": 247,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 34,
+    "ttft": {
+      "count": 247,
+      "mean": 0.6403391954492823,
+      "p50": 0.22837745281867683,
+      "p90": 0.9439682266674945,
+      "p99": 9.29057943690102,
+      "max": 12.752535947831348
+    },
+    "burst_duration": {
+      "count": 34,
+      "mean": 78.13924529580126,
+      "p50": 59.33904447394889,
+      "p90": 165.5412147051655,
+      "p99": 227.34696692876523,
+      "max": 236.93453495390713
+    },
+    "decode_tps": {
+      "count": 247,
+      "mean": 35.80864663398002,
+      "p50": 36.54685106842834,
+      "p90": 45.55126932733283,
+      "p99": 55.450399001004605,
+      "max": 80.02030866916635
+    },
+    "request_total_s": {
+      "count": 247,
+      "mean": 10.75333244968413,
+      "p50": 6.806574871065095,
+      "p90": 22.714655165234582,
+      "p99": 50.97356236486226,
+      "max": 78.88364521693438
+    },
+    "output_tokens_total": 84399,
+    "prompt_tokens_total": 5385107,
+    "client_output_tokens_per_s": 351.6625,
+    "requests_per_minute": 61.74999999999999,
+    "compactions": 19,
+    "restarts": 3,
+    "context_tokens_peak": 56621,
+    "compactions_per_burst": 0.5588235294117647,
+    "compactions_per_100_steps": 7.6923076923076925,
+    "by_persona": {
+      "afhaker": {
+        "requests": 4,
+        "ttft_p90": 7.118143807770686,
+        "burst_p90": 59.23492669896223,
+        "decode_tps_p50": 31.51523341085946
+      },
+      "doorpakker": {
+        "requests": 82,
+        "ttft_p90": 0.5584592168219391,
+        "burst_p90": 168.45412450563163,
+        "decode_tps_p50": 38.601760120602435
+      },
+      "gemiddelde": {
+        "requests": 136,
+        "ttft_p90": 0.8744275409262627,
+        "burst_p90": 158.66875089155513,
+        "decode_tps_p50": 35.76178921488099
+      },
+      "worstelaar": {
+        "requests": 25,
+        "ttft_p90": 2.4048968762159357,
+        "burst_p90": 119.8197077601217,
+        "decode_tps_p50": 31.07776740639509
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9383279843501259,
+    "prefix_cache_queries": 5490140.0,
+    "prefix_cache_hits": 5151552.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.1589080296599807,
+    "kv_cache_usage_peak": 0.199264066367833,
+    "requests_running_avg": 10.361344537815127,
+    "requests_running_peak": 18.0,
+    "queue_depth_avg": 0.17647058823529413,
+    "queue_depth_peak": 8.0,
+    "server_prefill_tokens_per_s": 23115.554166666665,
+    "server_prompt_tokens": 5547733.0,
+    "server_decode_tokens_per_s": 369.9125,
+    "server_generation_tokens": 88779.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 166s"
+    ],
+    "warnings": [
+      "wachtrij piekte op 8 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "94%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

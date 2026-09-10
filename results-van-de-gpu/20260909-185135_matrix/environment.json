@@ -1,0 +1,172 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-09-10T00:08:58Z",
+  "python": "3.12.3",
+  "model": "qwen3-coder",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "metrics_url": "http://127.0.0.1:8000/metrics",
+  "tokenizer": "exact (tokenizers: /workspace/.cache/huggingface//hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/dcaee4d4dfc5ee71ad501f01f530e5652438fde0)",
+  "tokenizer_exact": true,
+  "corpus": {
+    "name": "web+unity",
+    "files": 559,
+    "shared_files": 75,
+    "private_files": 112,
+    "total_characters": 2023882,
+    "median_file_tokens_estimate": 232,
+    "groups": {
+      "web": {
+        "name": "web",
+        "files": 187,
+        "shared_files": 75,
+        "private_files": 112,
+        "total_characters": 331940,
+        "median_file_tokens_estimate": 232
+      },
+      "unity": {
+        "name": "unity",
+        "files": 372,
+        "shared_files": 149,
+        "private_files": 223,
+        "total_characters": 1691942,
+        "median_file_tokens_estimate": 584
+      }
+    }
+  },
+  "seed": 20250908,
+  "work_profiles": [
+    {
+      "name": "klein",
+      "share": 0.5,
+      "group": "web",
+      "files_per_read": [
+        1,
+        1
+      ],
+      "read_line_budget": [
+        0,
+        0
+      ],
+      "search_matches": [
+        4,
+        10
+      ],
+      "search_context_lines": 0,
+      "test_output_blocks": [
+        1,
+        1
+      ],
+      "output_tokens_tool": [
+        60,
+        260
+      ],
+      "output_tokens_final": [
+        220,
+        700
+      ],
+      "tool_mix": {
+        "read_file": 0.45,
+        "edit_file": 0.25,
+        "run_tests": 0.2,
+        "search_code": 0.1
+      }
+    },
+    {
+      "name": "middel",
+      "share": 0.3,
+      "group": "web",
+      "files_per_read": [
+        1,
+        3
+      ],
+      "read_line_budget": [
+        0,
+        0
+      ],
+      "search_matches": [
+        8,
+        20
+      ],
+      "search_context_lines": 2,
+      "test_output_blocks": [
+        1,
+        3
+      ],
+      "output_tokens_tool": [
+        120,
+        500
+      ],
+      "output_tokens_final": [
+        400,
+        1200
+      ],
+      "tool_mix": {
+        "read_file": 0.45,
+        "edit_file": 0.25,
+        "run_tests": 0.2,
+        "search_code": 0.1
+      }
+    },
+    {
+      "name": "doorspitten",
+      "share": 0.2,
+      "group": "unity",
+      "files_per_read": [
+        2,
+        5
+      ],
+      "read_line_budget": [
+        0,
+        0
+      ],
+      "search_matches": [
+        15,
+        40
+      ],
+      "search_context_lines": 3,
+      "test_output_blocks": [
+        2,
+        5
+      ],
+      "output_tokens_tool": [
+        250,
+        900
+      ],
+      "output_tokens_final": [
+        800,
+        2500
+      ],
+      "tool_mix": {
+        "read_file": 0.5,
+        "edit_file": 0.15,
+        "run_tests": 0.15,
+        "search_code": 0.2
+      }
+    }
+  ],
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 95.6,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8",
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ]
+  }
+}

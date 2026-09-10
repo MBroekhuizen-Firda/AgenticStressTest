@@ -1,0 +1,158 @@
+{
+  "spec": {
+    "run_id": "sweep_s10_c64k",
+    "label": "10 studenten, 64k context",
+    "kind": "sweep",
+    "students": 10,
+    "context_tokens": 64000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "sweep"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-09T20:16:44Z",
+  "finished": "2026-09-09T20:23:25Z",
+  "composition": {
+    "doorpakker": 2,
+    "worstelaar": 2,
+    "gemiddelde": 5,
+    "afhaker": 1,
+    "werk": {
+      "klein": 5,
+      "middel": 3,
+      "doorspitten": 2
+    }
+  },
+  "aggregate": {
+    "requests_total": 111,
+    "requests_ok": 111,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 16,
+    "ttft": {
+      "count": 111,
+      "mean": 0.5767994624906564,
+      "p50": 0.25505377002991736,
+      "p90": 0.9743123701773584,
+      "p99": 6.376571720093495,
+      "max": 6.6366615949664265
+    },
+    "burst_duration": {
+      "count": 16,
+      "mean": 41.922616362106055,
+      "p50": 30.17319260549266,
+      "p90": 97.15962203289382,
+      "p99": 127.23013764807256,
+      "max": 129.3205073599238
+    },
+    "decode_tps": {
+      "count": 111,
+      "mean": 66.2010768900184,
+      "p50": 65.27468833103293,
+      "p90": 85.55380018632498,
+      "p99": 99.82105790969294,
+      "max": 121.04688537289834
+    },
+    "request_total_s": {
+      "count": 111,
+      "mean": 6.23907933853617,
+      "p50": 4.719683561008424,
+      "p90": 11.592071085935459,
+      "p99": 20.324405169510285,
+      "max": 41.01950958208181
+    },
+    "output_tokens_total": 39856,
+    "prompt_tokens_total": 4891870,
+    "client_output_tokens_per_s": 132.85333333333332,
+    "requests_per_minute": 22.2,
+    "compactions": 3,
+    "restarts": 0,
+    "context_tokens_peak": 67571,
+    "compactions_per_burst": 0.1875,
+    "compactions_per_100_steps": 2.803738317757009,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 58,
+        "ttft_p90": 0.601363138575107,
+        "burst_p90": 73.7621569599491,
+        "decode_tps_p50": 65.24162488918307
+      },
+      "gemiddelde": {
+        "requests": 49,
+        "ttft_p90": 1.7865498212166133,
+        "burst_p90": 94.05032655738759,
+        "decode_tps_p50": 66.00587015252712
+      },
+      "worstelaar": {
+        "requests": 4,
+        "ttft_p90": 0.2127326363930479,
+        "burst_p90": 31.661688735010102,
+        "decode_tps_p50": 58.4215759417428
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9670640110729921,
+    "prefix_cache_queries": 4933084.0,
+    "prefix_cache_hits": 4770608.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.07938502709573828,
+    "kv_cache_usage_peak": 0.16285542249280793,
+    "requests_running_avg": 2.14,
+    "requests_running_peak": 5.0,
+    "queue_depth_avg": 0.006666666666666667,
+    "queue_depth_peak": 1.0,
+    "server_prefill_tokens_per_s": 16318.096666666666,
+    "server_prompt_tokens": 4895429.0,
+    "server_decode_tokens_per_s": 132.11,
+    "server_generation_tokens": 39633.0
+  },
+  "grade": {
+    "colour": "oranje",
+    "reasons": [
+      "p90 doorlooptijd instructie 97s"
+    ],
+    "warnings": [
+      "wachtrij piekte op 1 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "oranje",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "97%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}
