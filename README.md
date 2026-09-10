@@ -366,11 +366,19 @@ de `git@github.com:` remote. Die sleutel geldt per definitie voor één repo.
 `pod.sh` laat een ssh-remote met rust.
 
 Controleer voor je begint of het werkt — een mislukte push merk je liever nu
-dan na zeven uur meten:
+dan na zeven uur meten. Let op dat `git ls-remote` alleen *lezen* bewijst: een
+token met alleen leesrechten komt daar gewoon doorheen. Push een wegwerpbranch
+en gooi hem meteen weg:
 
 ```bash
-git ls-remote origin >/dev/null && echo "push-toegang in orde"
+git ls-remote origin >/dev/null || echo "remote onbereikbaar"
+git push origin HEAD:refs/heads/push-probe-$$ \
+  && git push origin --delete "push-probe-$$" \
+  && echo "push-toegang in orde"
 ```
+
+`scripts/pod.sh` doet precies dit vóór de meting; deze regels zijn er voor als
+je het met de hand wilt nagaan.
 
 #### 2. Een RunPod-API-sleutel om de pod te stoppen
 
@@ -407,6 +415,13 @@ Mislukt de push, dan blijft de pod draaien en blijft de doodsklok staan: de
 meting bestaat dan nog maar op één plek en de machine mag niet zomaar
 verdwijnen. Wil je helemaal niet pushen, gebruik dan `--no-push` — en haal ze
 dan zelf op, want dan stopt de pod ook niet uit zichzelf.
+
+De gecombineerde `RESULTATEN.md` in de hoofdmap wordt alleen meegepusht als
+deze run hem ook geschreven heeft. Draai je met `--skip-lesson`, dan is er geen
+fase 2 om te combineren: het script neemt de vorige lesvalidatie alleen mee als
+die dezelfde vingerafdruk draagt, en laat het bestand anders met rust — mét een
+melding en het commando om het later alsnog te doen. Een bestand meepushen dat
+deze meting niet gemaakt heeft, suggereert een dekking die er niet is.
 
 Handmatig ophalen kan altijd nog. Doe dat vóórdat je afsluit. De resultatenmap is klein (enkele megabytes); de
 ruwe verzoekregels zijn het waardevolst, want daarmee kun je later andere
@@ -482,7 +497,7 @@ run een tweede logbestand achterlaat, weigert `tail` die verkorte vorm
 |---|---|
 | **De engine-varianten** | Die vereisen elk een herstart van vLLM met andere vlaggen. Het script herstart de server zelf en draait daarna precies die ene run. Met de hand is dit het stuk waar `--no-pause` verleidelijk is, en dat maakt die vijf runs betekenisloos. |
 | **Server en harnas gelijk houden** | `hardware.vram_gb`, `gpu_memory_utilization`, `model_weights_gb` en de modelnaam worden afgeleid uit `nvidia-smi` en uit het model op schijf, en meegegeven aan elke aanroep. Staat de omrekening naar gigabytes scheef, dan is het antwoord op vraag 3 scheef. |
-| **Hervatten** | Runs die al op schijf staan worden overgeslagen. Valt je verbinding weg of loopt de pod vast, dan draai je hetzelfde commando opnieuw en gaat het verder waar het was. |
+| **Hervatten** | Runs die al op schijf staan worden overgeslagen. Valt je verbinding weg of loopt de pod vast, dan draai je hetzelfde commando opnieuw en gaat het verder waar het was. Elke run draagt een vingerafdruk van waarmee hij gemeten is — corpus, gedragsmodel, tokenizer, engine-instellingen — en hervatten in een map die met iets anders gemeten is, stopt met een melding die zegt welk veld verschilt. Wil je het toch: `--resume-anyway`. |
 | **De controle vooraf** | Schijfruimte, driverversie, `tokenizers`, en of `/metrics` de drie reeksen levert waar de hoofdvraag op hangt: preempties, prefix-cache en KV-bezetting. Ontbreekt er een, dan stopt het script in plaats van zes uur het verkeerde te meten. |
 | **De resultaten veiligstellen** | Aan het eind schrijft het één rapport over beide fases, commit de meetmappen naar een eigen branch en pusht die. Pas als dat gelukt is, stopt het de pod. Mislukt de push, dan blijft de machine draaien en blijft de doodsklok staan: de meting bestaat dan nog maar op één plek. |
 | **De tool-call-parser** | Start vLLM niet op met `--tool-call-parser qwen3_coder`, dan probeert het script het nog één keer zonder, zoals hoofdstuk 4.4 beschrijft. |

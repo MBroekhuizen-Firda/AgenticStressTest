@@ -97,6 +97,14 @@ SHUTDOWN_WHEN_DONE=0
 DEADMAN_HOURS=""
 SKIP_LESSON=0
 SKIP_ENGINE=0
+# Resume in a directory that was measured with a different corpus, behaviour
+# model or tokenizer. Off by default: skipping runs that only share a name with
+# what is wanted produces a complete-looking report over two measurements.
+RESUME_ANYWAY=0
+# Set by cmd_all when it actually wrote the combined RESULTATEN.md in the repo
+# root this run. Without it that file is whatever a previous run left behind,
+# and pushing it along suggests a coverage this measurement does not have.
+REPORT_WRITTEN=0
 # Push the results to the repository when 'all' finishes, and stop the pod once
 # that push succeeded. Results that only exist on a rented machine are one
 # forgotten terminate away from being gone, so this is on by default.
@@ -812,18 +820,21 @@ cmd_status() {
 
 # Run ids in a group that do not yet have a run.json on disk. This is what
 # makes the whole thing resumable after a dropped connection.
+#
+# The harness does the counting, because it also has to answer the question
+# underneath it: were the runs already in this directory measured with the
+# setup we are running now? A run id says students and context and nothing
+# about the corpus or the behaviour model, so without that check a resume
+# quietly mixes two measurements. It exits 3 when they differ, and the caller
+# turns that into a stop -- carrying on would produce a report that looks
+# complete and is not.
 pending_ids() {
-  local group="$1" dir="$2"; shift 2
-  "$PY" - "$group" "$dir" "$CONFIG" "$@" <<'PY'
-import os, sys
-from stresstest.cli import load_config
-from stresstest.matrix import BUILDERS
-group, directory, config_path = sys.argv[1], sys.argv[2], sys.argv[3]
-config = load_config(config_path, sys.argv[4:])
-ids = [spec.run_id for spec in BUILDERS[group](config)]
-print(" ".join(i for i in ids
-               if not os.path.exists(os.path.join(directory, "runs", i, "run.json"))))
-PY
+  local group="$1" dir="$2"
+  local flags=()
+  [ "$RESUME_ANYWAY" = 1 ] && flags+=(--resume-anyway)
+  harness_sets
+  "$PY" -m stresstest pending "$dir" --only "$group" \
+        "${flags[@]+"${flags[@]}"}" "${SETS[@]}"
 }
 
 engine_variants() {
@@ -855,29 +866,39 @@ PY
 run_group() {
   local group="$1" dir="$2"
   local pending
-  pending="$(pending_ids "$group" "$dir" "${EXTRA_KV[@]+"${EXTRA_KV[@]}"}")"
+  pending="$(pending_ids "$group" "$dir")" \
+    || die "kan groep $group niet hervatten in $dir -- zie de melding hierboven."
   if [ -z "$pending" ]; then
     say "groep $group: alles staat al in $dir, overslaan"
     return 0
   fi
   head_ "Groep $group ($(echo "$pending" | wc -w | tr -d ' ') runs)"
   harness_sets
+  local resume=()
+  [ "$RESUME_ANYWAY" = 1 ] && resume+=(--resume-anyway)
   # shellcheck disable=SC2086 -- word splitting of the id list is intended
-  "$PY" -m stresstest matrix --only "$group" --out "$dir" --run $pending --no-pause "${SETS[@]}"
+  "$PY" -m stresstest matrix --only "$group" --out "$dir" --run $pending --no-pause \
+        "${resume[@]+"${resume[@]}"}" "${SETS[@]}"
 }
 
 # The engine variants cannot be driven from the client: each one needs its own
 # vLLM. The wrapper restarts the server itself, which is why --no-pause is
 # correct here and meaningless without it.
 run_engine_group() {
-  local dir="$1" name flags context need line
+  local dir="$1" name flags context need line pending
   head_ "Engine-varianten (elke variant herstart vLLM)"
+  # Asked once, before the first restart: which variants are still missing, and
+  # was this directory measured with the setup we are running now? The engine
+  # settings themselves are exempt -- varying those is what this group does --
+  # but the corpus and the behaviour model are not.
+  pending="$(pending_ids engine "$dir")" \
+    || die "kan de engine-varianten niet hervatten in $dir -- zie de melding hierboven."
   while IFS=$'\t' read -r name flags context; do
     [ -n "$name" ] || continue
-    if [ -f "$dir/runs/engine_$name/run.json" ]; then
-      say "engine_$name staat al in $dir, overslaan"
-      continue
-    fi
+    case " $pending " in
+      *" engine_$name "*) : ;;
+      *) say "engine_$name staat al in $dir, overslaan"; continue ;;
+    esac
     # A run of N context tokens sends up to 1024 tokens of headroom on top; if
     # the variant's window is smaller than that, vLLM rejects every request.
     local window; window="$(echo "$flags" | sed -n 's/.*--max-model-len \([0-9]*\).*/\1/p')"
@@ -894,7 +915,10 @@ run_engine_group() {
     fi
     check_metrics
     harness_sets
-    "$PY" -m stresstest matrix --run "engine_$name" --only engine --out "$dir" --no-pause "${SETS[@]}"
+    local resume=()
+    [ "$RESUME_ANYWAY" = 1 ] && resume+=(--resume-anyway)
+    "$PY" -m stresstest matrix --run "engine_$name" --only engine --out "$dir" --no-pause \
+          "${resume[@]+"${resume[@]}"}" "${SETS[@]}"
   done < <(engine_variants)
 }
 
@@ -1000,7 +1024,17 @@ disarm_deadman() {
 #
 # The pod only stops once the results are pushed, so broken push access means
 # discovering after six hours that the machine is still running and the results
-# are still on it. `git ls-remote` costs a second and answers the question.
+# are still on it.
+#
+# Reading is not writing. `git ls-remote` succeeds with a `contents: read`
+# token, with a token whose write scope was revoked, and against a repository
+# whose branch protection refuses new branches -- all three used to pass this
+# check and fail after the whole measurement. So the check pushes: a throwaway
+# ref, deleted straight away. Nothing else proves write access without
+# guessing.
+#
+# `ls-remote` stays as the first, cheap step, because "no network" and "network
+# but no write access" need different answers.
 check_push_access() {
   [ "$PUSH_RESULTS" = 1 ] || return 0
   [ "$MOCK" = 1 ] && return 0
@@ -1013,13 +1047,28 @@ check_push_access() {
     return 1
   fi
   setup_git_credentials "$remote" || return 1
-  if git ls-remote origin >/dev/null 2>&1; then
-    say "push-toegang in orde ($remote)"
-    return 0
+  if ! git ls-remote origin >/dev/null 2>&1; then
+    warn "kan de remote niet bereiken: $remote"
+    warn "Dat is een netwerk- of tokenprobleem, nog voor er van pushen sprake is."
+    _push_access_hint
+    return 1
   fi
-  warn "kan niet bij $remote."
-  _push_access_hint
-  return 1
+
+  local probe="push-probe-$$-$(date +%s)"
+  if ! git push --quiet origin "HEAD:refs/heads/$probe" 2>/dev/null; then
+    warn "de remote is bereikbaar, maar deze pod mag er niet naartoe pushen."
+    warn "($remote -- lezen lukt, schrijven niet: een token met alleen"
+    warn " leesrechten, een ingetrokken schrijfrecht, of branch protection"
+    warn " die nieuwe branches weigert.)"
+    _push_access_hint
+    return 1
+  fi
+  if ! git push --quiet origin --delete "$probe" 2>/dev/null; then
+    warn "de proefbranch '$probe' is aangemaakt maar niet opgeruimd; verwijder"
+    warn "hem zelf:  git push origin --delete $probe"
+  fi
+  say "push-toegang in orde ($remote)"
+  return 0
 }
 
 _push_access_hint() {
@@ -1114,8 +1163,14 @@ push_results() {
     [ -n "$d" ] && [ -d "$d" ] || continue
     git add -f "$d" && staged=1
   done
-  # The combined report over both phases, if it was written.
-  [ -f RESULTATEN.md ] && git add -f RESULTATEN.md
+  # The combined report over both phases -- only when this run wrote it. The
+  # file survives between runs, so staging it unconditionally pushes a report
+  # of an earlier measurement as part of this one.
+  if [ "${REPORT_WRITTEN:-0}" = 1 ] && [ -f RESULTATEN.md ]; then
+    git add -f RESULTATEN.md
+  elif [ -f RESULTATEN.md ]; then
+    say "RESULTATEN.md in de hoofdmap is niet door deze run geschreven en wordt niet meegepusht"
+  fi
   if [ "$staged" = 0 ]; then
     warn "geen resultatenmappen gevonden om te pushen."
     return 1
@@ -1160,6 +1215,51 @@ archive_results() {
 # The whole thing
 # --------------------------------------------------------------------------
 
+# The lesson directory from an earlier run, but only if it belongs with this
+# measurement. With --skip-lesson there is no phase 2 in this run, and folding
+# in an arbitrary older one is how a report ends up holding two behaviour
+# models without saying so (issue #20). Same fingerprint or nothing.
+reusable_lesson_dir() {
+  local matrix_dir="$1" previous
+  previous="$(cat "$STATE_DIR/last_lesson_dir" 2>/dev/null || true)"
+  if [ -z "$previous" ] || [ ! -d "$previous" ]; then
+    say "--skip-lesson: geen eerdere lesvalidatie bekend om bij te voegen"
+    return 0
+  fi
+  if "$PY" -m stresstest fingerprint --same "$matrix_dir" "$previous" >/dev/null 2>&1; then
+    say "--skip-lesson: eerdere lesvalidatie $previous hoort bij deze opstelling en wordt meegenomen"
+    echo "$previous"
+    return 0
+  fi
+  say "--skip-lesson: eerdere lesvalidatie $previous is met een andere opstelling"
+  say "  gemeten (of draagt geen vingerafdruk) en wordt niet meegenomen"
+  return 0
+}
+
+plural_runs() { [ "$1" = 1 ] && printf '1 run' || printf '%s runs' "$1"; }
+
+# How old the directory is and what is already in it. Resuming is the point of
+# the directory, but resuming in yesterday's measurement without noticing is
+# how a run finishes in ten minutes having measured nothing (issue #18). The
+# fingerprint check refuses that; this line makes it visible even when the
+# fingerprint does match.
+describe_results_dir() {
+  local dir="$1" stamp epoch age runs
+  runs="$(find "$dir/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d " ")"
+  # The directory name carries the moment it was created: 20260908-180708_matrix.
+  stamp="$(basename "$dir" | sed -n 's/^\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)-\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\).*/\1-\2-\3 \4:\5:\6/p')"
+  epoch=""
+  [ -n "$stamp" ] && epoch="$(date -d "$stamp" +%s 2>/dev/null || true)"
+  [ -n "$epoch" ] || epoch="$(date -r "$dir" +%s 2>/dev/null || true)"
+  if [ -n "$epoch" ]; then
+    age="$(awk -v s="$(( $(date +%s) - epoch ))" 'BEGIN{
+      if (s < 5400) printf "%d minuten", s/60; else printf "%d uur", s/3600}')"
+    printf 'aangemaakt %s geleden, %s aanwezig' "$age" "$(plural_runs "$runs")"
+  else
+    printf '%s aanwezig' "$(plural_runs "$runs")"
+  fi
+}
+
 # Most recent phase-1 results directory, or empty if there is none yet.
 # `ls` fails when results/ does not exist, and under `set -o pipefail` that
 # failure escapes the command substitution and aborts the run -- which is
@@ -1176,7 +1276,8 @@ cmd_all() {
   if [ -z "$dir" ]; then
     dir="$(latest_matrix_dir)"
     if [ -n "$dir" ]; then
-      say "hervat in bestaande map $dir (zet RESULTS_DIR= om ergens anders te beginnen)"
+      say "hervat in bestaande map $dir ($(describe_results_dir "$dir"))"
+      say "  zet RESULTS_DIR= om ergens anders te beginnen"
     else
       dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
     fi
@@ -1223,12 +1324,26 @@ cmd_all() {
     head_ "Fase 2: lesvalidatie van negentig minuten"
     cmd_lesson
     lesson_dir="$(cat "$STATE_DIR/last_lesson_dir" 2>/dev/null || true)"
+  else
+    lesson_dir="$(reusable_lesson_dir "$dir")"
   fi
 
   # One report covering both phases, next to the per-phase ones.
   if [ -n "$lesson_dir" ]; then
-    "$PY" -m stresstest report "$dir" --also "$lesson_dir" --out RESULTATEN.md \
-      || warn "gecombineerd rapport mislukt; de losse rapporten staan er wel"
+    if "$PY" -m stresstest report "$dir" --also "$lesson_dir" --out RESULTATEN.md; then
+      REPORT_WRITTEN=1
+    else
+      warn "gecombineerd rapport mislukt; de losse rapporten staan er wel"
+    fi
+  else
+    # RESULTATEN.md in the repository root is the file that carries the budget
+    # request. Leaving yesterday's version there and pushing it along suggests
+    # this measurement covers phase 2, which it does not.
+    warn "deze meting heeft geen bijbehorende lesvalidatie, dus RESULTATEN.md in"
+    warn "de hoofdmap is niet bijgewerkt en wordt niet meegepusht: hij hoort bij"
+    warn "een eerdere meting. Fase 1 staat compleet in $dir/RESULTATEN.md."
+    warn "Alsnog combineren, zodra er een passende lesmap is:"
+    warn "    $PY -m stresstest report $dir --also <lesmap> --out RESULTATEN.md"
   fi
 
   head_ "Klaar in $(awk -v s=$((SECONDS - started)) 'BEGIN{printf "%du%02dm", s/3600, (s%3600)/60}')"
@@ -1308,7 +1423,13 @@ Opties
                      machine, en die mag je niet kwijtraken
   --branch <naam>    branch om de resultaten heen te pushen
                      (standaard resultaten/<kaart>-<tijdstempel>)
-  --skip-lesson      fase 2 overslaan
+  --skip-lesson      fase 2 overslaan. De gecombineerde RESULTATEN.md in de
+                     hoofdmap wordt dan alleen bijgewerkt als de vorige
+                     lesvalidatie bij deze meting hoort
+  --resume-anyway    hervatten in een map die met een ander corpus, gedrags-
+                     model of tokenizer gemeten is. Zonder deze vlag stopt de
+                     test daarop, want runs met dezelfde naam meten dan iets
+                     anders dan wat er al staat
   --skip-engine      de engine-varianten overslaan (die herstarten vLLM)
   --flags "<vlaggen>"  afwijkende vLLM-vlaggen voor 'lesson'
   -c, --config <pad> ander configuratiebestand (standaard config/default.json)
@@ -1348,6 +1469,7 @@ main() {
       --no-push) PUSH_RESULTS=0; shift ;;
       --branch) RESULTS_BRANCH="$2"; shift 2 ;;
       --skip-lesson) SKIP_LESSON=1; shift ;;
+      --resume-anyway) RESUME_ANYWAY=1; shift ;;
       --skip-engine) SKIP_ENGINE=1; shift ;;
       --deadman) DEADMAN_HOURS="$2"; shift 2 ;;
       --flags) LESSON_FLAGS="$2"; shift 2 ;;

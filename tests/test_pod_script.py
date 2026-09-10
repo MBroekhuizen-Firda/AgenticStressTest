@@ -41,6 +41,14 @@ def script_text() -> str:
         return handle.read()
 
 
+def function_body(name: str) -> str:
+    """One shell function out of the script, so a test can read what it does
+    without running seven hours of GPU time to find out."""
+    found = re.search(rf"^{name}\(\) \{{.*?^\}}", script_text(), re.M | re.S)
+    assert found is not None, f"{name} is gone"
+    return found.group(0)
+
+
 HAVE_PROC = os.path.isdir("/proc/self")
 
 
@@ -900,6 +908,165 @@ class TestPushingResults(unittest.TestCase):
         # results can be fetched, but not forever.
         failure_branch = tail.split('elif [ "$PUSH_RESULTS" = 1 ]; then')[1]
         self.assertNotIn("disarm_deadman", failure_branch.split("else")[0])
+
+
+class TestWriteAccessIsProven(unittest.TestCase):
+    """`git ls-remote` succeeds with a read-only token. The whole point of
+    asking before the measurement is to catch the token that cannot push, so
+    the check has to push."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.origin = os.path.join(self.tmp, "origin.git")
+        subprocess.run(["git", "init", "--bare", "-q", self.origin], check=True)
+        self.repo = os.path.join(self.tmp, "repo")
+        subprocess.run(["git", "init", "-q", "-b", "main", self.repo], check=True)
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        with open(os.path.join(self.repo, "a.txt"), "w", encoding="utf-8") as handle:
+            handle.write("x\n")
+        subprocess.run(["git", "-C", self.repo, "add", "a.txt"], check=True)
+        subprocess.run(["git", "-C", self.repo, "commit", "-qm", "init"], check=True,
+                       env=env)
+        subprocess.run(["git", "-C", self.repo, "remote", "add", "origin", self.origin],
+                       check=True)
+
+    def _refuse_pushes(self):
+        """A remote that reads fine and refuses every write: branch protection,
+        a read-only token, a revoked scope -- all the same from here."""
+        hook = os.path.join(self.origin, "hooks", "pre-receive")
+        with open(hook, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nexit 1\n")
+        os.chmod(hook, 0o755)
+
+    def _run(self):
+        text = script_text()
+        bodies = []
+        for name in ("setup_git_credentials", "_push_access_hint", "check_push_access"):
+            found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
+            self.assertIsNotNone(found, f"{name} is gone")
+            bodies.append(found.group(0))
+        script = ("set -Eeuo pipefail\n"
+                  f'REPO_DIR="{self.repo}"\n'
+                  f'STATE_DIR="{self.tmp}/state"\n'
+                  "PUSH_RESULTS=1\nMOCK=0\n"
+                  'say()   { echo "$*"; }\n'
+                  'warn()  { echo "LET OP: $*" >&2; }\n'
+                  'head_() { echo "$*"; }\n'
+                  + "\n".join(bodies) + "\ncheck_push_access\n")
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              timeout=120)
+
+    def _remote_branches(self):
+        listing = subprocess.run(["git", "--git-dir", self.origin, "for-each-ref",
+                                  "--format=%(refname:short)", "refs/heads"],
+                                 capture_output=True, text=True, check=True).stdout
+        return listing.split()
+
+    def test_a_writable_remote_passes(self):
+        done = self._run()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("push-toegang in orde", done.stdout)
+
+    def test_the_probe_branch_does_not_stay_behind(self):
+        self.assertEqual(self._run().returncode, 0)
+        self.assertEqual(self._remote_branches(), [],
+                         "de proefbranch moet weer weg zijn")
+
+    def test_a_remote_that_only_allows_reading_is_refused(self):
+        """This is the case the check exists for, and the one `ls-remote`
+        used to wave through -- six hours before the push actually failed."""
+        self._refuse_pushes()
+        listing = subprocess.run(["git", "-C", self.repo, "ls-remote", "origin"],
+                                 capture_output=True, text=True)
+        self.assertEqual(listing.returncode, 0,
+                         "lezen moet lukken, anders test dit iets anders")
+        done = self._run()
+        self.assertNotEqual(done.returncode, 0, done.stdout)
+        self.assertNotIn("push-toegang in orde", done.stdout)
+        self.assertIn("niet naartoe pushen", done.stderr)
+        self.assertIn("GITHUB_TOKEN", done.stderr, "de aanwijzing hoort erbij")
+
+    def test_an_unreachable_remote_gets_its_own_message(self):
+        """'geen netwerk' en 'wel netwerk, geen schrijfrechten' vragen om een
+        andere oplossing, dus ze horen niet hetzelfde te melden."""
+        subprocess.run(["git", "-C", self.repo, "remote", "set-url", "origin",
+                        os.path.join(self.tmp, "bestaat-niet.git")], check=True)
+        done = self._run()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("niet bereiken", done.stderr)
+
+
+class TestResumingAnOlderDirectory(unittest.TestCase):
+    """Resuming is what makes a six-hour measurement survivable. Resuming into
+    a directory measured with a different behaviour model is how a run finishes
+    in ten minutes having measured nothing."""
+
+    def test_the_harness_decides_what_is_pending(self):
+        """The check that a run id is not a description of the setup lives in
+        the harness, so it also applies to a matrix run started by hand."""
+        body = function_body("pending_ids")
+        self.assertIn("-m stresstest pending", body)
+        self.assertNotIn("os.path.exists", body,
+                         "het tellen hoort niet meer in de shell te zitten")
+        self.assertIn("RESUME_ANYWAY", body)
+
+    def test_a_group_stops_when_the_setup_moved(self):
+        run_group = function_body("run_group")
+        self.assertIn("|| die", run_group.split("if [ -z")[0],
+                      "een afwijkende opstelling moet de reeks stoppen, niet stil "
+                      "doorgaan alsof alles al gemeten is")
+
+    def test_the_engine_group_asks_the_same_question(self):
+        """The engine variants used to decide for themselves whether a run was
+        already there, on the same name-only evidence."""
+        body = function_body("run_engine_group")
+        self.assertIn("pending_ids engine", body)
+        self.assertNotIn('[ -f "$dir/runs/engine_$name/run.json" ]', body,
+                         "ook hier zegt het bestaan van een run.json niets over "
+                         "waarmee die run gemeten is")
+
+    def test_resume_anyway_exists_and_is_off_by_default(self):
+        text = script_text()
+        self.assertRegex(text, r"(?m)^RESUME_ANYWAY=0$")
+        self.assertIn("--resume-anyway) RESUME_ANYWAY=1", text)
+        self.assertIn("--resume-anyway", function_body("usage"))
+
+    def test_the_resumed_directory_is_described_not_just_named(self):
+        """`hervat in results/20260908-...` was true and useless. How old it is
+        and how much is already in it is what makes a wrong one visible."""
+        self.assertIn("describe_results_dir", function_body("cmd_all"))
+        described = function_body("describe_results_dir")
+        self.assertIn("aangemaakt", described)
+        self.assertIn("runs", described)
+
+
+class TestSkippedLessonDoesNotLeaveAStaleReport(unittest.TestCase):
+    """RESULTATEN.md in the repository root survives between runs. Pushing it
+    along with a measurement that did not write it claims a coverage that
+    measurement does not have."""
+
+    def test_the_combined_report_is_only_pushed_when_this_run_wrote_it(self):
+        body = function_body("push_results")
+        self.assertIn('REPORT_WRITTEN', body)
+        self.assertNotIn("[ -f RESULTATEN.md ] && git add -f RESULTATEN.md", body,
+                         "onvoorwaardelijk meestagen is precies de fout")
+
+    def test_skipping_phase_two_only_reuses_a_matching_lesson(self):
+        body = function_body("reusable_lesson_dir")
+        self.assertIn("fingerprint --same", body,
+                      "een oudere lesmap mag alleen mee als de opstelling klopt")
+        self.assertIn("last_lesson_dir", body)
+
+    def test_a_run_without_phase_two_says_what_it_did_not_update(self):
+        body = function_body("cmd_all")
+        self.assertIn("reusable_lesson_dir", body)
+        self.assertIn("REPORT_WRITTEN=1", body)
+        tail = body.split("reusable_lesson_dir")[1]
+        self.assertIn("niet bijgewerkt", tail)
+        self.assertIn("--also", tail, "de melding hoort het commando mee te geven "
+                                      "dat het rapport alsnog bijwerkt")
 
 
 if __name__ == "__main__":

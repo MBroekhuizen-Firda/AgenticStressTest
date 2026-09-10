@@ -13,8 +13,9 @@ import os
 import time
 from typing import Any, Sequence
 
-from . import pngplot, svgplot
+from . import fingerprint, pngplot, svgplot
 from .grading import DEFAULT_THRESHOLDS, GREEN, ORDER, RED
+from .personas import personas_from_config, work_profiles_from_config
 from .runner import RunResult
 from .util import iso, log, write_csv, write_json
 
@@ -68,6 +69,10 @@ class ResultsWriter:
             "started": iso(result.started_wall),
             "finished": iso(result.finished_wall),
             "composition": result.composition,
+            # What this run was measured with. Without it a resume can only
+            # go on the run id, and an id says nothing about the corpus, the
+            # behaviour model or the tokenizer.
+            "fingerprint": self.environment.get("fingerprint"),
             "aggregate": result.aggregate,
             "server": result.server,
             "grade": result.grade.to_dict(),
@@ -518,13 +523,48 @@ def analyse(results: Sequence[RunResult], config: dict) -> dict[str, Any]:
 
     disagreements = [r.spec.run_id for r in results
                      if r.grade.colour != r.grade_brief.colour]
-    # The class as it was actually composed, on both axes. A reader comparing
-    # two measurements needs to see that the behaviour model was the same.
-    reference = next((r for r in results if r.spec.kind == "lesson"), None) or \
-        next((r for r in results if r.spec.kind == "sweep"), None) or \
-        (results[0] if results else None)
-    if reference is not None and reference.composition:
-        findings["class_mix"] = dict(reference.composition)
+
+    # Two different questions that used to share one answer, badly.
+    #
+    # The first: was the behaviour model the same as in the measurement I am
+    # comparing this one to? That is a property of the configuration, not of
+    # any single run, so it is reported as the shares that were configured plus
+    # the seed they were drawn with. It is right whichever runs a directory
+    # happens to hold.
+    behaviour = config.get("behaviour", {}) or {}
+    findings["behaviour_model"] = {
+        "personas": {p.name: p.share
+                     for p in personas_from_config(behaviour.get("personas"))},
+        "work_profiles": {w.name: w.share
+                          for w in work_profiles_from_config(
+                              behaviour.get("work_profiles"))},
+        "seed": config.get("seed"),
+        "fingerprint": fingerprint.behaviour_digest(config),
+    }
+
+    # The second: who was in the class that was measured? Only a run of exactly
+    # class_size students can answer that. Anything else -- the first sweep run,
+    # which is what this used to fall back to -- describes some other, smaller
+    # group and presents it as the class (issue #21). No such run, no answer --
+    # and where there is one, the run it came from is named.
+    #
+    # The `activity` runs are left out on purpose: drawing a different mix than
+    # the class normally has is what they are for, so they answer "what does a
+    # quiet class look like", not "who was in this class".
+    def _candidate(kind: str) -> RunResult | None:
+        return next((r for r in results if r.spec.kind == kind
+                     and r.spec.students == class_size and r.composition), None)
+
+    measured = (_candidate("lesson") or _candidate("sweep") or _candidate("scenario"))
+    if measured is not None:
+        composition = dict(measured.composition)
+        findings["class_mix"] = {
+            "run_id": measured.spec.run_id,
+            "students": measured.spec.students,
+            "activity": measured.spec.activity,
+            "personas": {k: v for k, v in composition.items() if k != "werk"},
+            "werk": composition.get("werk") or {},
+        }
 
     findings["grading_disagreements"] = disagreements
     return findings
@@ -540,6 +580,44 @@ def write_analysis(directory: str, results: Sequence[RunResult], config: dict) -
 # Reading results back from disk, so charts and RESULTATEN.md can be
 # regenerated without re-running anything.
 # --------------------------------------------------------------------------
+
+def describe_source(directory: str) -> dict:
+    """Where a report's numbers came from, per directory.
+
+    A report over two directories is a report over two measurements, and the
+    reader cannot see that unless the report says so. What separates them is
+    when they were measured and with what: the date and the fingerprint from
+    `environment.json`, plus how many runs the directory holds.
+    """
+    environment = fingerprint.environment_of(directory)
+    mark = environment.get("fingerprint")
+    runs = os.path.join(directory, "runs")
+    count = 0
+    started: list[str] = []
+    if os.path.isdir(runs):
+        for run_id in sorted(os.listdir(runs)):
+            path = os.path.join(runs, run_id, "run.json")
+            if not os.path.exists(path):
+                continue
+            count += 1
+            # The run's own clock, not environment.json's: that file is
+            # rewritten whenever the report is regenerated, and a regeneration
+            # date presented as a measurement date is exactly the confusion
+            # this block exists to remove.
+            with open(path, encoding="utf-8") as handle:
+                stamp = json.load(handle).get("started")
+            if isinstance(stamp, str) and stamp:
+                started.append(stamp)
+    return {
+        "path": directory,
+        "measured": (min(started)[:10] if started
+                     else (environment.get("generated") or "")[:10] or None),
+        "runs": count,
+        "fingerprint": environment.get("fingerprint_digest")
+                       or (fingerprint.digest(mark) if mark else None),
+        "model": environment.get("model"),
+    }
+
 
 def load_results(directory: str) -> tuple[list[RunResult], dict, dict]:
     from .grading import Grade
