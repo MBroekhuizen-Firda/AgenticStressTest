@@ -1,0 +1,394 @@
+{
+  "spec": {
+    "run_id": "scen_lange_sessies",
+    "label": "Lange sessies, weinig studenten, zeer grote context",
+    "kind": "scenario",
+    "students": 6,
+    "context_tokens": 110000,
+    "activity": "intensief",
+    "shared_fraction": 0.3,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "scenario": "lange_sessies"
+    },
+    "notes": "Test geheugen in plaats van rekenkracht: de geheugenklif zonder ruis van gelijktijdigheid."
+  },
+  "started": "2026-09-10T11:44:24Z",
+  "finished": "2026-09-10T11:51:21Z",
+  "composition": {
+    "gemiddelde": 3,
+    "worstelaar": 1,
+    "doorpakker": 2,
+    "werk": {
+      "middel": 2,
+      "klein": 3,
+      "doorspitten": 1
+    }
+  },
+  "fingerprint": {
+    "seed": 20250908,
+    "corpus": {
+      "groups": {
+        "unity": [
+          "unity-fpssample"
+        ],
+        "web": [
+          "django-realworld",
+          "laravel-realworld",
+          "react-realworld"
+        ]
+      },
+      "extensions": ".py,.js,.php,.md,.html",
+      "shared_skeleton_fraction": 0.4,
+      "shared_skeleton_files": null,
+      "local_path": null
+    },
+    "behaviour": {
+      "personas": {
+        "doorpakker": {
+          "share": 0.15,
+          "think_time_s": [
+            20,
+            60
+          ],
+          "steps_per_burst": [
+            8,
+            15
+          ],
+          "context_scale": [
+            0.8,
+            1.0
+          ],
+          "restart_probability": 0.02,
+          "idle_probability": 0.0
+        },
+        "gemiddelde": {
+          "share": 0.45,
+          "think_time_s": [
+            60,
+            180
+          ],
+          "steps_per_burst": [
+            3,
+            8
+          ],
+          "context_scale": [
+            0.45,
+            0.7
+          ],
+          "restart_probability": 0.05,
+          "idle_probability": 0.02
+        },
+        "worstelaar": {
+          "share": 0.25,
+          "think_time_s": [
+            120,
+            480
+          ],
+          "steps_per_burst": [
+            2,
+            4
+          ],
+          "context_scale": [
+            0.2,
+            0.4
+          ],
+          "restart_probability": 0.25,
+          "idle_probability": 0.05
+        },
+        "afhaker": {
+          "share": 0.15,
+          "think_time_s": [
+            300,
+            1200
+          ],
+          "steps_per_burst": [
+            1,
+            3
+          ],
+          "context_scale": [
+            0.12,
+            0.3
+          ],
+          "restart_probability": 0.15,
+          "idle_probability": 0.3
+        }
+      },
+      "work_profiles": {
+        "klein": {
+          "share": 0.5,
+          "group": "web",
+          "files_per_read": [
+            1,
+            1
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            4,
+            10
+          ],
+          "search_context_lines": 0,
+          "test_output_blocks": [
+            1,
+            1
+          ],
+          "output_tokens_tool": [
+            60,
+            260
+          ],
+          "output_tokens_final": [
+            220,
+            700
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "middel": {
+          "share": 0.3,
+          "group": "web",
+          "files_per_read": [
+            1,
+            3
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            8,
+            20
+          ],
+          "search_context_lines": 2,
+          "test_output_blocks": [
+            1,
+            3
+          ],
+          "output_tokens_tool": [
+            120,
+            500
+          ],
+          "output_tokens_final": [
+            400,
+            1200
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "doorspitten": {
+          "share": 0.2,
+          "group": "unity",
+          "files_per_read": [
+            2,
+            5
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            15,
+            40
+          ],
+          "search_context_lines": 3,
+          "test_output_blocks": [
+            2,
+            5
+          ],
+          "output_tokens_tool": [
+            250,
+            900
+          ],
+          "output_tokens_final": [
+            800,
+            2500
+          ],
+          "tool_mix": {
+            "read_file": 0.5,
+            "edit_file": 0.15,
+            "run_tests": 0.15,
+            "search_code": 0.2
+          }
+        }
+      },
+      "activity_levels": {
+        "rustig": {
+          "doorpakker": 0.05,
+          "gemiddelde": 0.3,
+          "worstelaar": 0.35,
+          "afhaker": 0.3
+        },
+        "normaal": {
+          "doorpakker": 0.15,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.25,
+          "afhaker": 0.15
+        },
+        "intensief": {
+          "doorpakker": 0.4,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.12,
+          "afhaker": 0.03
+        }
+      }
+    },
+    "tokenizer": {
+      "prefer_exact": true,
+      "chars_per_token": 4.65,
+      "path": "/workspace/.cache/huggingface//hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/dcaee4d4dfc5ee71ad501f01f530e5652438fde0"
+    },
+    "hardware": {
+      "attention_backend": "TRITON_ATTN",
+      "kv_cache_dtype": "fp8"
+    },
+    "corpus_files": {
+      "name": "web+unity",
+      "files": 559,
+      "per_group": {
+        "unity": 372,
+        "web": 187
+      }
+    },
+    "tokenizer_exact": true
+  },
+  "aggregate": {
+    "requests_total": 59,
+    "requests_ok": 59,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 10,
+    "ttft": {
+      "count": 59,
+      "mean": 1.1006633462542195,
+      "p50": 0.5351387076079845,
+      "p90": 2.293461108207704,
+      "p99": 7.331493819616741,
+      "max": 9.117656841874123
+    },
+    "burst_duration": {
+      "count": 10,
+      "mean": 132.74219505432993,
+      "p50": 105.22466705553234,
+      "p90": 220.2987348420545,
+      "p99": 294.86102267393846,
+      "max": 303.1457213219255
+    },
+    "decode_tps": {
+      "count": 59,
+      "mean": 32.75236927503533,
+      "p50": 27.43773219200813,
+      "p90": 50.42512374398607,
+      "p99": 65.34716428129339,
+      "max": 71.04821646239236
+    },
+    "request_total_s": {
+      "count": 59,
+      "mean": 13.06351407781496,
+      "p50": 9.297274081036448,
+      "p90": 29.399118944630033,
+      "p99": 49.70904373839504,
+      "max": 69.78936839476228
+    },
+    "output_tokens_total": 21822,
+    "prompt_tokens_total": 3788681,
+    "client_output_tokens_per_s": 72.74,
+    "requests_per_minute": 11.799999999999999,
+    "compactions": 0,
+    "restarts": 0,
+    "context_tokens_peak": 97068,
+    "compactions_per_burst": 0.0,
+    "compactions_per_100_steps": 0.0,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 34,
+        "ttft_p90": 3.4203244684264056,
+        "burst_p90": 264.54674913026395,
+        "decode_tps_p50": 34.19020722615528
+      },
+      "gemiddelde": {
+        "requests": 24,
+        "ttft_p90": 0.7333282615989447,
+        "burst_p90": 208.83639735430478,
+        "decode_tps_p50": 24.86880751083136
+      },
+      "worstelaar": {
+        "requests": 1,
+        "ttft_p90": 0.3808558825403452,
+        "burst_p90": NaN,
+        "decode_tps_p50": 27.43773219200813
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9708007825634436,
+    "prefix_cache_queries": 3866268.0,
+    "prefix_cache_hits": 3753376.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.6469850950170195,
+    "kv_cache_usage_peak": 0.994399805210616,
+    "requests_running_avg": 2.9731543624161074,
+    "requests_running_peak": 6.0,
+    "queue_depth_avg": 0.20134228187919462,
+    "queue_depth_peak": 3.0,
+    "server_prefill_tokens_per_s": 13148.196666666667,
+    "server_prompt_tokens": 3944459.0,
+    "server_decode_tokens_per_s": 82.11,
+    "server_generation_tokens": 24633.0
+  },
+  "grade": {
+    "colour": "rood",
+    "reasons": [
+      "p90 doorlooptijd instructie 220s"
+    ],
+    "warnings": [
+      "KV-cache piekte op 99% -- weinig marge",
+      "wachtrij piekte op 3 verzoeken"
+    ],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "rood",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "97%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

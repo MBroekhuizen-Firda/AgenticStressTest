@@ -1,0 +1,108 @@
+{
+  "kv_pool_gb": 0.1,
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+  "hardware": {
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)",
+    "vram_gb": 0.0,
+    "gpu_memory_utilization": 0.9,
+    "model_weights_gb": 31.1,
+    "alternatives": [
+      {
+        "name": "RTX PRO 5000 (72 GB)",
+        "vram_gb": 72.0,
+        "price_eur": 7602
+      },
+      {
+        "name": "2x RTX 5090 (64 GB)",
+        "vram_gb": 64.0,
+        "price_eur": 10000
+      },
+      {
+        "name": "RTX PRO 6000 (96 GB)",
+        "vram_gb": 96.0,
+        "price_eur": 37400
+      }
+    ],
+    "attention_backend": "TRITON_ATTN",
+    "kv_cache_dtype": "fp8"
+  },
+  "hardware_defaults_used": [],
+  "runs": 1,
+  "kv_peak_overall_fraction": 0.9973032606030889,
+  "kv_peak_overall_gb": 0.0997303260603089,
+  "kv_peak_overall_run": "engine_seqs_64",
+  "kv_peak_overall_label": "vLLM-variant seqs_64",
+  "cliff_per_context": {},
+  "alternatives": [
+    {
+      "name": "RTX PRO 5000 (72 GB)",
+      "vram_gb": 72.0,
+      "price_eur": 7602,
+      "kv_pool_gb": 33.7,
+      "needed_kv_gb": 0.1,
+      "fits": true,
+      "margin_gb": 33.6,
+      "utilisation_on_alternative": 0.003,
+      "exceeded_by": []
+    },
+    {
+      "name": "2x RTX 5090 (64 GB)",
+      "vram_gb": 64.0,
+      "price_eur": 10000,
+      "kv_pool_gb": 26.5,
+      "needed_kv_gb": 0.1,
+      "fits": true,
+      "margin_gb": 26.4,
+      "utilisation_on_alternative": 0.004,
+      "exceeded_by": []
+    },
+    {
+      "name": "RTX PRO 6000 (96 GB)",
+      "vram_gb": 96.0,
+      "price_eur": 37400,
+      "kv_pool_gb": 55.3,
+      "needed_kv_gb": 0.1,
+      "fits": true,
+      "margin_gb": 55.2,
+      "utilisation_on_alternative": 0.002,
+      "exceeded_by": []
+    }
+  ],
+  "alternatives_basis": "kv_peak_overall_fraction",
+  "engine": [
+    {
+      "name": "seqs_64",
+      "flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+      "grade": "rood",
+      "ttft_p90_s": 4.168917591124774,
+      "kv_peak": 0.9973032606030889,
+      "preemptions": 0.0,
+      "prefix_cache_hit_rate": 0.9309088782142675
+    }
+  ],
+  "engine_best": "seqs_64",
+  "engine_best_flags": "--kv-cache-dtype fp8 --max-num-seqs 64 --max-model-len 131072",
+  "engine_ttft_noise_s": 1.0,
+  "engine_equivalent": [
+    "seqs_64"
+  ],
+  "scenarios": [],
+  "behaviour_model": {
+    "personas": {
+      "doorpakker": 0.15,
+      "gemiddelde": 0.45,
+      "worstelaar": 0.25,
+      "afhaker": 0.15
+    },
+    "work_profiles": {
+      "klein": 0.5,
+      "middel": 0.3,
+      "doorspitten": 0.2
+    },
+    "seed": 20250908,
+    "fingerprint": "0389659f7efb"
+  },
+  "grading_disagreements": [
+    "engine_seqs_64"
+  ]
+}

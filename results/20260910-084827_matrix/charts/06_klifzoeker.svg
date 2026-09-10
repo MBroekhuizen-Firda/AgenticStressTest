@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="520" viewBox="0 0 860 520" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<rect width="860" height="520" fill="#ffffff"/>
+<text x="430" y="28" text-anchor="middle" font-size="17" font-weight="600" fill="#1a202c">Klifzoeker: waar breekt het?</text>
+<rect x="80" y="60" width="580" height="390" fill="#f7fafc" stroke="#e2e8f0"/>
+<line x1="80" y1="450.0" x2="660" y2="450.0" stroke="#e2e8f0"/>
+<text x="72" y="454.0" text-anchor="end" font-size="11" fill="#4a5568">0</text>
+<line x1="80" y1="352.9" x2="660" y2="352.9" stroke="#e2e8f0"/>
+<text x="72" y="356.9" text-anchor="end" font-size="11" fill="#4a5568">25.0</text>
+<line x1="80" y1="255.7" x2="660" y2="255.7" stroke="#e2e8f0"/>
+<text x="72" y="259.7" text-anchor="end" font-size="11" fill="#4a5568">50.0</text>
+<line x1="80" y1="158.6" x2="660" y2="158.6" stroke="#e2e8f0"/>
+<text x="72" y="162.6" text-anchor="end" font-size="11" fill="#4a5568">75.0</text>
+<line x1="80" y1="61.4" x2="660" y2="61.4" stroke="#e2e8f0"/>
+<text x="72" y="65.4" text-anchor="end" font-size="11" fill="#4a5568">100</text>
+<line x1="-5.3" y1="60" x2="-5.3" y2="450" stroke="#edf2f7"/>
+<text x="-5.3" y="468" text-anchor="middle" font-size="11" fill="#4a5568">0</text>
+<line x1="165.3" y1="60" x2="165.3" y2="450" stroke="#edf2f7"/>
+<text x="165.3" y="468" text-anchor="middle" font-size="11" fill="#4a5568">10.0</text>
+<line x1="335.9" y1="60" x2="335.9" y2="450" stroke="#edf2f7"/>
+<text x="335.9" y="468" text-anchor="middle" font-size="11" fill="#4a5568">20.0</text>
+<line x1="506.5" y1="60" x2="506.5" y2="450" stroke="#edf2f7"/>
+<text x="506.5" y="468" text-anchor="middle" font-size="11" fill="#4a5568">30.0</text>
+<line x1="677.1" y1="60" x2="677.1" y2="450" stroke="#edf2f7"/>
+<text x="677.1" y="468" text-anchor="middle" font-size="11" fill="#4a5568">40.0</text>
+<line x1="80" y1="372.3" x2="660" y2="372.3" stroke="#38a169" stroke-dasharray="6 4"/>
+<text x="86" y="367.3" font-size="11" fill="#38a169">TTFT-grens groen</text>
+<line x1="80" y1="275.1" x2="660" y2="275.1" stroke="#c53030" stroke-dasharray="6 4"/>
+<text x="86" y="270.1" font-size="11" fill="#c53030">TTFT-grens rood</text>
+<path d="M80.0,444.5 L114.1,447.8 L148.2,448.4 L182.4,447.7 L216.5,448.4 L250.6,447.9 L284.7,447.6 L318.8,447.4 L352.9,448.0 L387.1,438.6 L421.2,444.7 L455.3,443.8 L489.4,442.6 L523.5,426.7 L557.6,348.7 L591.8,352.1 L625.9,290.9 L660.0,252.9" fill="none" stroke="#2b6cb0" stroke-width="2.2"/>
+<circle cx="80.0" cy="444.5" r="3.4" fill="#2b6cb0"/>
+<circle cx="114.1" cy="447.8" r="3.4" fill="#2b6cb0"/>
+<circle cx="148.2" cy="448.4" r="3.4" fill="#2b6cb0"/>
+<circle cx="182.4" cy="447.7" r="3.4" fill="#2b6cb0"/>
+<circle cx="216.5" cy="448.4" r="3.4" fill="#2b6cb0"/>
+<circle cx="250.6" cy="447.9" r="3.4" fill="#2b6cb0"/>
+<circle cx="284.7" cy="447.6" r="3.4" fill="#2b6cb0"/>
+<circle cx="318.8" cy="447.4" r="3.4" fill="#2b6cb0"/>
+<circle cx="352.9" cy="448.0" r="3.4" fill="#2b6cb0"/>
+<circle cx="387.1" cy="438.6" r="3.4" fill="#2b6cb0"/>
+<circle cx="421.2" cy="444.7" r="3.4" fill="#2b6cb0"/>
+<circle cx="455.3" cy="443.8" r="3.4" fill="#2b6cb0"/>
+<circle cx="489.4" cy="442.6" r="3.4" fill="#2b6cb0"/>
+<circle cx="523.5" cy="426.7" r="3.4" fill="#2b6cb0"/>
+<circle cx="557.6" cy="348.7" r="3.4" fill="#2b6cb0"/>
+<circle cx="591.8" cy="352.1" r="3.4" fill="#2b6cb0"/>
+<circle cx="625.9" cy="290.9" r="3.4" fill="#2b6cb0"/>
+<circle cx="660.0" cy="252.9" r="3.4" fill="#2b6cb0"/>
+<line x1="676" y1="74" x2="700" y2="74" stroke="#2b6cb0" stroke-width="2.2"/>
+<text x="706" y="78" font-size="12" fill="#2d3748">p90 TTFT</text>
+<path d="M80.0,303.4 L114.1,362.6 L148.2,330.1 L182.4,259.9 L216.5,313.2 L250.6,154.2 L284.7,223.3 L318.8,284.5 L352.9,170.4 L387.1,250.8 L421.2,212.0 L455.3,246.6 L489.4,138.3 L523.5,101.8" fill="none" stroke="#c05621" stroke-width="2.2"/>
+<circle cx="80.0" cy="303.4" r="3.4" fill="#c05621"/>
+<circle cx="114.1" cy="362.6" r="3.4" fill="#c05621"/>
+<circle cx="148.2" cy="330.1" r="3.4" fill="#c05621"/>
+<circle cx="182.4" cy="259.9" r="3.4" fill="#c05621"/>
+<circle cx="216.5" cy="313.2" r="3.4" fill="#c05621"/>
+<circle cx="250.6" cy="154.2" r="3.4" fill="#c05621"/>
+<circle cx="284.7" cy="223.3" r="3.4" fill="#c05621"/>
+<circle cx="318.8" cy="284.5" r="3.4" fill="#c05621"/>
+<circle cx="352.9" cy="170.4" r="3.4" fill="#c05621"/>
+<circle cx="387.1" cy="250.8" r="3.4" fill="#c05621"/>
+<circle cx="421.2" cy="212.0" r="3.4" fill="#c05621"/>
+<circle cx="455.3" cy="246.6" r="3.4" fill="#c05621"/>
+<circle cx="489.4" cy="138.3" r="3.4" fill="#c05621"/>
+<circle cx="523.5" cy="101.8" r="3.4" fill="#c05621"/>
+<line x1="676" y1="94" x2="700" y2="94" stroke="#c05621" stroke-width="2.2"/>
+<text x="706" y="98" font-size="12" fill="#2d3748">p90 doorlooptijd instructie</text>
+<text x="370" y="502" text-anchor="middle" font-size="12" fill="#2d3748">gelijktijdige studenten</text>
+<text x="18" y="255" font-size="12" fill="#2d3748" transform="rotate(-90 18 255)" text-anchor="middle">seconden</text>
+</svg>

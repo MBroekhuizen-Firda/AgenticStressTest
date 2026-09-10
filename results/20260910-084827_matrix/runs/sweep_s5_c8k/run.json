@@ -1,0 +1,390 @@
+{
+  "spec": {
+    "run_id": "sweep_s5_c8k",
+    "label": "5 studenten, 8k context",
+    "kind": "sweep",
+    "students": 5,
+    "context_tokens": 8000,
+    "activity": "normaal",
+    "shared_fraction": 0.5,
+    "arrival_window_s": 60.0,
+    "expects_shared_prefix": true,
+    "duration_s": 390.0,
+    "phases": [
+      {
+        "name": "warmup",
+        "duration_s": 90.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": false
+      },
+      {
+        "name": "measure",
+        "duration_s": 300.0,
+        "intensity": 1.0,
+        "active_fraction": 1.0,
+        "measure": true
+      }
+    ],
+    "ramp": null,
+    "tags": {
+      "axis": "sweep"
+    },
+    "notes": ""
+  },
+  "started": "2026-09-10T09:28:18Z",
+  "finished": "2026-09-10T09:34:59Z",
+  "composition": {
+    "doorpakker": 1,
+    "gemiddelde": 2,
+    "afhaker": 1,
+    "worstelaar": 1,
+    "werk": {
+      "klein": 3,
+      "doorspitten": 1,
+      "middel": 1
+    }
+  },
+  "fingerprint": {
+    "seed": 20250908,
+    "corpus": {
+      "groups": {
+        "unity": [
+          "unity-fpssample"
+        ],
+        "web": [
+          "django-realworld",
+          "laravel-realworld",
+          "react-realworld"
+        ]
+      },
+      "extensions": ".py,.js,.php,.md,.html",
+      "shared_skeleton_fraction": 0.4,
+      "shared_skeleton_files": null,
+      "local_path": null
+    },
+    "behaviour": {
+      "personas": {
+        "doorpakker": {
+          "share": 0.15,
+          "think_time_s": [
+            20,
+            60
+          ],
+          "steps_per_burst": [
+            8,
+            15
+          ],
+          "context_scale": [
+            0.8,
+            1.0
+          ],
+          "restart_probability": 0.02,
+          "idle_probability": 0.0
+        },
+        "gemiddelde": {
+          "share": 0.45,
+          "think_time_s": [
+            60,
+            180
+          ],
+          "steps_per_burst": [
+            3,
+            8
+          ],
+          "context_scale": [
+            0.45,
+            0.7
+          ],
+          "restart_probability": 0.05,
+          "idle_probability": 0.02
+        },
+        "worstelaar": {
+          "share": 0.25,
+          "think_time_s": [
+            120,
+            480
+          ],
+          "steps_per_burst": [
+            2,
+            4
+          ],
+          "context_scale": [
+            0.2,
+            0.4
+          ],
+          "restart_probability": 0.25,
+          "idle_probability": 0.05
+        },
+        "afhaker": {
+          "share": 0.15,
+          "think_time_s": [
+            300,
+            1200
+          ],
+          "steps_per_burst": [
+            1,
+            3
+          ],
+          "context_scale": [
+            0.12,
+            0.3
+          ],
+          "restart_probability": 0.15,
+          "idle_probability": 0.3
+        }
+      },
+      "work_profiles": {
+        "klein": {
+          "share": 0.5,
+          "group": "web",
+          "files_per_read": [
+            1,
+            1
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            4,
+            10
+          ],
+          "search_context_lines": 0,
+          "test_output_blocks": [
+            1,
+            1
+          ],
+          "output_tokens_tool": [
+            60,
+            260
+          ],
+          "output_tokens_final": [
+            220,
+            700
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "middel": {
+          "share": 0.3,
+          "group": "web",
+          "files_per_read": [
+            1,
+            3
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            8,
+            20
+          ],
+          "search_context_lines": 2,
+          "test_output_blocks": [
+            1,
+            3
+          ],
+          "output_tokens_tool": [
+            120,
+            500
+          ],
+          "output_tokens_final": [
+            400,
+            1200
+          ],
+          "tool_mix": {
+            "read_file": 0.45,
+            "edit_file": 0.25,
+            "run_tests": 0.2,
+            "search_code": 0.1
+          }
+        },
+        "doorspitten": {
+          "share": 0.2,
+          "group": "unity",
+          "files_per_read": [
+            2,
+            5
+          ],
+          "read_line_budget": [
+            0,
+            0
+          ],
+          "search_matches": [
+            15,
+            40
+          ],
+          "search_context_lines": 3,
+          "test_output_blocks": [
+            2,
+            5
+          ],
+          "output_tokens_tool": [
+            250,
+            900
+          ],
+          "output_tokens_final": [
+            800,
+            2500
+          ],
+          "tool_mix": {
+            "read_file": 0.5,
+            "edit_file": 0.15,
+            "run_tests": 0.15,
+            "search_code": 0.2
+          }
+        }
+      },
+      "activity_levels": {
+        "rustig": {
+          "doorpakker": 0.05,
+          "gemiddelde": 0.3,
+          "worstelaar": 0.35,
+          "afhaker": 0.3
+        },
+        "normaal": {
+          "doorpakker": 0.15,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.25,
+          "afhaker": 0.15
+        },
+        "intensief": {
+          "doorpakker": 0.4,
+          "gemiddelde": 0.45,
+          "worstelaar": 0.12,
+          "afhaker": 0.03
+        }
+      }
+    },
+    "tokenizer": {
+      "prefer_exact": true,
+      "chars_per_token": 4.65,
+      "path": "/workspace/.cache/huggingface//hub/models--Qwen--Qwen3-Coder-30B-A3B-Instruct-FP8/snapshots/dcaee4d4dfc5ee71ad501f01f530e5652438fde0"
+    },
+    "hardware": {
+      "attention_backend": "TRITON_ATTN",
+      "kv_cache_dtype": "fp8"
+    },
+    "corpus_files": {
+      "name": "web+unity",
+      "files": 559,
+      "per_group": {
+        "unity": 372,
+        "web": 187
+      }
+    },
+    "tokenizer_exact": true
+  },
+  "aggregate": {
+    "requests_total": 77,
+    "requests_ok": 77,
+    "requests_failed": 0,
+    "error_rate": 0.0,
+    "bursts_completed": 9,
+    "ttft": {
+      "count": 77,
+      "mean": 0.25079676356505265,
+      "p50": 0.15356714092195034,
+      "p90": 0.573369459062815,
+      "p99": 1.2673000119626519,
+      "max": 1.3302267286926508
+    },
+    "burst_duration": {
+      "count": 9,
+      "mean": 29.593509635370637,
+      "p50": 26.3284942060709,
+      "p90": 63.2703505769372,
+      "p99": 65.07169270604848,
+      "max": 65.2718418315053
+    },
+    "decode_tps": {
+      "count": 77,
+      "mean": 94.37839904397505,
+      "p50": 99.38352956450733,
+      "p90": 117.54645779738846,
+      "p99": 123.5626852241596,
+      "max": 123.78324147213387
+    },
+    "request_total_s": {
+      "count": 77,
+      "mean": 3.5373566525613334,
+      "p50": 2.1838043965399265,
+      "p90": 7.077783786505468,
+      "p99": 14.004572235196772,
+      "max": 22.2091583032161
+    },
+    "output_tokens_total": 21679,
+    "prompt_tokens_total": 746933,
+    "client_output_tokens_per_s": 72.26333333333334,
+    "requests_per_minute": 15.399999999999999,
+    "compactions": 8,
+    "restarts": 0,
+    "context_tokens_peak": 31535,
+    "compactions_per_burst": 0.8888888888888888,
+    "compactions_per_100_steps": 10.526315789473683,
+    "by_persona": {
+      "doorpakker": {
+        "requests": 55,
+        "ttft_p90": 0.38562640100717543,
+        "burst_p90": 49.508110804855825,
+        "decode_tps_p50": 101.26420759862856
+      },
+      "gemiddelde": {
+        "requests": 19,
+        "ttft_p90": 1.056371422111988,
+        "burst_p90": 56.07477195896209,
+        "decode_tps_p50": 91.02007117698241
+      },
+      "worstelaar": {
+        "requests": 3,
+        "ttft_p90": 0.31941265389323237,
+        "burst_p90": 12.729444619268179,
+        "decode_tps_p50": 89.27040368197171
+      }
+    },
+    "errors": {}
+  },
+  "server": {
+    "metrics_available": true,
+    "prefix_cache_hit_rate": 0.9022119579163459,
+    "prefix_cache_queries": 779400.0,
+    "prefix_cache_hits": 703184.0,
+    "preemptions": 0.0,
+    "kv_cache_usage_avg": 0.03906777265202804,
+    "kv_cache_usage_peak": 0.14310932554175793,
+    "requests_running_avg": 0.8322147651006712,
+    "requests_running_peak": 2.0,
+    "queue_depth_avg": 0.0,
+    "queue_depth_peak": 0.0,
+    "server_prefill_tokens_per_s": 2598.0,
+    "server_prompt_tokens": 779400.0,
+    "server_decode_tokens_per_s": 79.11666666666666,
+    "server_generation_tokens": 23735.0
+  },
+  "grade": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {
+      "ttft_p90": "groen",
+      "burst_p90": "groen",
+      "decode_tps_p50": "groen",
+      "error_rate": "groen",
+      "preemptions": "groen",
+      "prefix_cache_hit_rate": "90%"
+    }
+  },
+  "grade_brief_definition": {
+    "colour": "groen",
+    "reasons": [],
+    "warnings": [],
+    "criteria": {}
+  },
+  "ramp": null
+}

@@ -1,0 +1,24 @@
+run_id,student,persona,burst,step,start_s,end_s,ttft_s,total_s,connect_s,prompt_tokens,reported_prompt_tokens,cached_prompt_tokens,output_tokens,decode_tps,itl_p50_s,ok,error,phase
+scen_worst_case,14,gemiddelde,1,0,0.581,94.85,25.139,94.2696,0.0004,32877,34150,,84,1.2006,0.7658,1,,warmup
+scen_worst_case,0,gemiddelde,1,0,1.432,106.656,93.1179,105.2238,0.0011,49664,50676,,366,30.1505,0.0297,1,,warmup
+scen_worst_case,12,doorpakker,1,0,1.232,134.972,52.1046,133.7398,0.1078,64696,65800,,461,5.6348,0.03,1,,warmup
+scen_worst_case,1,doorpakker,1,0,1.339,139.691,75.751,138.3517,0.0932,58216,60178,,437,6.9648,0.0299,1,,warmup
+scen_worst_case,6,gemiddelde,1,0,4.14,194.91,146.0651,190.7702,0.0002,45419,47017,,246,5.4804,0.0325,1,,warmup
+scen_worst_case,5,worstelaar,1,0,5.262,195.483,149.7096,190.221,0.0003,23362,24323,,255,6.2698,0.0324,1,,warmup
+scen_worst_case,13,gemiddelde,1,0,0.21,232.426,17.2124,232.2157,0.0004,49136,50838,,694,3.2232,0.0594,1,,warmup
+scen_worst_case,16,doorpakker,1,0,5.713,253.192,222.946,247.4787,0.0866,69646,71933,,228,9.2529,0.0305,1,,warmup
+scen_worst_case,19,gemiddelde,1,0,5.799,277.309,244.3581,271.5092,0.0013,49333,51009,,120,4.3829,0.0312,1,,warmup
+scen_worst_case,7,gemiddelde,1,0,6.707,297.238,287.288,290.5307,0.0004,47718,49394,,81,24.6701,0.0297,1,,warmup
+scen_worst_case,2,doorpakker,1,0,3.606,303.608,130.8546,300.0021,0.0003,63342,,,557,3.2871,0.0595,0,timeout while streaming,warmup
+scen_worst_case,17,doorpakker,1,0,5.581,305.717,181.4616,300.1355,0.1322,69649,,,497,4.1795,0.0587,0,timeout while streaming,warmup
+scen_worst_case,8,doorpakker,1,0,6.308,306.31,270.4862,300.0026,0.0004,57832,,,111,3.7267,0.0308,0,timeout while streaming,warmup
+scen_worst_case,9,gemiddelde,1,0,6.983,306.986,,300.0025,0.0004,38789,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,15,doorpakker,1,0,8.789,308.792,,300.0026,0.0004,58901,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,11,worstelaar,1,0,9.12,309.122,,300.0017,0.0004,23482,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,18,gemiddelde,1,0,9.823,309.825,,300.0015,0.0004,35797,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,4,doorpakker,1,0,10.505,310.508,,300.0026,0.0004,67248,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,10,gemiddelde,1,0,11.833,311.835,,300.0021,0.0004,45374,,,0,,,0,timeout while streaming,warmup
+scen_worst_case,14,gemiddelde,1,1,94.852,394.853,225.9332,300.0016,0.0003,33434,,,65,0.8641,0.7242,0,timeout while streaming,measure
+scen_worst_case,0,gemiddelde,1,1,106.66,406.664,231.4912,300.0037,0.0004,50482,,,84,1.2115,0.7806,0,timeout while streaming,measure
+scen_worst_case,12,doorpakker,1,1,134.991,434.994,234.5449,300.0027,0.0005,68954,,,162,2.4596,0.0341,0,timeout while streaming,measure
+scen_worst_case,1,doorpakker,1,1,139.692,439.694,253.8222,300.0018,0.0002,58509,,,146,3.1399,0.1003,0,timeout while streaming,measure

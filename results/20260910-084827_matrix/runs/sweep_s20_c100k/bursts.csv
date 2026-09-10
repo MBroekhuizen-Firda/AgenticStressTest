@@ -1,0 +1,12 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+sweep_s20_c100k,14,worstelaar,1,2.022,211.737,2,0,15682,0,0,measure
+sweep_s20_c100k,2,doorpakker,1,14.085,300.002,0,1,63369,0,0,measure
+sweep_s20_c100k,17,gemiddelde,1,21.872,300.002,0,1,48241,0,0,measure
+sweep_s20_c100k,5,afhaker,1,20.887,332.706,2,0,18431,0,0,measure
+sweep_s20_c100k,7,worstelaar,1,26.519,351.404,2,0,27476,0,0,measure
+sweep_s20_c100k,0,worstelaar,1,233.758,176.436,1,0,28670,0,0,measure
+sweep_s20_c100k,9,gemiddelde,1,27.698,383.126,3,0,39692,0,0,measure
+sweep_s20_c100k,8,gemiddelde,1,24.797,400.606,3,0,34362,0,0,measure
+sweep_s20_c100k,4,doorpakker,1,41.579,386.183,2,0,68539,0,0,measure
+sweep_s20_c100k,13,worstelaar,1,0.405,440.014,2,0,31292,0,0,measure
+sweep_s20_c100k,11,afhaker,1,36.304,416.629,1,1,18097,0,0,measure

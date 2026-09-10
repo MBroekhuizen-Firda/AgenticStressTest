@@ -1,0 +1,15 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+sweep_s30_c100k,16,gemiddelde,1,0.424,300.002,0,1,34617,0,0,measure
+sweep_s30_c100k,17,gemiddelde,1,4.516,300.003,0,1,43584,0,0,measure
+sweep_s30_c100k,28,doorpakker,1,41.544,300.004,0,1,65711,0,0,measure
+sweep_s30_c100k,19,afhaker,1,46.829,300.002,0,1,13894,0,0,measure
+sweep_s30_c100k,3,gemiddelde,1,47.003,300.002,0,1,39750,0,0,measure
+sweep_s30_c100k,24,worstelaar,1,53.455,300.002,0,1,19261,0,0,measure
+sweep_s30_c100k,4,worstelaar,1,56.002,300.002,0,1,16253,0,0,measure
+sweep_s30_c100k,27,worstelaar,1,15.767,380.492,1,1,20056,0,0,measure
+sweep_s30_c100k,29,gemiddelde,1,2.058,396.855,1,1,34187,0,0,measure
+sweep_s30_c100k,6,worstelaar,1,22.614,393.522,2,0,16374,0,0,measure
+sweep_s30_c100k,9,afhaker,1,21.446,396.833,1,1,20772,0,0,measure
+sweep_s30_c100k,22,gemiddelde,1,20.942,397.693,1,1,49920,0,0,measure
+sweep_s30_c100k,1,gemiddelde,1,39.069,393.813,2,0,34540,0,0,measure
+sweep_s30_c100k,26,gemiddelde,1,5.186,448.829,1,1,48072,0,0,measure
