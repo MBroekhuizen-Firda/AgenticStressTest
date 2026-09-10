@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opdracht: OpenCode koppelen aan de klas-GPU</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    line-height: 1.6;
+    color: #1a1a1a;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  h1 { font-size: 1.9rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.35rem; margin-top: 2.25rem; border-bottom: 2px solid #e2e2e2; padding-bottom: 0.3rem; }
+  h3 { font-size: 1.1rem; margin-top: 1.5rem; }
+  .meta { color: #555; font-size: 0.95rem; margin-bottom: 1.5rem; }
+  .meta span { margin-right: 1.25rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #d4d4d4; padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: #f3f3f3; }
+  code {
+    background: #f0f0f0;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    background: #f0f0f0;
+    padding: 0.8rem 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 4px solid #c9c9c9;
+    margin: 1rem 0;
+    padding: 0.4rem 1rem;
+    color: #444;
+    background: #fafafa;
+  }
+  .let-op { background: #fff8e1; border-left: 4px solid #e6a700; padding: 0.7rem 1rem; margin: 1rem 0; }
+  ul.check { list-style: none; padding-left: 0; }
+  ul.check li::before { content: "\2610\0020"; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2.5rem 0; }
+  footer { margin-top: 3rem; font-size: 0.9rem; color: #666; }
+</style>
+</head>
+<body>
+
+<h1>Opdracht: OpenCode koppelen aan de klas-GPU</h1>
+<p class="meta">
+  <span><strong>Inleveren:</strong> één screenshot (PNG of JPG)</span>
+  <span><strong>Tijd:</strong> ± 25 minuten</span>
+  <span><strong>Beoordeling:</strong> voldaan / niet voldaan</span>
+</p>
+
+<h2>Waarom deze opdracht?</h2>
+<p>In de vorige opdracht heb je OpenCode geïnstalleerd, maar nog geen AI-model gekoppeld. Dat doen we nu.</p>
+<p>We gebruiken geen ChatGPT of Copilot. Voor deze lessen huur ik een <strong>eigen servercomputer met een zware videokaart</strong> (GPU). Daarop draait een codeermodel dat de hele klas tegelijk bedient. Die server praat dezelfde "taal" als OpenAI — dat heet een <em>OpenAI-compatible API</em> — en daarom kun je OpenCode ernaartoe laten wijzen.</p>
+<p>Wat dat oplevert: geen abonnement, geen creditcard, en jouw code verlaat het schoolnetwerk niet richting een Amerikaans bedrijf.</p>
+<p>In deze opdracht vertel je OpenCode <strong>waar</strong> die server staat en <strong>met welk wachtwoord</strong> hij binnenkomt.</p>
+
+<h2>Wat heb je nodig?</h2>
+<ul>
+  <li>OpenCode, geïnstalleerd in de vorige opdracht</li>
+  <li>Het adres en het wachtwoord van de klas-server — die zet ik vlak voor de les in de chat bij deze opdracht</li>
+  <li>Een laptop op het schoolnetwerk of op je eigen wifi</li>
+</ul>
+
+<div class="let-op"><strong>Let op:</strong> de server kost geld per uur en staat daarom <strong>alleen tijdens de les aan</strong>. Buiten de les krijg je een foutmelding dat er geen verbinding is. Dat is normaal en niet jouw fout.</div>
+
+<h2>De gegevens van de server</h2>
+<p>Vul hieronder in wat ik in de chat heb gezet. Alles wat tussen punthaken staat, vervang je — de punthaken zelf typ je <strong>niet</strong> mee.</p>
+
+<table>
+  <thead>
+    <tr><th>Wat</th><th>Waarde</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Adres van de server (IP)</td><td><code>&lt;SERVER-IP&gt;</code></td></tr>
+    <tr><td>Poort</td><td><code>8000</code></td></tr>
+    <tr><td>Volledig adres voor OpenCode</td><td><code>http://&lt;SERVER-IP&gt;:8000/v1</code></td></tr>
+    <tr><td>Wachtwoord (de "API-sleutel")</td><td><code>&lt;WACHTWOORD&gt;</code></td></tr>
+    <tr><td>Naam van het model</td><td><code>qwen3-coder</code></td></tr>
+  </tbody>
+</table>
+
+<blockquote>Voorbeeld: staat er in de chat <code>IP: 203.0.113.45</code>, dan wordt het volledige adres <code>http://203.0.113.45:8000/v1</code>. Let op de <code>/v1</code> aan het eind — zonder dat stuk werkt het niet.</blockquote>
+
+<div class="let-op"><strong>Dit wachtwoord is van de hele klas.</strong> Zet het niet op GitHub, niet in een openbare Discord of groepsapp, en niet in een screenshot dat je inlevert. Deel het alleen met klasgenoten uit deze les.</div>
+
+<h2>Stap 1 — Maak een projectmap</h2>
+<p>Maak op je laptop een lege map met je eigen voor- en achternaam erin, bijvoorbeeld:</p>
+<pre><code>C:\opencode-fatima-el-amrani</code></pre>
+<p>Gebruik je de map uit de vorige opdracht nog? Prima, dan kun je die houden.</p>
+
+<h2>Stap 2 — Maak het instellingenbestand</h2>
+<p>In die map maak je een bestand met de naam <code>opencode.json</code>. Let op de exacte naam: kleine letters, en de extensie is <code>.json</code> (niet <code>.json.txt</code>).</p>
+<p>Zet daar precies dit in:</p>
+
+<pre><code>{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "klasgpu": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Klas-GPU",
+      "options": {
+        "baseURL": "http://&lt;SERVER-IP&gt;:8000/v1",
+        "apiKey": "&lt;WACHTWOORD&gt;"
+      },
+      "models": {
+        "qwen3-coder": {
+          "name": "Qwen3 Coder",
+          "limit": {
+            "context": 128000,
+            "output": 16000
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+
+<p>Vervang daarna twee dingen:</p>
+<ul>
+  <li><code>&lt;SERVER-IP&gt;</code> → het IP-adres uit de chat</li>
+  <li><code>&lt;WACHTWOORD&gt;</code> → het wachtwoord uit de chat</li>
+</ul>
+<p>De aanhalingstekens eromheen laat je staan. Het resultaat ziet er dan bijvoorbeeld zo uit:</p>
+<pre><code>"baseURL": "http://203.0.113.45:8000/v1",
+"apiKey": "klas-2026-abcdef"</code></pre>
+
+<h3>Wat staat hier eigenlijk?</h3>
+<table>
+  <thead>
+    <tr><th>Regel</th><th>Betekenis</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>$schema</code></td><td>Verwijzing naar de officiële beschrijving van dit bestand. Je editor kan daardoor meedenken en typefouten aanwijzen.</td></tr>
+    <tr><td><code>provider</code> → <code>klasgpu</code></td><td>De naam die wij zelf verzinnen voor onze server. Deze naam mag je niet veranderen, anders klopt de rest van de uitleg niet meer.</td></tr>
+    <tr><td><code>npm</code></td><td>Het stukje software dat OpenCode gebruikt om met een OpenAI-compatible server te praten. Laat staan zoals het is.</td></tr>
+    <tr><td><code>baseURL</code></td><td>Waar de server te vinden is.</td></tr>
+    <tr><td><code>apiKey</code></td><td>Het wachtwoord waarmee de server je binnenlaat.</td></tr>
+    <tr><td><code>models</code></td><td>Welk model er op die server draait. <code>limit</code> vertelt OpenCode hoeveel tekst het model tegelijk aankan.</td></tr>
+  </tbody>
+</table>
+
+<div class="let-op"><strong>JSON is streng.</strong> Eén ontbrekende komma of één te veel, en OpenCode start niet goed op. Kopieer het blok liever helemaal dan dat je het overtypt. Twijfel je? Plak je bestand in <a href="https://jsonlint.com">https://jsonlint.com</a> en kijk of het groen wordt — maar <strong>haal eerst het wachtwoord eruit</strong>, dat is een externe website.</div>
+
+<h2>Stap 3 — Open de map in OpenCode</h2>
+<p>Start OpenCode en open <strong>de map waar je <code>opencode.json</code> in hebt gezet</strong>. Dit is de stap die het vaakst misgaat: OpenCode leest het instellingenbestand alleen als je precies die map opent.</p>
+<p>Gebruik je de terminalversie? Dan doe je:</p>
+<pre><code>cd C:\opencode-fatima-el-amrani
+opencode</code></pre>
+
+<h2>Stap 4 — Kies het model</h2>
+<ol>
+  <li>Typ in OpenCode het commando <code>/models</code>.</li>
+  <li>Zoek in de lijst naar <strong>Klas-GPU</strong> en kies daaronder <strong>Qwen3 Coder</strong>.</li>
+  <li>Onderin het scherm zie je nu welk model actief is.</li>
+</ol>
+
+<h3>Staat Klas-GPU er niet bij?</h3>
+<p>Dan heeft OpenCode je bestand niet gelezen, of vraagt de app nog om inloggegevens. Probeer dit:</p>
+<ul>
+  <li>Sluit OpenCode helemaal af en start opnieuw op (instellingen worden bij het starten gelezen).</li>
+  <li>Controleer dat je écht de goede map hebt geopend.</li>
+  <li>Vraagt OpenCode alsnog om een sleutel? Typ dan <code>/connect</code>, kies <em>Other</em>, vul als provider-ID exact <code>klasgpu</code> in en plak daarna het wachtwoord.</li>
+</ul>
+
+<h2>Stap 5 — Test of het werkt</h2>
+<p>Typ in OpenCode deze opdracht en druk op Enter:</p>
+<pre><code>Maak een bestand hallo.py dat mijn naam en de datum van vandaag op het scherm zet.</code></pre>
+<p>Als het goed is, gebeuren er drie dingen: het model antwoordt, het vraagt toestemming om een bestand te maken, en na jouw akkoord staat <code>hallo.py</code> in je map.</p>
+<p>Het eerste antwoord kan een paar seconden op gang komen, zeker als de hele klas tegelijk begint. Daarna loopt het door.</p>
+
+<h2>Stap 6 — Maak je bewijs-screenshot</h2>
+<p>Op je screenshot moeten <strong>drie dingen</strong> zichtbaar zijn:</p>
+<ol>
+  <li>Het antwoord van het model op jouw opdracht uit stap 5</li>
+  <li>De naam van het actieve model (<strong>Qwen3 Coder</strong> of <code>qwen3-coder</code>), meestal onderin beeld</li>
+  <li>Je <strong>eigen naam</strong>, via de mapnaam die in beeld staat</li>
+</ol>
+
+<div class="let-op"><strong>Niet in beeld:</strong> het wachtwoord van de server. Heb je <code>opencode.json</code> open staan in je editor? Sluit dat tabblad voordat je het screenshot maakt.</div>
+
+<h3>Screenshot maken</h3>
+<ul>
+  <li><strong>Windows:</strong> toets <code>Windows + Shift + S</code>, sleep over het venster, plak de afbeelding in Paint en sla op.</li>
+  <li><strong>macOS:</strong> toets <code>Cmd + Shift + 4</code>, sleep over het venster. Het bestand komt op je bureaublad te staan.</li>
+  <li><strong>Linux:</strong> gebruik <code>Print Screen</code> of het schermafbeeldingsprogramma van je systeem.</li>
+</ul>
+
+<h2>Stap 7 — Inleveren</h2>
+<p>Upload het screenshot bij deze opdracht in Teams. Klaar.</p>
+
+<h2>Beoordeling</h2>
+<p>Je opdracht is <strong>voldaan</strong> als:</p>
+<ul class="check">
+  <li>Het screenshot een antwoord van het model laat zien (dus niet alleen een leeg scherm of de modellenlijst)</li>
+  <li>De modelnaam leesbaar in beeld staat</li>
+  <li>Je eigen naam zichtbaar is in de geopende map</li>
+  <li>Het wachtwoord van de server <strong>niet</strong> in beeld staat</li>
+  <li>Het bestand op tijd is ingeleverd</li>
+</ul>
+
+<hr>
+
+<h2>Veelvoorkomende foutmeldingen</h2>
+<table>
+  <thead>
+    <tr><th>Wat je ziet</th><th>Wat er waarschijnlijk aan de hand is</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Klas-GPU staat niet in <code>/models</code></td>
+      <td>OpenCode heeft je bestand niet gelezen: verkeerde map open, verkeerde bestandsnaam, of een fout in de JSON. Herstart de app na het aanpassen.</td>
+    </tr>
+    <tr>
+      <td><code>401</code> of <em>Unauthorized</em> / <em>Invalid API key</em></td>
+      <td>Het wachtwoord klopt niet. Vaak zit er een spatie of een regeleinde in geplakt. Verwijder de waarde en plak hem opnieuw.</td>
+    </tr>
+    <tr>
+      <td><code>Connection refused</code>, <code>fetch failed</code> of <em>timeout</em></td>
+      <td>Het IP-adres klopt niet, of de server staat uit. Buiten lestijd is dit normaal — kijk in de chat of ik heb gemeld dat de server draait.</td>
+    </tr>
+    <tr>
+      <td><code>404</code> of <em>model not found</em></td>
+      <td>De <code>/v1</code> ontbreekt in je <code>baseURL</code>, of de modelnaam is verkeerd overgenomen. Die is exact <code>qwen3-coder</code>.</td>
+    </tr>
+    <tr>
+      <td>Antwoorden komen traag of stokken</td>
+      <td>De hele klas deelt één GPU. Als iedereen tegelijk begint, wordt het even druk. Blijf niet dezelfde vraag opnieuw versturen, dat maakt het drukker.</td>
+    </tr>
+    <tr>
+      <td>OpenCode start op met een JSON-foutmelding</td>
+      <td>Er staat een komma, accolade of aanhalingsteken te veel of te weinig. Vergelijk je bestand regel voor regel met het blok in stap 2.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Afspraken over de server</h2>
+<ul>
+  <li>De server is van ons samen. Laat geen taken uren doorlopen en gebruik hem niet voor dingen buiten de les.</li>
+  <li>Zet er geen persoonsgegevens of vertrouwelijke informatie in. Alles wat je stuurt, wordt op de server verwerkt.</li>
+  <li>Het wachtwoord blijft binnen de klas. Lekt het uit, meld het bij mij — ik maak dan een nieuwe aan.</li>
+</ul>
+
+<hr>
+
+<h2>Extra: laat de instelling in elke map werken (niet verplicht)</h2>
+<p>Nu geldt je instelling alleen in die ene projectmap. Wil je dat OpenCode de klas-GPU in <strong>elk</strong> project kent, zet hetzelfde bestand dan ook hier neer:</p>
+<table>
+  <thead>
+    <tr><th>Systeem</th><th>Locatie</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Windows</td><td><code>C:\Users\&lt;jouw-gebruikersnaam&gt;\.config\opencode\opencode.json</code></td></tr>
+    <tr><td>macOS en Linux</td><td><code>~/.config/opencode/opencode.json</code></td></tr>
+  </tbody>
+</table>
+<p>De mappen <code>.config</code> en <code>opencode</code> bestaan misschien nog niet; die maak je dan zelf aan. Staat er in beide bestanden iets over dezelfde instelling, dan wint het bestand in je projectmap.</p>
+
+<h3>Nog verder kijken</h3>
+<p>De officiële uitleg over eigen providers staat op <a href="https://opencode.ai/docs/providers/#custom-provider">https://opencode.ai/docs/providers/#custom-provider</a>. Daar zie je ook hoe je een model op je eigen laptop koppelt, bijvoorbeeld via Ollama of LM Studio. Handig als je thuis wilt doorwerken terwijl onze server uitstaat.</p>
+
+<hr>
+
+<h2>Vastgelopen?</h2>
+<p>Zet je vraag in de chat bij deze opdracht, met daarbij:</p>
+<ul>
+  <li>welk besturingssysteem je hebt</li>
+  <li>bij welke stap het misging</li>
+  <li>een screenshot van de foutmelding — <strong>zonder het wachtwoord in beeld</strong></li>
+</ul>
+<p>Dan kunnen klasgenoten die hetzelfde probleem hebben meteen meelezen.</p>
+
+</body>
+</html>
