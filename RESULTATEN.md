@@ -4,8 +4,8 @@ Gemeten op **NVIDIA RTX PRO 6000 Blackwell Server Edition (600W)** (47 GB videog
 Meting van 2026-09-10: 39 runs, seed 20250908. Dit bestand is geschreven op 2026-09-10.
 
 > Dit bestand is automatisch gegenereerd uit:
-> - `results/20260910-084827_matrix` -- gemeten 2026-09-10, 38 runs, opstelling `d7954db50151`
-> - `results/20260910-165600_les` -- gemeten 2026-09-10, 1 run, opstelling `d7954db50151`
+> - `results-van-de-gpu/20260910-084827_matrix` -- gemeten 2026-09-10, 38 runs, opstelling `d7954db50151`
+> - `results-van-de-gpu/20260910-165600_les` -- gemeten 2026-09-10, 1 run, opstelling `d7954db50151`
 >
 > De onderliggende getallen staan daar in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
 
