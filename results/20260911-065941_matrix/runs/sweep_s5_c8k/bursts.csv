@@ -1,0 +1,16 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+sweep_s5_c8k,3,gemiddelde,1,22.051,6.717,3,0,5604,0,0,warmup
+sweep_s5_c8k,0,doorpakker,1,13.956,19.73,12,0,9164,0,0,warmup
+sweep_s5_c8k,4,worstelaar,1,34.623,6.026,4,0,5233,0,0,warmup
+sweep_s5_c8k,1,gemiddelde,1,41.451,32.823,8,0,12723,0,0,warmup
+sweep_s5_c8k,0,doorpakker,2,85.053,9.303,9,0,10520,1,0,warmup
+sweep_s5_c8k,0,doorpakker,3,114.205,19.009,15,0,13780,1,0,measure
+sweep_s5_c8k,3,gemiddelde,2,170.068,5.379,3,0,5101,1,0,measure
+sweep_s5_c8k,0,doorpakker,4,172.034,17.211,8,0,12134,1,0,measure
+sweep_s5_c8k,0,doorpakker,5,218.651,32.363,13,0,11746,1,0,measure
+sweep_s5_c8k,1,gemiddelde,2,230.407,35.479,7,0,31654,1,0,measure
+sweep_s5_c8k,0,doorpakker,6,298.418,28.617,14,0,11514,1,0,measure
+sweep_s5_c8k,3,gemiddelde,3,315.785,14.648,8,0,7290,0,0,measure
+sweep_s5_c8k,4,worstelaar,2,344.933,10.164,3,0,5202,1,0,measure
+sweep_s5_c8k,0,doorpakker,7,345.803,18.622,15,0,12075,1,0,measure
+sweep_s5_c8k,1,gemiddelde,3,377.873,17.929,4,0,27625,1,0,measure

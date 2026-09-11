@@ -1,0 +1,17 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+scen_lange_sessies,1,worstelaar,1,4.453,8.188,4,0,22670,0,0,warmup
+scen_lange_sessies,4,gemiddelde,1,41.569,35.923,8,0,41589,0,0,warmup
+scen_lange_sessies,2,doorpakker,1,14.172,80.992,12,0,78146,0,0,warmup
+scen_lange_sessies,3,gemiddelde,1,21.916,75.814,3,0,44270,0,0,warmup
+scen_lange_sessies,0,gemiddelde,1,34.758,75.294,8,0,47245,0,0,warmup
+scen_lange_sessies,5,doorpakker,1,22.234,131.107,9,0,91581,0,0,warmup
+scen_lange_sessies,2,doorpakker,2,146.512,35.23,9,0,80965,0,0,measure
+scen_lange_sessies,2,doorpakker,3,201.567,65.159,15,0,88422,0,0,measure
+scen_lange_sessies,4,gemiddelde,2,233.595,39.523,7,0,44244,0,0,measure
+scen_lange_sessies,0,gemiddelde,2,235.475,54.389,5,0,49401,0,0,measure
+scen_lange_sessies,5,doorpakker,2,200.438,107.544,8,0,114485,0,0,measure
+scen_lange_sessies,2,doorpakker,4,305.529,27.533,8,0,91929,0,0,measure
+scen_lange_sessies,0,gemiddelde,3,338.847,34.065,6,0,55493,0,0,measure
+scen_lange_sessies,4,gemiddelde,3,385.047,11.551,3,0,45062,0,0,measure
+scen_lange_sessies,5,doorpakker,3,354.908,43.405,2,0,86836,1,0,measure
+scen_lange_sessies,2,doorpakker,5,362.445,37.325,6,0,94580,0,0,measure

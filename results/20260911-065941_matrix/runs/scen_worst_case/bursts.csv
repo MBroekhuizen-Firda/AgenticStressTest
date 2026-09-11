@@ -1,0 +1,7 @@
+run_id,student,persona,burst,start_s,duration_s,steps,failed_steps,context_tokens,compacted,restarted,phase
+scen_worst_case,17,doorpakker,1,5.658,300.191,0,1,69649,0,0,measure
+scen_worst_case,8,doorpakker,1,6.364,399.705,4,0,58871,0,0,measure
+scen_worst_case,1,doorpakker,1,1.409,420.751,4,0,59516,0,0,measure
+scen_worst_case,19,gemiddelde,1,5.975,427.259,5,0,51552,0,0,measure
+scen_worst_case,2,doorpakker,1,3.702,434.973,3,0,65250,0,0,measure
+scen_worst_case,14,gemiddelde,1,0.591,441.05,5,0,35423,0,0,measure
