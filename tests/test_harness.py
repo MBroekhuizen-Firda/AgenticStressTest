@@ -1193,6 +1193,28 @@ class TestTwoCardsNeverEndUpInOneMeasurement(unittest.TestCase):
             fingerprint.guard(d, fingerprint.from_config({"hardware": self.MIG}),
                               allow_mismatch=True)
 
+    def test_pending_answers_another_card_with_its_own_exit_code(self):
+        """What `scripts/pod.sh` reads to tell the two refusals apart: 4 is
+        another card, which it settles itself by starting a new directory; 3 is
+        another setup, where only the operator can decide (--resume-anyway)."""
+        d = self.directory(self.MIG)
+        command = [sys.executable, "-m", "stresstest", "pending", d,
+                   "--only", "rampup", "-c",
+                   os.path.join(ROOT, "config", "default.json"),
+                   "--set", f"hardware.gpu_name={self.FULL['gpu_name']}",
+                   "--set", f"hardware.vram_gb={self.FULL['vram_gb']}"]
+        done = subprocess.run(command, capture_output=True, text=True, cwd=ROOT,
+                              timeout=120)
+        self.assertEqual(done.returncode, 4, done.stderr)
+        self.assertIn("andere kaart", done.stderr)
+        self.assertEqual(done.stdout.strip(), "",
+                         "bij een afwijking mag er geen id-lijst uitkomen")
+
+        done = subprocess.run(command + ["--resume-anyway"], capture_output=True,
+                              text=True, cwd=ROOT, timeout=120)
+        self.assertEqual(done.returncode, 4,
+                         "--resume-anyway wuift een andere kaart niet door")
+
     def test_the_same_card_resumes_normally(self):
         from stresstest import fingerprint
         d = self.directory(self.FULL)

@@ -43,8 +43,16 @@ def script_text() -> str:
 
 def function_body(name: str) -> str:
     """One shell function out of the script, so a test can read what it does
-    without running seven hours of GPU time to find out."""
-    found = re.search(rf"^{name}\(\) \{{.*?^\}}", script_text(), re.M | re.S)
+    without running seven hours of GPU time to find out.
+
+    One-liners first: `plural_runs() { ...; }` has no closing brace of its own
+    at the start of a line, so the multi-line pattern would run on and swallow
+    whatever function comes after it."""
+    text = script_text()
+    one_line = re.search(rf"^{name}\(\) \{{[^\n]*\}}$", text, re.M)
+    if one_line is not None:
+        return one_line.group(0)
+    found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
     assert found is not None, f"{name} is gone"
     return found.group(0)
 
@@ -326,6 +334,18 @@ class TestTensorParallelIsCheckedBeforeTheRun(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertNotIn("[warn]", done.stderr)
 
+    def test_cards_left_unused_are_said_out_loud(self):
+        """The other way round from the refusal above, and not an error: one
+        card out of two is a machine that can be measured. It is just not the
+        machine that was rented, and the pool the report divides follows this
+        number -- so it is never a silent default."""
+        done = self._check(tensor_parallel=1, gpu_count=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("TENSOR_PARALLEL=2", done.stderr,
+                      "de waarschuwing moet zeggen hoe je ze wel allebei gebruikt")
+        self.assertIn("reached-the-end", done.stdout)
+
     def test_the_check_runs_in_preflight(self):
         self.assertIn("check_tensor_parallel", function_body("preflight"))
 
@@ -569,7 +589,8 @@ class StartServerHarness(unittest.TestCase):
 
     def _drive_start_server(self, fake_vllm: str, model_on_disk: bool = True,
                             attempts: int = 4, backend: str = "",
-                            tensor_parallel: int = 1) -> subprocess.CompletedProcess:
+                            tensor_parallel: int = 1, gpu_count: int | None = None,
+                            per_card_gb: str = "") -> subprocess.CompletedProcess:
         """Run start_server with `fake_vllm` (a bash script) as vllm.
         `backend` is what an operator would export as ATTENTION_BACKEND."""
         home = os.path.join(self.tmp, "hf")
@@ -585,8 +606,8 @@ class StartServerHarness(unittest.TestCase):
         text = script_text()
         bodies = []
         for name in ("model_dir", "model_size_gb", "model_is_complete",
-                     "model_snapshot_dir", "shm_size_mb", "driver_cuda_version",
-                     "log_suspects",
+                     "model_snapshot_dir", "weights_gb", "plural_cards",
+                     "shm_size_mb", "driver_cuda_version", "log_suspects",
                      "worker_lines", "show_server_error",
                      "die_server_start", "start_server"):
             found = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
@@ -602,7 +623,9 @@ class StartServerHarness(unittest.TestCase):
             "set -Eeuo pipefail",
             'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
             "SERVED_NAME=qwen3-coder; HOST_BIND=127.0.0.1; PORT=8000",
-            f"GPU_UTIL=0.90; TENSOR_PARALLEL={tensor_parallel}; GPU_COUNT={tensor_parallel}; MOCK=0",
+            f"GPU_UTIL=0.90; TENSOR_PARALLEL={tensor_parallel}; MOCK=0",
+            f"GPU_COUNT={tensor_parallel if gpu_count is None else gpu_count}",
+            f'VRAM_PER_CARD_GB="{per_card_gb}"',
             "KV_CACHE_DTYPE=fp8; MAX_NUM_SEQS=32; MAX_MODEL_LEN=131072",
             f'ATTENTION_BACKEND="{backend}"; NO_FLASHINFER_SAMPLER=0',
             "NCCL_P2P_OFF=0",
@@ -976,9 +999,11 @@ class TestAWorkerThatDiedInAnotherProcess(StartServerHarness):
         done = self._fail()
         self.assertNotIn("verlaag --max-model-len", done.stderr)
 
-    def test_one_card_keeps_the_message_it_had(self):
+    def test_one_card_gets_the_memory_message_and_not_this_one(self):
+        """Nothing about workers or shared memory: one process, and the log
+        says outright what it ran out of."""
         done = self._fail(tensor_parallel=1, body=SINGLE_CARD_OOM)
-        self.assertIn("verlaag --max-model-len", done.stderr)
+        self.assertIn("cacheblok", done.stderr)
         self.assertNotIn("shm-size", done.stderr)
         suspects = self._section(done.stderr, "vermoedelijke oorzaak")
         self.assertIn("No available memory for the cache blocks", suspects)
@@ -1449,7 +1474,7 @@ class TestResumingAnOlderDirectory(unittest.TestCase):
     def test_the_resumed_directory_is_described_not_just_named(self):
         """`hervat in results/20260908-...` was true and useless. How old it is
         and how much is already in it is what makes a wrong one visible."""
-        self.assertIn("describe_results_dir", function_body("cmd_all"))
+        self.assertIn("describe_results_dir", function_body("choose_results_dir"))
         described = function_body("describe_results_dir")
         self.assertIn("aangemaakt", described)
         self.assertIn("runs", described)
@@ -1793,6 +1818,9 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
             'die() { echo "[die] $*" >&2; exit 1; }',
             torch,
             "PY=faketorch; MOCK=0",
+            # As the script does at top level: detect_gpu fills it in when the
+            # card answers, and leaves it empty when nothing knows.
+            'VRAM_PER_CARD_GB=""',
             f"TENSOR_PARALLEL={tensor_parallel}",
             (f'VRAM_GB="{vram_gb}"' if vram_gb else ":"),
             # command -v finds shell functions, so this stands in for the tool.
@@ -1807,7 +1835,7 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
             function_body("gpu_memory_gb_from_torch"),
             function_body("detect_gpu"),
             "detect_gpu",
-            'echo "VRAM_GB=$VRAM_GB SOURCE=$VRAM_SOURCE COUNT=$GPU_COUNT"',
+            'echo "VRAM_GB=$VRAM_GB SOURCE=$VRAM_SOURCE COUNT=$GPU_COUNT PER_CARD=$VRAM_PER_CARD_GB"',
         ])
         return subprocess.run(["bash", "-c", program], capture_output=True, text=True)
 
@@ -1848,17 +1876,32 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("VRAM_GB=64.0 SOURCE=nvidia-smi", done.stdout)
 
+    def test_one_card_is_recorded_apart_from_the_pool(self):
+        """The pool is what the report divides and may be the operator's own
+        number; what one card holds is what decides whether the weights fit in
+        what vLLM is given. Two different questions, two numbers."""
+        done = self._detect("32768", cards=2, tensor_parallel=2)
+        self.assertIn("VRAM_GB=64.0", done.stdout)
+        self.assertIn("PER_CARD=32.0", done.stdout)
+
+        done = self._detect("32768", cards=2, tensor_parallel=1, vram_gb="64")
+        self.assertIn("VRAM_GB=64", done.stdout, "een opgegeven pool blijft staan")
+        self.assertIn("PER_CARD=32.0", done.stdout,
+                      "de kaart zelf is niet wat de operator opgaf")
+
     def test_a_resume_is_checked_before_the_server_starts(self):
-        """A directory left on a shared network volume by another card cannot
-        be measured into. Discovering that at the first group means the model
-        is already loaded -- a quarter of an hour of rent for an answer the
-        configuration alone could give."""
+        """A directory left by another card cannot be measured into.
+        Discovering that at the first group means the model is already loaded
+        -- a quarter of an hour of rent for an answer the configuration alone
+        could give."""
+        picking = function_body("choose_results_dir")
+        check = picking.index("pending_ids rampup")
+        resume = picking.index("hervat in bestaande map")
+        self.assertLess(check, resume,
+                        "a directory is announced as resumed only once the check allowed it")
         body = function_body("cmd_all")
-        resume = body.index("hervat in bestaande map")
-        check = body.index("pending_ids rampup")
-        server = body.index("start_server")
-        self.assertLess(resume, check, "the check has to follow the directory it checks")
-        self.assertLess(check, server, "the check has to come before vLLM is started")
+        self.assertLess(body.index("choose_results_dir"), body.index("start_server"),
+                        "the check has to come before vLLM is started")
 
     def test_preflight_refuses_to_measure_on_a_guess(self):
         body = function_body("preflight")
@@ -1867,6 +1910,214 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
         self.assertIn("VRAM_GB=48", body, "the refusal has to say how to supply the number")
         self.assertIn("bron: $VRAM_SOURCE", body,
                       "the pool line has to say where the number came from")
+
+
+class TestChoosingTheResultsDirectory(unittest.TestCase):
+    """`results/` does not fill up by measuring alone. `push_results` commits
+    the measurement at the end of every run, so a clone of this repository
+    arrives with the previous card's directory already in it -- and
+    `ls -dt results/*_matrix` finds it on a pod that has measured nothing.
+    Resuming into another card's directory is the one refusal that has no
+    override, so a fresh pod died on the results of the pod before it, over a
+    directory nobody had asked for."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+
+    def _choose(self, latest: str = "", status: int = 0,
+                results_dir: str | None = None) -> subprocess.CompletedProcess:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            'describe_results_dir() { echo "3 runs"; }',
+            f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
+            f'pending_ids() {{ echo "[pending] $*" >&2; return {status}; }}',
+            function_body("choose_results_dir"),
+            "choose_results_dir",
+            'echo "gekozen[$CHOSEN_RESULTS_DIR]"',
+        ])
+        env = dict(os.environ)
+        env.pop("RESULTS_DIR", None)
+        if results_dir is not None:
+            env["RESULTS_DIR"] = results_dir
+        return subprocess.run(["bash", "-c", program], capture_output=True,
+                              text=True, env=env)
+
+    def test_a_directory_from_the_operator_is_taken_as_given(self):
+        done = self._choose(latest="results/van-een-andere-kaart_matrix",
+                            results_dir="results/deze_matrix")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("gekozen[results/deze_matrix]", done.stdout)
+        self.assertNotIn("[pending]", done.stderr,
+                         "een map die de operator noemt wordt niet stiekem vervangen")
+
+    def test_a_directory_of_this_card_is_resumed(self):
+        done = self._choose(latest="results/20260910-084827_matrix", status=0)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("gekozen[results/20260910-084827_matrix]", done.stdout)
+        self.assertIn("hervat in bestaande map", done.stderr)
+
+    def test_a_directory_of_another_card_is_left_alone_for_a_new_one(self):
+        """Exit code 4 from `stresstest pending`: another card. The guard has
+        printed why; there is nothing here for the operator to decide, so the
+        measurement starts where it may instead of not starting at all."""
+        done = self._choose(latest="results/20260910-084827_matrix", status=4)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertNotIn("gekozen[results/20260910-084827_matrix]", done.stdout)
+        self.assertRegex(done.stdout, r"gekozen\[results/\d{8}-\d{6}_matrix\]")
+        self.assertIn("andere kaart", done.stderr)
+
+    def test_another_refusal_is_still_a_stop(self):
+        """Exit code 3: a different corpus, behaviour model or seed. There
+        --resume-anyway is a real choice, and only the operator can make it."""
+        done = self._choose(latest="results/20260910-084827_matrix", status=3)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertNotIn("gekozen[", done.stdout)
+
+    def test_an_empty_results_tree_starts_a_new_directory(self):
+        done = self._choose(latest="")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[pending]", done.stderr)
+        self.assertRegex(done.stdout, r"gekozen\[results/\d{8}-\d{6}_matrix\]")
+
+
+class TestTheModelHasToFitBeforeTheServerIsStarted(StartServerHarness):
+    """vLLM loads the weights first and divides what is left over the KV
+    cache. Leave nothing over and the engine stops on "No available memory for
+    the cache blocks" -- after the load, so after minutes of rent, and twice
+    when the script still has an attempt left. Whether it will fit is knowable
+    before any of that: the weights are on disk and what vLLM may use is the
+    card times --gpu-memory-utilization."""
+
+    def _fits(self, gigabytes: int = 31, per_card: str = "31.8",
+              tensor_parallel: int = 1, gpu_count: int = 2,
+              util: str = "0.90", force: int = 0) -> subprocess.CompletedProcess:
+        self._snapshot(gigabytes)
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'warn() { echo "[warn] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            'MODEL="Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8"',
+            f'HF_HOME="{self.tmp}/hf"',
+            "MOCK=0",
+            f'VRAM_PER_CARD_GB="{per_card}"',
+            f"TENSOR_PARALLEL={tensor_parallel}; GPU_COUNT={gpu_count}",
+            f"GPU_UTIL={util}; FORCE={force}",
+            function_body("model_dir"),
+            function_body("model_size_gb"),
+            function_body("weights_gb"),
+            function_body("plural_cards"),
+            function_body("check_model_fits"),
+            "check_model_fits",
+            "echo reached-the-end",
+        ])
+        return subprocess.run(["bash", "-c", program], capture_output=True,
+                              text=True, timeout=120)
+
+    def test_a_30b_on_one_5090_is_refused_with_the_other_card_named(self):
+        """31 GB of weights against 0.90 x 31.8 GB. This is the run that cost
+        two start-ups and then blamed FlashInfer."""
+        done = self._fits()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertIn("TENSOR_PARALLEL=2", done.stderr)
+        self.assertIn("No available memory", done.stderr,
+                      "de melding moet de tekst noemen die de operator anders zelf zou zien")
+
+    def test_the_same_weights_across_both_cards_are_fine(self):
+        done = self._fits(tensor_parallel=2)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertNotIn("[warn]", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_a_cache_pool_that_is_nearly_nothing_is_warned_about(self):
+        """It starts, so it is not a stop -- but a measurement of a KV pool of
+        two gigabytes answers the question about a class of twenty with a
+        number that says more about the card than about the class."""
+        done = self._fits(gigabytes=31, per_card="38.0")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_force_lets_the_operator_through(self):
+        done = self._fits(force=1)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[warn]", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_a_card_whose_memory_is_unknown_gets_no_opinion(self):
+        """A MIG slice that neither nvidia-smi nor torch could size. There is
+        nothing to compare, and a refusal on a guess is worse than none."""
+        done = self._fits(per_card="")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_a_model_that_is_not_downloaded_yet_gets_no_opinion(self):
+        done = self._fits(gigabytes=0)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("reached-the-end", done.stdout)
+
+    def test_the_check_runs_in_preflight(self):
+        body = function_body("preflight")
+        self.assertIn("check_model_fits", body)
+        self.assertLess(body.index("detect_gpu"), body.index("check_model_fits"),
+                        "zonder het geheugen van de kaart valt er niets te vergelijken")
+
+
+# A vLLM that survives FlashInfer's complaint about this card and then dies
+# for lack of room: exactly what 2x RTX 5090 with the weights on one card
+# produced. Both are in the log; only the second one stopped the engine.
+NO_ROOM_AFTER_A_FLASHINFER_WARNING = fake_vllm(f"""
+    echo "$ARGS_ECHO"
+    echo "WARNING [jit/core.py:109] Failed to get device capability: SM 12.x requires CUDA >= 12.9"
+    echo "WARNING [jit/core.py:109] check_cuda_arch: FlashInfer requires GPUs with sm75 or higher"
+    echo "INFO [gpu_worker.py:298] Available KV cache memory: -1.30 GiB"
+    echo "ERROR [core.py:1374] ValueError: No available memory for the cache blocks. Try increasing \\`gpu_memory_utilization\\` when initializing the engine."
+    echo "RuntimeError: Engine core initialization failed. See root cause above."
+    exit 1""")
+
+
+class TestNoRoomForTheCacheIsNotAFlashInferProblem(StartServerHarness):
+    """FlashInfer's complaint about this card is in the log of a start that
+    survived it: vLLM probes it, warns and carries on. The script read that
+    warning as the reason, switched the attention backend -- a different
+    measurement -- and, when the second start died of the same lack of memory,
+    ended with "vLLM blijft op FlashInfer stuklopen" over a model that simply
+    did not fit. The engine said what was wrong in the same log."""
+
+    def test_the_backend_is_not_switched_over_a_memory_failure(self):
+        done = self._drive_start_server(NO_ROOM_AFTER_A_FLASHINFER_WARNING,
+                                        tensor_parallel=1, gpu_count=2,
+                                        per_card_gb="31.8")
+        self.assertEqual(done.returncode, 1)
+        self.assertEqual(len(self.starts(done)), 1,
+                         "een tweede poging met een andere backend meet iets anders "
+                         "en lost geen geheugen op")
+        self.assertNotIn("TRITON_ATTN", " ".join(self.starts(done)))
+
+    def test_the_reason_given_is_the_one_that_stopped_the_engine(self):
+        done = self._drive_start_server(NO_ROOM_AFTER_A_FLASHINFER_WARNING,
+                                        tensor_parallel=1, gpu_count=2,
+                                        per_card_gb="31.8")
+        died = [line for line in done.stderr.splitlines() if "[die]" in line]
+        self.assertEqual(len(died), 1, done.stderr)
+        self.assertIn("cacheblok", died[0])
+        self.assertIn("TENSOR_PARALLEL=2", died[0],
+                      "de tweede kaart is hier het antwoord, niet een andere image")
+        self.assertNotIn("blijft op FlashInfer stuklopen", died[0])
+
+    def test_a_real_flashinfer_failure_still_gets_its_fallback(self):
+        """The guard must not cost the fallback its reason for existing."""
+        done = self._drive_start_server(NEEDS_TRITON, tensor_parallel=1)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("TRITON_ATTN", " ".join(self.starts(done)))
 
 
 if __name__ == "__main__":

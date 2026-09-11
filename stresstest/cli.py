@@ -533,6 +533,11 @@ def cmd_run(args: argparse.Namespace) -> int:
 # The check is deliberately the cheap one: configuration only, no corpus load
 # and no tokenizer. `matrix` repeats it with both loaded, so a corpus that
 # gained files is still caught before anything is written.
+#
+# Three answers, so that a caller can tell them apart without reading Dutch:
+# 0 -- the missing ids follow on stdout; 3 -- measured with another setup, and
+# only the operator can decide to resume anyway; 4 -- measured on another card,
+# which is never resumed.
 
 def cmd_pending(args: argparse.Namespace) -> int:
     config = load_config(args.config, args.set)
@@ -542,6 +547,17 @@ def cmd_pending(args: argparse.Namespace) -> int:
                           allow_mismatch=args.resume_anyway,
                           warn=lambda text: print(text, file=sys.stderr),
                           adding_engine_runs="engine" in args.only)
+    except fingerprint.CardMismatch as mismatch:
+        # Its own exit code, apart from the 3 below, because the caller can do
+        # something about this one that it cannot do about the others. A
+        # directory measured on another card is never resumed -- but a caller
+        # that was only *choosing* a directory (`scripts/pod.sh all`, when
+        # RESULTS_DIR says nothing) may leave it alone and start a new one,
+        # which is exactly what the message advises. Every other difference
+        # leaves a choice only the operator can make (--resume-anyway), so it
+        # stays a stop.
+        print(mismatch.message(), file=sys.stderr)
+        return 4
     except fingerprint.Mismatch as mismatch:
         print(mismatch.message(), file=sys.stderr)
         return 3
