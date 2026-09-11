@@ -1449,7 +1449,7 @@ class TestResumingAnOlderDirectory(unittest.TestCase):
     def test_the_resumed_directory_is_described_not_just_named(self):
         """`hervat in results/20260908-...` was true and useless. How old it is
         and how much is already in it is what makes a wrong one visible."""
-        self.assertIn("describe_results_dir", function_body("cmd_all"))
+        self.assertIn("describe_results_dir", function_body("choose_results_dir"))
         described = function_body("describe_results_dir")
         self.assertIn("aangemaakt", described)
         self.assertIn("runs", described)
@@ -1849,16 +1849,18 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
         self.assertIn("VRAM_GB=64.0 SOURCE=nvidia-smi", done.stdout)
 
     def test_a_resume_is_checked_before_the_server_starts(self):
-        """A directory left on a shared network volume by another card cannot
-        be measured into. Discovering that at the first group means the model
-        is already loaded -- a quarter of an hour of rent for an answer the
-        configuration alone could give."""
+        """A directory left by another card cannot be measured into.
+        Discovering that at the first group means the model is already loaded
+        -- a quarter of an hour of rent for an answer the configuration alone
+        could give."""
+        picking = function_body("choose_results_dir")
+        check = picking.index("pending_ids rampup")
+        resume = picking.index("hervat in bestaande map")
+        self.assertLess(check, resume,
+                        "a directory is announced as resumed only once the check allowed it")
         body = function_body("cmd_all")
-        resume = body.index("hervat in bestaande map")
-        check = body.index("pending_ids rampup")
-        server = body.index("start_server")
-        self.assertLess(resume, check, "the check has to follow the directory it checks")
-        self.assertLess(check, server, "the check has to come before vLLM is started")
+        self.assertLess(body.index("choose_results_dir"), body.index("start_server"),
+                        "the check has to come before vLLM is started")
 
     def test_preflight_refuses_to_measure_on_a_guess(self):
         body = function_body("preflight")
@@ -1867,6 +1869,79 @@ class TestHowMuchMemoryTheCardHas(unittest.TestCase):
         self.assertIn("VRAM_GB=48", body, "the refusal has to say how to supply the number")
         self.assertIn("bron: $VRAM_SOURCE", body,
                       "the pool line has to say where the number came from")
+
+
+class TestChoosingTheResultsDirectory(unittest.TestCase):
+    """`results/` does not fill up by measuring alone. `push_results` commits
+    the measurement at the end of every run, so a clone of this repository
+    arrives with the previous card's directory already in it -- and
+    `ls -dt results/*_matrix` finds it on a pod that has measured nothing.
+    Resuming into another card's directory is the one refusal that has no
+    override, so a fresh pod died on the results of the pod before it, over a
+    directory nobody had asked for."""
+
+    def setUp(self):
+        if not shutil.which("bash"):
+            self.skipTest("no bash available")
+
+    def _choose(self, latest: str = "", status: int = 0,
+                results_dir: str | None = None) -> subprocess.CompletedProcess:
+        program = "\n".join([
+            "set -Eeuo pipefail",
+            'say() { echo "[say] $*" >&2; }',
+            'die() { echo "[die] $*" >&2; exit 1; }',
+            'describe_results_dir() { echo "3 runs"; }',
+            f'latest_matrix_dir() {{ printf "%s" "{latest}"; }}',
+            f'pending_ids() {{ echo "[pending] $*" >&2; return {status}; }}',
+            function_body("choose_results_dir"),
+            "choose_results_dir",
+            'echo "gekozen[$CHOSEN_RESULTS_DIR]"',
+        ])
+        env = dict(os.environ)
+        env.pop("RESULTS_DIR", None)
+        if results_dir is not None:
+            env["RESULTS_DIR"] = results_dir
+        return subprocess.run(["bash", "-c", program], capture_output=True,
+                              text=True, env=env)
+
+    def test_a_directory_from_the_operator_is_taken_as_given(self):
+        done = self._choose(latest="results/van-een-andere-kaart_matrix",
+                            results_dir="results/deze_matrix")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("gekozen[results/deze_matrix]", done.stdout)
+        self.assertNotIn("[pending]", done.stderr,
+                         "een map die de operator noemt wordt niet stiekem vervangen")
+
+    def test_a_directory_of_this_card_is_resumed(self):
+        done = self._choose(latest="results/20260910-084827_matrix", status=0)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("gekozen[results/20260910-084827_matrix]", done.stdout)
+        self.assertIn("hervat in bestaande map", done.stderr)
+
+    def test_a_directory_of_another_card_is_left_alone_for_a_new_one(self):
+        """Exit code 4 from `stresstest pending`: another card. The guard has
+        printed why; there is nothing here for the operator to decide, so the
+        measurement starts where it may instead of not starting at all."""
+        done = self._choose(latest="results/20260910-084827_matrix", status=4)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[die]", done.stderr)
+        self.assertNotIn("gekozen[results/20260910-084827_matrix]", done.stdout)
+        self.assertRegex(done.stdout, r"gekozen\[results/\d{8}-\d{6}_matrix\]")
+        self.assertIn("andere kaart", done.stderr)
+
+    def test_another_refusal_is_still_a_stop(self):
+        """Exit code 3: a different corpus, behaviour model or seed. There
+        --resume-anyway is a real choice, and only the operator can make it."""
+        done = self._choose(latest="results/20260910-084827_matrix", status=3)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("[die]", done.stderr)
+        self.assertNotIn("gekozen[", done.stdout)
+
+    def test_an_empty_results_tree_starts_a_new_directory(self):
+        done = self._choose(latest="")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("[pending]", done.stderr)
+        self.assertRegex(done.stdout, r"gekozen\[results/\d{8}-\d{6}_matrix\]")
 
 
 if __name__ == "__main__":

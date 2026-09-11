@@ -1624,27 +1624,62 @@ latest_matrix_dir() {
   ls -dt results/*_matrix 2>/dev/null | head -1 || true
 }
 
+# Which directory this measurement writes to. Set in CHOSEN_RESULTS_DIR rather
+# than printed, so that a refusal below is a real stop and not an `exit 1` in a
+# command substitution that only ends the subshell.
+#
+# Resuming is the point of the middle case: a measurement that lost its
+# connection carries on instead of starting over. But a results directory does
+# not only arrive by measuring. `push_results` commits one at the end of every
+# run, so a clone of this repository brings the previous card's measurement
+# along, and the newest-first listing above finds it on a pod that has measured
+# nothing at all. Resuming into that is the one thing the guard never waives
+# (see CardMismatch in stresstest/fingerprint.py) -- and it used to end the
+# whole run before it began, over a directory nobody had asked for. So a
+# directory from another card is left alone here and the measurement starts in
+# a new one. Anything else the guard refuses is still a stop: there
+# --resume-anyway is a real choice, and only the operator can make it.
+CHOSEN_RESULTS_DIR=""
+choose_results_dir() {
+  CHOSEN_RESULTS_DIR="${RESULTS_DIR:-}"
+  if [ -n "$CHOSEN_RESULTS_DIR" ]; then
+    return 0
+  fi
+  local dir status=0
+  dir="$(latest_matrix_dir)"
+  if [ -n "$dir" ]; then
+    # Asked here and not at the first group: finding out after vLLM is up
+    # costs a quarter of an hour of rent. The check is cheap -- configuration
+    # only, no corpus and no tokenizer.
+    pending_ids rampup "$dir" >/dev/null || status=$?
+    case "$status" in
+      0)
+        say "hervat in bestaande map $dir ($(describe_results_dir "$dir"))"
+        say "  zet RESULTS_DIR= om ergens anders te beginnen"
+        CHOSEN_RESULTS_DIR="$dir"
+        return 0
+        ;;
+      4)
+        say "$dir is op een andere kaart gemeten (zie hierboven) en blijft zoals hij is"
+        say "  deze meting begint daarom in een nieuwe map"
+        ;;
+      *)
+        die "kan niet hervatten in $dir -- zie de melding hierboven. Begin ergens anders:  RESULTS_DIR=results/\$(date +%Y%m%d-%H%M%S)_matrix scripts/pod.sh all"
+        ;;
+    esac
+  fi
+  CHOSEN_RESULTS_DIR="results/$(date +%Y%m%d-%H%M%S)_matrix"
+  say "nieuwe meetmap: $CHOSEN_RESULTS_DIR"
+}
+
 cmd_all() {
   local started=$SECONDS
   cmd_setup
 
-  local dir="${RESULTS_DIR:-}"
-  if [ -z "$dir" ]; then
-    dir="$(latest_matrix_dir)"
-    if [ -n "$dir" ]; then
-      say "hervat in bestaande map $dir ($(describe_results_dir "$dir"))"
-      say "  zet RESULTS_DIR= om ergens anders te beginnen"
-      # Asked here and not at the first group: a directory measured on another
-      # card cannot be measured into, and finding that out after vLLM is up
-      # costs a quarter of an hour of rent. A shared netwerkschijf makes this
-      # ordinary -- twee pods, one /workspace, one results/, and `all` resumes
-      # into whatever is there. The check is cheap: configuration only.
-      pending_ids rampup "$dir" >/dev/null \
-        || die "kan niet hervatten in $dir -- zie de melding hierboven. Begin ergens anders:  RESULTS_DIR=results/\$(date +%Y%m%d-%H%M%S)_matrix scripts/pod.sh all"
-    else
-      dir="results/$(date +%Y%m%d-%H%M%S)_matrix"
-    fi
-  fi
+  # Resume where it is allowed, start fresh where it is not -- before vLLM is
+  # started, because that is what makes the answer cheap.
+  choose_results_dir
+  local dir="$CHOSEN_RESULTS_DIR"
   mkdir -p "$dir"
 
   if [ -n "$DEADMAN_HOURS" ]; then

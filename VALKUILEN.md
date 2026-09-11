@@ -285,6 +285,16 @@ hoort in het rapport genoemd te worden.
   daarom naam **en** geheugen, en weigert hervatten, `--also` en `--same` over
   twee kaarten. Dat is de enige weigering die `--resume-anyway` niet opzij zet.
   Meet in een eigen map: `RESULTS_DIR=results/$(date +%Y%m%d-%H%M%S)_matrix`.
+- **De vorige meting komt met de kloon mee.** Daar is geen netwerkschijf voor
+  nodig. `push_results` commit de meetmap aan het eind van elke meting, dus een
+  verse kloon van deze repo heeft de map van de vorige kaart al in `results/`
+  staan — en zonder `RESULTS_DIR` hervat `all` in de nieuwste map die het daar
+  vindt. Op een andere kaart liep de hele run daar vroeger op stuk voordat er
+  iets gemeten was, over een map die niemand had aangewezen. Koos `all` de map
+  zelf, dan laat het een map van een andere kaart nu staan en begint het in een
+  nieuwe; wijs je hem zelf aan met `RESULTS_DIR`, dan stopt het nog steeds —
+  dan is het een keuze en geen vondst. Op `main` horen de meetmappen daarom
+  onder `results-van-de-gpu/` en niet onder `results/` (zie BRANCHES.md).
 
 ### De resultaten van de pod halen
 
