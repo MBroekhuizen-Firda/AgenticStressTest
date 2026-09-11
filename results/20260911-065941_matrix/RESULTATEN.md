@@ -1,11 +1,10 @@
 # Resultaten stresstest agentic coding
 
 Gemeten op **NVIDIA GeForce RTX 5090 (575W)** (64 GB videogeheugen) met **qwen3-coder** via vLLM.
-Meting van 2026-09-11: 39 runs, seed 20250908. Dit bestand is geschreven op 2026-09-11.
+Meting van 2026-09-11: 38 runs, seed 20250908. Dit bestand is geschreven op 2026-09-11.
 
 > Dit bestand is automatisch gegenereerd uit:
 > - `results/20260911-065941_matrix` -- gemeten 2026-09-11, 38 runs, opstelling `d7954db50151`
-> - `results/20260911-135953_les` -- gemeten 2026-09-11, 1 run, opstelling `d7954db50151`
 >
 > De onderliggende getallen staan daar in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
 
@@ -94,7 +93,7 @@ Twee assen, los van elkaar geloot. Een *persona* is een tempo: hoe lang iemand n
 
 De aandelen hieronder zijn de loting die voor **elke** run in deze meting gold, met seed `20250908`. Vingerafdruk van dit gedragsmodel: `0389659f7efb` -- twee metingen met hetzelfde getal zijn met dezelfde persona's, werkprofielen en seed gedaan, en dus onderling te vergelijken. (De vingerafdruk boven aan dit bestand is een andere: die dekt de hele opstelling, corpus en tokenizer inbegrepen.)
 
-De kolom *geloot* komt uit `les_90min`: de run met 20 studenten op activiteit normaal. Andere runs in deze meting hebben minder of meer studenten en dus een eigen loting.
+De kolom *geloot* komt uit `sweep_s20_c100k`: de run met 20 studenten op activiteit normaal. Andere runs in deze meting hebben minder of meer studenten en dus een eigen loting.
 
 | Persona | Aandeel | Geloot |
 |---|---|---|
@@ -139,14 +138,6 @@ Deze zijn belangrijker dan het gemiddelde, want dit is wat er misgaat.
 | Na de stilte: tien minuten niets, dan hervat iedereen tegelijk | oranje | 0.7 s | 102 s | 0 | p90 doorlooptijd instructie 102s |
 | Worst case: 20 studenten, maximale context, geen gedeelde prefix | rood | 75.1 s | 438 s | 1 | p90 TTFT 75.1s; p90 doorlooptijd instructie 438s; decodesnelheid 5.7 tok/s per stream; 1 preempties |
 
-## Fase 2: de lesvalidatie van negentig minuten
-
-Oordeel over het volledige lesuur: **oranje**. p90 TTFT 0.6 s, p90 doorlooptijd van een instructie 97 s, 0 preempties, prefix cache hit rate 94%, KV-piek 52%.
-
-Contextdruk over het hele lesuur: 313 compacties, 6.5 per 100 agentstappen, hoogste bereikte context 81170 tokens.
-
-De grafiek `04_cache_en_kv_over_tijd.svg`, in de `charts`-map van de resultatenmap van de lesvalidatie, laat zien wat er tijdens de tien minuten klassikale uitleg met de cache gebeurt, en hoe duur de eerste stap daarna is.
-
 ## Hoe de kleuren zijn bepaald
 
 - **Groen**: p90 TTFT onder 20 s, p90 doorlooptijd van een instructie onder 90 s, decodesnelheid boven 12 tokens/s per stream, geen preempties, geen afgelopen verzoeken.
@@ -158,7 +149,7 @@ Twee afwijkingen ten opzichte van de oorspronkelijke opzet, allebei bewust:
 1. **De doorlooptijd van een hele instructie telt mee.** Time to first token is de eerste van drie tot vijftien modelaanroepen die de agent doet voor een enkele opdracht van de student. Een run kan een prima TTFT hebben en toch twee minuten over een instructie doen; dat is wat de student wacht.
 2. **De prefix cache hit rate is gerapporteerd maar geen groen-eis.** Die hangt af van het scenario, niet van de hardware: in de runs met 0% gedeelde basis en in de koude start is 60% per definitie onhaalbaar. Een lage hit rate waar we een hoge verwachtten staat als waarschuwing bij de run.
 
-Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 8 van de 39 runs: act_intensief_s20, engine_kv_auto, scen_deadline, scen_na_de_stilte, sweep_s10_c100k, sweep_s20_c100k, sweep_s30_c100k, les_90min.
+Elke run is ook beoordeeld volgens de oorspronkelijke definitie uit de opdracht (kolom `grade_brief` in `summary.csv`). De twee definities verschillen bij 7 van de 38 runs: act_intensief_s20, engine_kv_auto, scen_deadline, scen_na_de_stilte, sweep_s10_c100k, sweep_s20_c100k, sweep_s30_c100k.
 
 ## Wat deze test niet zegt
 
