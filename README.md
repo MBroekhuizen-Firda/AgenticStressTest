@@ -986,7 +986,10 @@ bijwerken. De serververlaggen blijven gelijk.
 ### Twee RTX 5090's (2× 32 GB = 64 GB)
 
 Hier verandert wél iets aan de server: het model moet over twee kaarten worden
-verdeeld.
+verdeeld. Met `scripts/pod.sh` is dat `TENSOR_PARALLEL=2`; blijft die op de
+standaard 1 staan, dan zet vLLM alle ~31 GB op één kaart van 32 GB en stopt het
+op `No available memory for the cache blocks`. Het script rekent dat vooraf uit
+en weigert de meting voordat het model geladen wordt.
 
 ```bash
 vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8 \

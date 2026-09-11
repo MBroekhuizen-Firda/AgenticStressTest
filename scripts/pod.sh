@@ -172,6 +172,12 @@ except Exception:
 print("%.1f" % (total / (1024 ** 3)))' 2>/dev/null || true
 }
 
+# What one card holds, kept apart from VRAM_GB. VRAM_GB may be the operator's
+# own number (VRAM_GB=64) and is the pool the report divides; this is what the
+# driver says about one card, and it is what decides whether the weights fit in
+# what vLLM is actually given. Empty when neither nvidia-smi nor torch knows.
+VRAM_PER_CARD_GB=""
+
 detect_gpu() {
   GPU_NAME="${GPU_NAME:-onbekend}"
   GPU_COUNT=1
@@ -209,6 +215,7 @@ detect_gpu() {
       local cards="$TENSOR_PARALLEL"
       [ "$cards" -gt "$GPU_COUNT" ] && cards="$GPU_COUNT"
       if [ -n "$per_card" ]; then
+        VRAM_PER_CARD_GB="$per_card"
         VRAM_GB="${VRAM_GB:-$(awk -v p="$per_card" -v n="$cards" 'BEGIN{printf "%.1f", p*n}')}"
       fi
 
@@ -302,6 +309,17 @@ shm_size_mb() {
 # failed due to an exception in a background process", a quarter of an hour of
 # rent later and with the model already loaded.
 check_tensor_parallel() {
+  # Fewer processes than cards is allowed -- but it measures another machine
+  # than the one that was rented: vLLM gets one card and the rest stands idle,
+  # while the pool in the report follows this number too. On a 30B in FP8 it is
+  # also how a start ends in "No available memory for the cache blocks", which
+  # check_model_fits catches below. Either way the operator has to have chosen
+  # it, so it is said out loud.
+  if [ "$TENSOR_PARALLEL" -lt "$GPU_COUNT" ]; then
+    warn "er staan $GPU_COUNT kaarten in deze pod en TENSOR_PARALLEL=$TENSOR_PARALLEL gebruikt er $TENSOR_PARALLEL."
+    warn "De rest blijft ongebruikt, en de pool waar het rapport elke GB uit rekent is die van"
+    warn "$TENSOR_PARALLEL kaart(en). Alle kaarten gebruiken: TENSOR_PARALLEL=$GPU_COUNT scripts/pod.sh all"
+  fi
   [ "$TENSOR_PARALLEL" -gt 1 ] || return 0
   if [ "$TENSOR_PARALLEL" -gt "$GPU_COUNT" ]; then
     [ "$FORCE" = 1 ] || die "TENSOR_PARALLEL=$TENSOR_PARALLEL, maar nvidia-smi ziet $GPU_COUNT kaart(en). vLLM start dan een worker per kaart die er niet is en valt tijdens het opstarten om. Zet TENSOR_PARALLEL=$GPU_COUNT, of kijk of CUDA_VISIBLE_DEVICES de andere kaarten wegfiltert. Gebruik --force om toch door te gaan."
@@ -312,6 +330,42 @@ check_tensor_parallel() {
     warn "/dev/shm is ${shm} MB. De workers van vLLM praten daarover met elkaar en 64 MB (de"
     warn "standaard van een container zonder --shm-size) is te weinig: het opstarten eindigt dan"
     warn "in 'WorkerProc initialization failed'. Start de container met --shm-size 8g of meer."
+  fi
+}
+
+# Passen de gewichten in wat vLLM krijgt? vLLM laadt eerst de gewichten en
+# verdeelt pas daarna wat overblijft over de KV-cache; blijft er niets over,
+# dan stopt de engine met "No available memory for the cache blocks" -- na het
+# laden, dus na minuten huur, en tweemaal als het script nog een poging doet.
+# Dat is vooraf te zien: de gewichten staan op schijf en wat vLLM mag gebruiken
+# is de kaart maal --gpu-memory-utilization.
+#
+# Gerekend met VRAM_PER_CARD_GB en niet met VRAM_GB: dat laatste mag de
+# operator zelf opgeven en zegt dan iets over het rapport, niet over wat de
+# server in handen heeft. Weet de pod het geheugen van een kaart niet (MIG),
+# dan is er niets te vergelijken en gebeurt hier niets.
+check_model_fits() {
+  [ "$MOCK" = 1 ] && return 0
+  local weights per_card cards usable margin
+  weights="$(weights_gb)"
+  per_card="$VRAM_PER_CARD_GB"
+  [ -n "$weights" ] && [ -n "$per_card" ] || return 0
+  cards="$TENSOR_PARALLEL"
+  [ "$cards" -gt "$GPU_COUNT" ] && cards="$GPU_COUNT"
+  usable="$(awk -v p="$per_card" -v n="$cards" -v u="$GPU_UTIL" 'BEGIN{printf "%.1f", p*n*u}')"
+  margin="$(awk -v u="$usable" -v w="$weights" 'BEGIN{printf "%.1f", u - w}')"
+  local spread="op $(plural_cards "$cards")"
+  local advice="Een kaart met meer geheugen is dan de enige uitweg, of een kleiner model."
+  if [ "$GPU_COUNT" -gt "$cards" ]; then
+    advice="Er staan $(plural_cards "$GPU_COUNT") in deze pod en er wordt gemeten op $(plural_cards "$cards"); samen halen ze het wel:  TENSOR_PARALLEL=$GPU_COUNT scripts/pod.sh all"
+  fi
+  if awk -v w="$weights" -v u="$usable" 'BEGIN{exit !(w >= u)}'; then
+    [ "$FORCE" = 1 ] || die "de gewichten passen niet in wat vLLM mag gebruiken: ~${weights} GB aan gewichten (plus overhead) tegen ${usable} GB ($GPU_UTIL x ${per_card} GB $spread). vLLM laadt ze dan wel en stopt daarna op 'No available memory for the cache blocks', want voor de KV-cache blijft er niets over. --max-model-len of --max-num-seqs verlagen helpt niet: die kosten pas geheugen na de gewichten. Gebruik --force om het toch te proberen. $advice"
+    warn "de gewichten (~${weights} GB) passen niet in ${usable} GB, doorgaan vanwege --force"
+  elif awk -v m="$margin" 'BEGIN{exit !(m < 4)}'; then
+    warn "na de gewichten blijft er ${margin} GB over voor de KV-cache (~${weights} GB gewichten"
+    warn "tegen ${usable} GB bruikbaar $spread). Dat is genoeg om op te starten, maar de meting"
+    warn "gaat dan over een cachepool die in een klas van twintig meteen vol staat. $advice"
   fi
 }
 
@@ -434,6 +488,7 @@ preflight() {
     warn "elke GB in het rapport staat of valt met dat getal; noteer het bij de uitkomst"
   fi
   check_tensor_parallel
+  check_model_fits
   check_driver_matches_torch
 }
 
@@ -684,6 +739,14 @@ NCCL_FAILURE_PATTERNS='ncclInternalError|ncclSystemError|ncclUnhandledCudaError|
 # quarter of an hour of GPU rent for nothing.
 HF_RATE_LIMIT_PATTERNS='Too Many Requests|429 Client Error|RateLimitExceeded'
 
+# vLLM's own words when the weights left nothing for the KV cache: the engine
+# loaded them, could not place a single cache block and stopped. Unambiguous
+# and always fatal -- unlike FlashInfer's complaint about this card, which sits
+# in the log of a start that survived it (vLLM probes FlashInfer, warns, and
+# carries on). So this is asked first, both when deciding to retry and when
+# saying why the server is not there.
+NO_KV_MEMORY_PATTERNS='No available memory for the cache blocks'
+
 # What it looks like when FlashInfer's JIT compiler cannot build for this card.
 # The message about sm75 is the symptom: the card is sm_120, and the real reason
 # sits a few lines higher ("SM 12.x requires CUDA >= 12.9") -- the toolkit on
@@ -768,6 +831,25 @@ die_server_start() {
     fi
     if grep -q "No module named .flashinfer" "$SERVER_LOG" 2>/dev/null; then
       die "vLLM importeert flashinfer ook als hij het niet gebruikt, en het pakket is hier weg. Zet het terug ( pip install flashinfer-python ) en start opnieuw; dit script zet zelf VLLM_USE_FLASHINFER_SAMPLER=0 en --attention-backend TRITON_ATTN zodat de JIT-compiler er niet aan te pas komt."
+    fi
+    # Before FlashInfer, because both can stand in one log and only this one
+    # stopped the engine: vLLM warns about FlashInfer on this card and starts
+    # anyway. Blaming the warning sent the operator after a CUDA toolkit for a
+    # model that simply did not fit.
+    if grep -qE "$NO_KV_MEMORY_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+      local weights cards budget fit_advice
+      weights="$(weights_gb)"
+      cards="$TENSOR_PARALLEL"
+      [ "$cards" -gt "${GPU_COUNT:-1}" ] && cards="${GPU_COUNT:-1}"
+      # The sum only when both halves are known: "~? GB tegen ? GB" says
+      # nothing and reads like a broken script.
+      budget=""
+      if [ -n "$weights" ] && [ -n "$VRAM_PER_CARD_GB" ]; then
+        budget=" Gewichten ~${weights} GB tegen $(awk -v p="$VRAM_PER_CARD_GB" -v n="$cards" -v u="$GPU_UTIL" 'BEGIN{printf "%.1f", p*n*u}') GB bruikbaar ($GPU_UTIL x ${VRAM_PER_CARD_GB} GB op $(plural_cards "$cards"))."
+      fi
+      fit_advice="Een kaart met meer geheugen is dan de uitweg, of een kleiner model."
+      [ "${GPU_COUNT:-1}" -gt "$cards" ] && fit_advice="Er staan $(plural_cards "${GPU_COUNT}") in deze pod en er wordt gemeten op $(plural_cards "$cards"); samen halen ze het wel:  TENSOR_PARALLEL=${GPU_COUNT} scripts/pod.sh all"
+      die "vLLM kreeg geen enkel cacheblok geplaatst: de gewichten gingen er nog in, de KV-cache niet meer.${budget} --max-model-len of --max-num-seqs verlagen helpt hier niet: die kosten pas geheugen na de gewichten. Staat er hierboven ook iets over FlashInfer: dat is een waarschuwing die deze start heeft overleefd, niet de reden. $fit_advice"
     fi
     if grep -qEi 'FlashInfer requires GPUs|check_cuda_arch|SM 12\.x requires CUDA' "$SERVER_LOG" 2>/dev/null; then
       die "vLLM blijft op FlashInfer stuklopen, ook zonder de FlashInfer-sampler en met --attention-backend TRITON_ATTN (zie hierboven welke van de twee dit script al geprobeerd heeft). De JIT-compiler van FlashInfer kan deze kaart (sm_120) niet bouwen met de CUDA-toolkit in deze image; het log noemt CUDA >= 12.9. Kijk in de traceback welk onderdeel van vLLM hem nu nog aanroept. Een image met een toolkit van 12.9 of nieuwer is de zekere uitweg -- /workspace blijft staan, dus het model hoeft niet opnieuw gedownload."
@@ -919,7 +1001,8 @@ start_server() {
     # the attention modules means the sampler alone will not help, so both
     # are switched at once rather than spending a start-up on each. A backend
     # the operator chose is never substituted; then only the sampler is tried.
-    if [ "$status" = 2 ] && grep -qEi "$FLASHINFER_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
+    if [ "$status" = 2 ] && grep -qEi "$FLASHINFER_PATTERNS" "$SERVER_LOG" 2>/dev/null \
+       && ! grep -qE "$NO_KV_MEMORY_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
       if [ -z "$backend" ] \
          && grep -qEi "$FLASHINFER_ATTENTION_PATTERNS" "$SERVER_LOG" 2>/dev/null; then
         warn "vLLM koos FlashInfer als attention-backend en de JIT-compiler kan die niet bouwen voor deze kaart;"
@@ -1588,6 +1671,7 @@ reusable_lesson_dir() {
 }
 
 plural_runs() { [ "$1" = 1 ] && printf '1 run' || printf '%s runs' "$1"; }
+plural_cards() { [ "$1" = 1 ] && printf '1 kaart' || printf '%s kaarten' "$1"; }
 
 # How old the directory is and what is already in it. Resuming is the point of
 # the directory, but resuming in yesterday's measurement without noticing is

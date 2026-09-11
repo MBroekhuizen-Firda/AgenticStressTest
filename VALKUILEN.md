@@ -141,6 +141,30 @@ het aantal sessies dat erin past; dat is wat `scripts/pod.sh` doet.
 gebruikers, maar levert een eerlijke ondergrens. Noteer in beide gevallen wat
 je gebruikt hebt — de conclusie hangt eraan.
 
+### `No available memory for the cache blocks`
+
+De gewichten zijn geladen en er is niets over voor de KV-cache. Op twee RTX
+5090's is dit bijna altijd hetzelfde: `TENSOR_PARALLEL` stond op 1, dus vLLM
+zette het hele model (~31 GB in FP8) op één kaart van 32 GB, waarvan het er met
+`--gpu-memory-utilization 0.90` maar 28,6 mocht gebruiken. Twee kaarten samen
+hebben ruimte zat:
+
+```bash
+TENSOR_PARALLEL=2 scripts/pod.sh all
+```
+
+`--max-model-len` of `--max-num-seqs` verlagen helpt hier niet: die kosten pas
+geheugen ná de gewichten. `scripts/pod.sh` rekent dit sinds deze meting vooraf
+uit — gewichten op schijf tegen kaart maal `GPU_UTIL` — en stopt vóór het laden
+in plaats van erna.
+
+Let op wat er verder in datzelfde log staat. vLLM waarschuwt op een sm_120-kaart
+ook over FlashInfer (`SM 12.x requires CUDA >= 12.9`) zonder dat die
+waarschuwing de start tegenhoudt. Het script las die eerst als de oorzaak,
+herstartte op een andere attention-backend — een andere meting — en meldde
+daarna dat vLLM "blijft stuklopen op FlashInfer". Geheugen gaat nu voor:
+staat deze regel in het log, dan is dát de reden.
+
 ### `WorkerProc initialization failed due to an exception in a background process`
 
 Alleen met `--tensor-parallel-size 2` of hoger. vLLM start dan een
