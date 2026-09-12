@@ -88,6 +88,23 @@ Stap 1 en 2 raken elkaar niet: deze branch komt aan `scripts/pod.sh`,
 `stresstest/`, `tests/` en `README.md`, PR #24 aan de meetmappen en de
 analysedocumenten. Geen enkel bestand zit in allebei.
 
+## Bijgewerkt: 12 september 2026
+
+De peildatum hierboven is 10 september; de branches die erin staan zijn
+opgeruimd. Dit is de stand van de remote daarna, en wat er met de twee branches
+is gebeurd die nog iets unieks droegen.
+
+| Branch | Wat er uniek in zat | Wat ermee is gebeurd |
+|---|---|---|
+| `resultaten/NVIDIA-GeForce-RTX-5090-575W-20260911-153003` | de meting op twee RTX 5090's van 11 september (`20260911-065941_matrix` en `20260911-135953_les`) plus de bijbehorende `RESULTATEN.md` | samengevoegd in `claude/hardware-recommendation-tests-9ii30d`; de twee meetmappen staan nu onder `results-van-de-gpu/`, dus de pod-branch mag weg |
+| `claude/quirky-cerf-6iciua` (PR #32) | twee valkuilen uit die meetsessie: de meetmap van een andere kaart, en een model dat niet op één kaart past; plus de promotie van de meting van 10 september naar `results-van-de-gpu/` | samengevoegd in dezelfde branch |
+| `claude/gifted-allen-thqzid`, `claude/html-nieuwe-resultaten-zj2aom`, `resultaten/…-20260910-160155`, `resultaten/…-20260910-182648` | niets — `git diff` tegen `main` is leeg | verwijderen |
+
+Dat de meting van 11 september in `results/` binnenkwam en hier naar
+`results-van-de-gpu/` is verplaatst, is precies de afspraak die onderaan dit
+bestand staat. `RAPPORT-RTX-PRO-6000.html` en `RESULTATEN.md` verwijzen sinds
+deze branch naar het archiefpad, voor de meting van 10 september ook.
+
 ## Waarom het steeds opnieuw gebeurt
 
 `push_results()` maakt per meting een branch en niemand ruimt die op. Dat is

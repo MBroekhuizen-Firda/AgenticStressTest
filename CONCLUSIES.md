@@ -216,6 +216,18 @@ leeg. Een kaart met minder rekenkracht doet dit niet beter. Dat maakt de meting 
 twee 5090's niet minder nodig maar méér: de kans dat die opstelling onder dit
 gedragsmodel rood kleurt, is aanzienlijk.
 
+> **Nagekomen: die meting is er, en de verwachting eronder klopte niet.** Op
+> 11 september is hetzelfde programma op twee RTX 5090's gedraaid
+> (`results-van-de-gpu/20260911-065941_matrix` en
+> `results-van-de-gpu/20260911-135953_les`, opstellingsvingerafdruk
+> `d7954db50151`). Geen van de 39 runs komt daar slechter uit dan op deze kaart
+> en veertien komen er beter uit: 30 groen / 6 oranje / 3 rood tegen 16 / 19 / 4,
+> en het lesuur gaat van 144 naar 97 seconden. De laatste twee zinnen hierboven
+> gelden dus niet meer — de PRO 6000 was de snelste kaart uit de vergelijking
+> niet. Ook het PCIe-voorbehoud is gemeten en niet teruggekomen. Sectie 08 van
+> [`RAPPORT-RTX-PRO-6000.html`](RAPPORT-RTX-PRO-6000.html) zet de drie metingen
+> naast elkaar; dit bestand blijft de tekstversie van de meting van 9 september.
+
 ## 5. Welke vLLM-instellingen zijn bepalend?
 
 Eén instelling doet er echt toe, de rest niet. Alle varianten bij twintig

@@ -4,8 +4,8 @@ Gemeten op **NVIDIA GeForce RTX 5090 (575W)** (64 GB videogeheugen) met **qwen3-
 Meting van 2026-09-11: 39 runs, seed 20250908. Dit bestand is geschreven op 2026-09-11.
 
 > Dit bestand is automatisch gegenereerd uit:
-> - `results/20260911-065941_matrix` -- gemeten 2026-09-11, 38 runs, opstelling `d7954db50151`
-> - `results/20260911-135953_les` -- gemeten 2026-09-11, 1 run, opstelling `d7954db50151`
+> - `results-van-de-gpu/20260911-065941_matrix` -- gemeten 2026-09-11, 38 runs, opstelling `d7954db50151`
+> - `results-van-de-gpu/20260911-135953_les` -- gemeten 2026-09-11, 1 run, opstelling `d7954db50151`
 >
 > De onderliggende getallen staan daar in `summary.csv`; per run staan alle afzonderlijke verzoeken in `runs/<run_id>/requests.csv`.
 
