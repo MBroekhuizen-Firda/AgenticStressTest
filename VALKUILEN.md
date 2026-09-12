@@ -141,6 +141,30 @@ het aantal sessies dat erin past; dat is wat `scripts/pod.sh` doet.
 gebruikers, maar levert een eerlijke ondergrens. Noteer in beide gevallen wat
 je gebruikt hebt — de conclusie hangt eraan.
 
+### `No available memory for the cache blocks`
+
+De gewichten zijn geladen en er is niets over voor de KV-cache. Op twee RTX
+5090's is dit bijna altijd hetzelfde: `TENSOR_PARALLEL` stond op 1, dus vLLM
+zette het hele model (~31 GB in FP8) op één kaart van 32 GB, waarvan het er met
+`--gpu-memory-utilization 0.90` maar 28,6 mocht gebruiken. Twee kaarten samen
+hebben ruimte zat:
+
+```bash
+TENSOR_PARALLEL=2 scripts/pod.sh all
+```
+
+`--max-model-len` of `--max-num-seqs` verlagen helpt hier niet: die kosten pas
+geheugen ná de gewichten. `scripts/pod.sh` rekent dit sinds deze meting vooraf
+uit — gewichten op schijf tegen kaart maal `GPU_UTIL` — en stopt vóór het laden
+in plaats van erna.
+
+Let op wat er verder in datzelfde log staat. vLLM waarschuwt op een sm_120-kaart
+ook over FlashInfer (`SM 12.x requires CUDA >= 12.9`) zonder dat die
+waarschuwing de start tegenhoudt. Het script las die eerst als de oorzaak,
+herstartte op een andere attention-backend — een andere meting — en meldde
+daarna dat vLLM "blijft stuklopen op FlashInfer". Geheugen gaat nu voor:
+staat deze regel in het log, dan is dát de reden.
+
 ### `WorkerProc initialization failed due to an exception in a background process`
 
 Alleen met `--tensor-parallel-size 2` of hoger. vLLM start dan een
@@ -285,6 +309,16 @@ hoort in het rapport genoemd te worden.
   daarom naam **en** geheugen, en weigert hervatten, `--also` en `--same` over
   twee kaarten. Dat is de enige weigering die `--resume-anyway` niet opzij zet.
   Meet in een eigen map: `RESULTS_DIR=results/$(date +%Y%m%d-%H%M%S)_matrix`.
+- **De vorige meting komt met de kloon mee.** Daar is geen netwerkschijf voor
+  nodig. `push_results` commit de meetmap aan het eind van elke meting, dus een
+  verse kloon van deze repo heeft de map van de vorige kaart al in `results/`
+  staan — en zonder `RESULTS_DIR` hervat `all` in de nieuwste map die het daar
+  vindt. Op een andere kaart liep de hele run daar vroeger op stuk voordat er
+  iets gemeten was, over een map die niemand had aangewezen. Koos `all` de map
+  zelf, dan laat het een map van een andere kaart nu staan en begint het in een
+  nieuwe; wijs je hem zelf aan met `RESULTS_DIR`, dan stopt het nog steeds —
+  dan is het een keuze en geen vondst. Op `main` horen de meetmappen daarom
+  onder `results-van-de-gpu/` en niet onder `results/` (zie BRANCHES.md).
 
 ### De resultaten van de pod halen
 
